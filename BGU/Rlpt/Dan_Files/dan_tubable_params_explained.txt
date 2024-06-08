@@ -1,0 +1,77 @@
+1. Resources:
+
+https://sites.google.com/view/manipulation-mpc/further-experimental-results
+https://arxiv.org/pdf/2104.13542 # the paper
+storm/storm_kit/mpc/cost/* # THESE SCRIPTS ARE THE IMPLEMENTATION OF THE COST PARAMS RELATED TO THE PARAMS - VERY HANDY
+
+2. Analysis of the parameters
+
+***Legend***
+#######################
+1. Param name in code
+2. Param name in paper
+3. Param type (cost (hyper parameter, the ones that we should tune as long as I get it) / mpc ())
+4. Meaning, Definition
+5. Possible values
+6. Importantcy (1-10 (my judgment))
+7. Other
+######################
+
+Param 1
+######################
+1. manipulability
+2. manipulability cost (?)
+3. cost
+4. // From paper:
+    C.2.3 Manipulability Cost
+    The manipulability cost acts as a regularizer to keep the manipulator away from singular configurations. The box plots in Fig. 11a and Fig. 11b show the median value with confidence bounds of
+    the position and orientation errors over the last 50 timesteps in 10 different pose reaching runs. We
+    chose the last 50 timesteps and not just the last timestep to test the convergence to the goal. Here we
+    see that as the weight on the manipulability cost is increased, the pose reaching accuracy improves.
+    However, after a certain threshold, the manipulability cost interferes with pose reaching and the position accuracy decreases. Maintaining high manipulability allows the robot to reach different end
+    effector orientations accurately
+
+5. Possible values
+6. Importantcy (1-10 (my judgment))
+7. See: storm/from_original_storm_repository/storm_kit/mpc/cost/manipulability_cost.py
+And for comparison what elias has changed: storm/storm_kit/mpc/cost/manipulability_cost.py
+######################
+
+
+Param 2
+######################
+1. Param name in code
+2. Param name in paper
+3. Param type (cost (hyper parameter, the ones that we should tune as long as I get it) / mpc ())
+4. Meaning, Definition
+5. Possible values
+6. Importantcy (1-10 (my judgment))
+7. Other
+######################
+
+
+
+
+
+
+
+
+
+
+
+
+cost_params = {
+"manipulability": 30, 
+"stop_cost": 50, 
+"stop_cost_acc": 0.0, 
+"smooth": 0.0, 
+"state_bound": 1000.0, 
+"ee_vel": 0.0, 
+"robot_self_collision" : 5000, 
+"primitive_collision" : 5000, 
+"voxel_collision" : 0
+}
+mpc_params = {
+"horizon" : 90 , 
+"particles" : 500 
+} #dan

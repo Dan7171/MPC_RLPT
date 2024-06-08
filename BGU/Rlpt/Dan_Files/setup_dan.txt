@@ -1,0 +1,114 @@
+sources I took help from:
+https://mail.google.com/mail/u/2/#inbox/FMfcgzGxTFTtdjgwZSkcMRvjkpzhrwJH
+https://developer.nvidia.com/isaac-gym
+https://github.com/NVlabs/storm/blob/main/install_instructions.md
+
+steps I took:
+
+
+******
+1. mkdir /home/dan/sw/storm_dan
+2. git clone https://github.com/NVlabs/storm
+3. download isaacgym directory from: https://developer.nvidia.com/isaac-gym
+4. cp /home/dan/Downloads/IsaacGym_Preview_4_Package/isaacgym /home/dan/sw/storm_dan/storm 
+
+5. change next files: to these specifications (by the recomendation of elias):
+File 1: /home/dan/sw/thesis/storm_dan/storm/environment.yml was changed to:
+
+## MIT License
+##
+## Copyright (c) 2020-2021 NVIDIA CORPORATION.
+##
+## Permission is hereby granted, free of charge, to any person obtaining a
+## copy of this software and associated documentation files (the "Software"),
+## to deal in the Software without restriction, including without limitation
+## the rights to use, copy, modify, merge, publish, distribute, sublicense,
+## and/or sell copies of the Software, and to permit persons to whom the
+## Software is furnished to do so, subject to the following conditions:
+##
+## The above copyright notice and this permission notice shall be included in
+## all copies or substantial portions of the Software.
+##
+## THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+## IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+## FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+## THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+## LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+## FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+## DEALINGS IN THE SOFTWARE.##
+
+name: storm_kit
+channels:
+  - pytorch
+  - conda-forge
+  - defaults # dan new
+dependencies:
+  - python=3.8 # dan was 3.7
+  - cudatoolkit= 11.8 #dan  was 11.1
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pyzmq
+  - numpy"<1.24" # dan was numpy 
+  - pytest
+  - colorlog
+  - pandas
+  - tabulate
+  - pip
+  - sk-video
+  - matplotlib
+  - quaternion
+  - pip:
+    - pytorch3d
+    - ghalton
+    - argcomplete
+    - click
+    - cloudpickle
+    - imageio-ffmpeg
+    - pyyaml
+    - scipy
+    - tqdm
+    - urdfpy
+    - wheel
+    - hydra-core
+    - urdf_parser_py
+    - sphinx-rtd-theme
+    - sphinx
+    - sphinx-autodoc-annotation
+    - hydra-core
+    - urdf_parser_py
+    - numpy-quaternion
+    - opencv-python
+    - open3d
+    - m2r2
+
+File 2 /home/dan/sw/thesis/storm_dan/storm/isaacgym/python/rlgpu_conda_env.yml was changed to:
+# NOTE - I DON'T KNOW IF IT HAD ANY AFFECT ON THE PROCESS!!!
+name: rlgpu
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8 # dan python=3.7
+  - pytorch=1.8.1
+  - torchvision=0.9.1
+  - cudatoolkit=11.1
+  - pyyaml>=5.3.1
+  - scipy>=1.5.0
+  - tensorboard>=2.2.1
+
+
+6. conda create -p /home/dan/sw/storm_dan/storm # will create a new environment storm_kit 
+7. conda activate storm_kit
+8.(storm_kit) dan@dan-US-Desktop-Codex-R:~/sw/thesis/storm_dan/storm$ conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia # credit to elieas
+9 (storm_kit) dan@dan-US-Desktop-Codex-R:~/sw/thesis/storm_dan/storm$ export LD_LIBRARY_PATH=/home/dan/anaconda3/envs/storm_kit/lib
+10.(storm_kit) dan@dan-US-Desktop-Codex-R:~/sw/thesis/storm_dan/storm$ cd /home/dan/sw/storm_dan/storm/isaacgym
+# next actions are also from (storm_kit) env:
+11. pip install -e .
+12. cd ./python/examples 
+13. python3 joint_monkey.py # should start gui - verify isaacgym works well
+14. cd /home/dan/sw/storm_dan/storm 
+15. python3 scripts/train_self_collision.py # verify it works - should do some calculation no gui
+16. (storm_kit) dan@dan-US-Desktop-Codex-R:~/sw/thesis/storm_dan/storm/examples$ python3 franka_reacher.py  # verify gui starts and works fine
+17. nvidia-smi #observe and verify nvidia memory usage with  command from terminal

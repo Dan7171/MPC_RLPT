@@ -1,0 +1,119 @@
+##########################################################################
+MAIN LOOP *DESIRED*-RUN ALOT OF EPISODES, EACH IN A NEW RENDERED ENVIRONMENT
+#############################################################################
+
+class RLPT:
+    """Reinforcement Learning Paramer Tuner for an MPC paremeters (currently for STORMs MPC only)"""
+    
+    def __init__(self,episode_num:int, episode_max_step:int, Mpc):
+        self.episode_num = episode_num # how many episodes to run in total
+        self.episode_max_step = episode_max_step # duration in time units (number of MPC steps) on each episde
+        self.MPC = Mpc()
+    
+    def train(self, episode_num:int):
+        """
+        Training the RLPT  
+        """
+        for ep_index in range(self.episode_num):
+            self.run_episode(self.episode_max_step) # runs an entire episode of the simulator using the MPc
+            self.Mpc.reset() # reset the environment (change location of obstacles and target object)
+    
+    def get_action_space():
+        if ''
+
+
+    def run_episode(self, max_step:int):
+        """
+        max_step: the maximal number of steps (maximum duration/time) for an episode. If reached, episode is over even target location was not reached.
+        """
+        
+        dict: cost_params;
+        dict: mpc_params;
+        
+        for step_index in range(max_step):
+            
+            # Select best action for the tuner - an assignment for the MPC parameters
+            cost_params, mpc_params = RLPT.select_action(state) # this is not yet implemented, that's what our RL parameter tuner should do
+            
+            a = (cost_params, mpc_params) # select RLTP action
+
+            # Perform the mpc-step with the "tuned" parameters  
+            mpc_step_outputs_all = Mpc.step(a)
+            
+            # original Mpc.step() output
+            arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = mpc_step_outputs_all[:-1]
+            # other outputs we added to be used by RLPT
+            mpc_step_outputs_for_rlpt = mpc_step_outputs_all[-1] # new output. Here we put anything which essential for the RLTP to update its policy
+            
+            # Given the essential information from MPC.step()'s output, update policy_update policy of RLPT
+            s, r, s_next = mpc_step_outputs_for_rlpt # this brought as classic RL but can be replaced with 
+            RLTP.policy_update(mpc_step_outputs_for_rlpt)
+            
+            if done: # episode was eneded before reaching the max episode step, which is good! (arm reached the target)
+                break # stop making steps of this episode
+
+        
+
+            
+            
+            
+if __name__ == '__main__':
+    
+    EpisodeRunner()
+
+    steps_in_one_epispde = 1000 # The duration of one episde (one whole real-world simulation before we render environment again)
+while True: # They write it as "while(i > -100)" dont know why...
+    
+
+
+
+
+
+
+
+
+
+#################################################################
+MAIN LOOP CURRENT
+##################################################################
+
+  
+    Mpc = MpcRobotInteractive(args, gym_instance)
+    
+    i = 0
+    end_flag = True
+    steps_in_one_epispde = 1000 # dan - this is the number of time units I guess which and episode takes
+    while(i > -100):
+        # >>> Dan 
+        # Dan - to play with the non 0 cost params and see the affect.
+        # <<<
+        cost_params = {
+            "manipulability": 500, # 30 
+            "stop_cost": 50, 
+            "stop_cost_acc": 0.0, 
+            "smooth": 0.0, 
+            "state_bound": 1000.0, 
+            "ee_vel": 0.0, 
+            "robot_self_collision" : 5000, 
+            "primitive_collision" : 5000, 
+            "voxel_collision" : 0
+            }
+        mpc_params = {
+            "horizon" : 90 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
+            "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+            } #dan
+        arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i)
+        if end_flag:
+            start_time = time.time()
+            end_flag = False
+        end_time = 0
+        if i%steps_in_one_epispde == 0: 
+            end_time = time.time()
+            end_flag = True
+            elapsed_time = end_time - start_time
+            print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            Mpc.reset()
+        if done:
+            break
+        i += 1
+    
