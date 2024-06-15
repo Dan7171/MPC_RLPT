@@ -68,7 +68,11 @@ np.set_printoptions(precision=2)
 #  each world model is a world to run at. "iter" is the index of the model in world_params_list (should be called "world_index" or simular) 
 # <<<
 
-
+# Dan imports
+# >>>
+import json
+from BGU.Rlpt.helpers.Helpers import Helpers
+# <<<
 # >>> Addede By ELias:
 world_params_list = [{'world_model': {'coll_objs': {'sphere': {'sphere1': {'radius': 0.04, 'position': [-0.5357734744985498, 0.402345508689139, 0.2520022492999887]}, 'sphere2': {'radius': 0.04, 'position': [-0.3700023656895255, -0.17199581157782995, 0.4218274094244757]}, 'sphere3': {'radius': 0.04, 'position': [-0.7272965946191279, 0.3009223918059427, 0.18170745504756652]}, 'sphere4': {'radius': 0.05, 'position': [0.2948549611698419, -0.564375408013291, 0.40771493738350295]}, 'sphere5': {'radius': 0.06, 'position': [0.0, 3.0, 0.0]}, 'sphere6': {'radius': 0.07, 'position': [0.0, 3.0, 0.0]}, 'sphere7': {'radius': 0.07, 'position': [0.44285773108214344, 0.6640265719930828, 0.6553875186074605]}, 'sphere8': {'radius': 0.08, 'position': [-0.17428957806483247, 0.7856183557174176, 0.47815214151938457]}, 'sphere9': {'radius': 0.09, 'position': [0.8575303467282515, -0.45571611297009473, 0.4383135605148688]}, 'sphere10': {'radius': 0.1, 'position': [0.9481070843761836, -0.5504134127039761, 0.6187096451807464]}}, 'cube': {'cube1': {'dims': [0.1, 0.1, 0.1], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube2': {'dims': [0.1, 0.1, 0.2], 'pose': [-0.2885709012664863, 0.4778345344725592, 0.532966528319243, 0.6980838721067888, 0.056250647380763186, -0.7137843150652049, 0.005169500994668452]}, 'cube3': {'dims': [0.1, 0.1, 0.3], 'pose': [-0.6987374518371363, -0.6364590965678762, 0.12353670481965989, -0.45120256223567934, -0.46250856494203874, 0.47491428964791926, -0.5974600343750418]}, 'cube4': {'dims': [0.1, 0.2, 0.1], 'pose': [0.7942541009871507, 0.6010752787901307, 0.6635516966478058, -0.22890146702344658, 0.9216568257731815, 0.3068717676854141, 0.06310730621605296]}, 'cube5': {'dims': [0.1, 0.2, 0.2], 'pose': [-0.6512235425578872, 0.987793685612596, 0.6847114614351515, 0.46345317158906163, 0.5865730874903496, -0.37743881699623905, 0.5465190849371666]}, 'cube6': {'dims': [0.1, 0.2, 0.3], 'pose': [0.9803312895750173, -0.6745357388723082, 0.28547869684491056, 0.6185624569883936, -0.2690283757087215, 0.6701634011394462, 0.3096534121259101]}, 'cube7': {'dims': [0.1, 0.3, 0.1], 'pose': [0.18468046847893416, -0.27676495446206784, 0.6139689748239938, 0.3186743181785274, 0.17703172363826258, -0.8568559491343359, 0.3645604616414306]}, 'cube8': {'dims': [0.1, 0.3, 0.2], 'pose': [0.4177846293472868, -0.787512863189118, 0.1733990204722219, 0.12361373048417137, -0.41763408594632573, 0.602011680513357, 0.6692408777241927]}, 'cube9': {'dims': [0.1, 0.3, 0.3], 'pose': [0.44819264321441243, 0.504174120604157, 0.48304391578208616, -0.49147765864353987, -0.2894795912763093, 0.4346720191242227, -0.6969300632626179]}, 'cube10': {'dims': [0.2, 0.1, 0.1], 'pose': [0.9857729053041304, 0.6722402921217592, 0.6597703842347493, 0.4411819926814173, -0.08940441277891342, -0.45976668856879144, -0.765493234713279]}, 'cube11': {'dims': [0.2, 0.1, 0.2], 'pose': [-0.7209461102320838, -0.8477951684499309, 0.37564204964432524, 0.7665657050272212, -0.03413858418737892, 0.4803487369261279, -0.42482545578069364]}, 'cube12': {'dims': [0.2, 0.1, 0.3], 'pose': [-0.18272134342289437, -0.19853565287693498, 0.6505234973202848, -0.18260676820562477, -0.5939817431791405, 0.09705662507969859, 0.7774448330933234]}, 'cube13': {'dims': [0.2, 0.2, 0.1], 'pose': [-0.28596400730608007, 0.5478378630189866, 0.399848559187301, 0.324418808800275, 0.26846825980600963, -0.03229009300335833, 0.9064406102261625]}, 'cube14': {'dims': [0.2, 0.2, 0.2], 'pose': [-0.9376855276358355, 0.3394596544521766, 0.6311181892786898, -0.19922410447027267, 0.14167998199228746, -0.3688223028724334, -0.8967756953690025]}, 'cube15': {'dims': [0.2, 0.2, 0.3], 'pose': [0.28541779262753486, -0.8882213922377888, 0.37571503812284035, -0.3544809831513122, 0.45290014931575584, -0.6207033294504894, 0.5328715268645178]}, 'cube16': {'dims': [0.2, 0.3, 0.1], 'pose': [0.7584101376228902, 0.13478517636851486, 0.5455606536704157, -0.9379953807631229, 0.0706299249469384, 0.303947687792146, 0.15096980643440672]}, 'cube17': {'dims': [0.2, 0.3, 0.2], 'pose': [0.5583601776608257, 0.6993372164649275, 0.32844244943043, 0.04680104485697173, 0.3636396010156108, -0.43143087428316185, 0.8242835091694906]}, 'cube18': {'dims': [0.2, 0.3, 0.3], 'pose': [-0.7988253102491426, -0.8009034218579342, 0.4044959121474949, -0.09820968167700189, 0.1902143162307311, 0.6808191174181119, 0.7004703431864913]}, 'cube19': {'dims': [0.3, 0.1, 0.1], 'pose': [0.49453561611174623, 0.3359035189884687, 0.48803078344225004, -0.14352716555992817, 0.36603919042765676, 0.2904511563561692, 0.8723837398695385]}, 'cube20': {'dims': [0.3, 0.1, 0.2], 'pose': [-0.5130966039728129, 0.6120836259023413, 0.19913271438638436, 0.1683274829831946, -0.3046970363990945, 0.40844977344549005, 0.8437975806166306]}, 'cube21': {'dims': [0.3, 0.1, 0.3], 'pose': [-0.17687417786890702, -0.5064717879333912, 0.4275148973796925, -0.41323272241462966, -0.36564341623544083, -0.812750397149786, 0.18703048206732215]}, 'cube22': {'dims': [0.3, 0.2, 0.1], 'pose': [-0.8113658833117179, -0.8745168935824477, 0.5745476547167897, 0.10651264754487068, -0.6634383689730647, 0.6855722769879445, 0.28017001894011967]}, 'cube23': {'dims': [0.3, 0.2, 0.2], 'pose': [0.9270609535906081, 0.29908054808866663, 0.25510853410761763, -0.38595286922706146, 0.0248706718026178, 0.024715890168270464, 0.9218519171714487]}, 'cube24': {'dims': [0.3, 0.2, 0.3], 'pose': [0.3970016595188187, -0.6133736915793115, 0.6686461786443482, -0.6580430935742932, -0.5963784144692079, 0.4157381836410311, -0.1961474863902769]}, 'cube25': {'dims': [0.3, 0.3, 0.1], 'pose': [0.8830783941890297, 0.8408256317725622, 0.6202896960617573, -0.43924866089110365, -0.5238766709762599, -0.4973546745961701, 0.5340900440651759]}, 'cube26': {'dims': [0.3, 0.3, 0.2], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube27': {'dims': [0.3, 0.3, 0.3], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube28': {'dims': [2.0, 2.0, 0.2], 'pose': [0.0, 0.0, -0.1, 0, 0, 0, 1.0]}}}}},
                      {'world_model': {'coll_objs': {'sphere': {'sphere1': {'radius': 0.04, 'position': [0.0, 3.0, 0.0]}, 'sphere2': {'radius': 0.04, 'position': [-0.2520217114582065, 0.9536868235755181, 0.4789706528869595]}, 'sphere3': {'radius': 0.04, 'position': [0.0, 3.0, 0.0]}, 'sphere4': {'radius': 0.05, 'position': [-0.16426503480460075, -0.7615106429497664, 0.25764151874862257]}, 'sphere5': {'radius': 0.06, 'position': [-0.37832138039829977, -0.3877354690519633, 0.4291515933645803]}, 'sphere6': {'radius': 0.07, 'position': [0.0, 3.0, 0.0]}, 'sphere7': {'radius': 0.07, 'position': [-0.7736227802101716, -0.6488645492401135, 0.5659462935083912]}, 'sphere8': {'radius': 0.08, 'position': [0.35280653335758627, -0.6778364316104141, 0.4273654445180327]}, 'sphere9': {'radius': 0.09, 'position': [0.0, 3.0, 0.0]}, 'sphere10': {'radius': 0.1, 'position': [0.0, 3.0, 0.0]}}, 'cube': {'cube1': {'dims': [0.1, 0.1, 0.1], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube2': {'dims': [0.1, 0.1, 0.2], 'pose': [-0.8071360942536275, -0.6656451863791026, 0.4030067583234721, 0.9371102977572636, -0.11098764513443578, 0.31915798603955253, 0.08743118672408608]}, 'cube3': {'dims': [0.1, 0.1, 0.3], 'pose': [-0.19611198594521584, 0.1960088685357547, 0.5209242782066749, -0.45735026708383614, 0.8471224924461737, 0.23474115213939523, 0.13457640016880912]}, 'cube4': {'dims': [0.1, 0.2, 0.1], 'pose': [0.2635220042560735, 0.11808254422348963, 0.4840202023943394, -0.613710318166888, -0.026216699032800862, 0.7890636461030393, 0.0071338955626104456]}, 'cube5': {'dims': [0.1, 0.2, 0.2], 'pose': [0.9779621294944782, -0.404999223590232, 0.4525310694019682, -0.13674873612816094, 0.18724900664644484, 0.8849697872964665, 0.403814398269449]}, 'cube6': {'dims': [0.1, 0.2, 0.3], 'pose': [-0.6129900768093985, -0.8321124040168265, 0.3879025111000959, -0.23369786376058652, 0.45665127171785375, 0.8557375550770496, 0.06758817457927523]}, 'cube7': {'dims': [0.1, 0.3, 0.1], 'pose': [-0.13726320733439878, -0.6100214446548862, 0.6551736416184988, -0.4580160477865864, -0.45317817950677536, -0.11572335467314823, 0.7559490345070051]}, 'cube8': {'dims': [0.1, 0.3, 0.2], 'pose': [0.6276557333062793, 0.5643027338634771, 0.4635755199234395, -0.5857498832373783, -0.43639404062788245, 0.10030901572575038, 0.6755704381898299]}, 'cube9': {'dims': [0.1, 0.3, 0.3], 'pose': [-0.959003579103874, -0.7098886149983832, 0.6099854566265462, 0.1187336529045486, 0.8593247305003701, 0.07910993258538274, -0.49112620148465397]}, 'cube10': {'dims': [0.2, 0.1, 0.1], 'pose': [-0.29223593071940823, 0.2904035736094489, 0.35336437186726233, -0.8214483550076311, 0.28800961360692323, 0.3686399002937688, -0.32615592350384776]}, 'cube11': {'dims': [0.2, 0.1, 0.2], 'pose': [-0.46613821793544163, 0.9655412064989142, 0.2966435440857067, 0.04205289506512483, -0.8593967261455268, -0.24290308476135836, 0.44795860581130575]}, 'cube12': {'dims': [0.2, 0.1, 0.3], 'pose': [0.40653786131776715, -0.26995554708740677, 0.3493408553725783, -0.8041079103825794, -0.2906352408958686, 0.31187422616500765, 0.4143381375924012]}, 'cube13': {'dims': [0.2, 0.2, 0.1], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube14': {'dims': [0.2, 0.2, 0.2], 'pose': [0.2755893010600123, 0.23967471034444993, 0.2191446679537482, 0.3698808545675243, 0.7859159449237122, 0.46790371580519063, -0.16306561156406293]}, 'cube15': {'dims': [0.2, 0.2, 0.3], 'pose': [-0.11402513323837205, 0.17735261907274832, 0.13451319026364558, -0.4223518927737549, 0.5770012826332359, 0.399855373954467, 0.5734144037515629]}, 'cube16': {'dims': [0.2, 0.3, 0.1], 'pose': [-0.6183866155876524, 0.47044297299368887, 0.4010291969513131, -0.579898653560113, -0.3441668251501638, -0.648335062244187, -0.3534521115088308]}, 'cube17': {'dims': [0.2, 0.3, 0.2], 'pose': [-0.7569588841458563, -0.3431066587619874, 0.48988858082315156, -0.5832731563769025, 0.4461581953352899, 0.6783089271362496, -0.025145360457802857]}, 'cube18': {'dims': [0.2, 0.3, 0.3], 'pose': [0.6244322260797847, -0.18875154754943668, 0.5645567141657384, -0.21603341590350705, 0.6704427419951381, -0.21680958342772172, -0.6758917793944538]}, 'cube19': {'dims': [0.3, 0.1, 0.1], 'pose': [-0.2001137522033819, -0.8850462377312706, 0.27936707562443985, -0.6220068075238528, -0.10629768693491398, -0.7597825604184696, 0.15664863239181634]}, 'cube20': {'dims': [0.3, 0.1, 0.2], 'pose': [-0.22509674167968163, 0.4798451239907343, 0.4488755610261148, -0.0969013219257606, -0.007950694446985058, -0.0810096858502212, 0.9919598535552228]}, 'cube21': {'dims': [0.3, 0.1, 0.3], 'pose': [-0.6209783261922599, -0.4048294770980041, 0.37479131900151774, 0.3973482521870222, -0.7734317371248629, -0.30311254223268447, 0.38992371206836685]}, 'cube22': {'dims': [0.3, 0.2, 0.1], 'pose': [-0.7609422503664184, 0.7985619022764392, 0.28230631507530285, 0.9042349656157422, 0.34436074931005206, 0.17944624116334357, 0.17769031438112826]}, 'cube23': {'dims': [0.3, 0.2, 0.2], 'pose': [-0.7414727789972382, -0.739407332733673, 0.4534117164994528, 0.7795949203668379, 0.19745359497325188, -0.24390434338422123, -0.5419912446236329]}, 'cube24': {'dims': [0.3, 0.2, 0.3], 'pose': [0.2556984631809891, 0.7367277497523675, 0.6537414735397347, -0.8107800340644726, 0.529621132512091, -0.2239002343528857, -0.10957133482688663]}, 'cube25': {'dims': [0.3, 0.3, 0.1], 'pose': [-0.8428958465696756, 0.5525462414549538, 0.1532635382803819, 0.553174841565876, 0.3001021004155507, -0.7001823846731786, 0.3371660602405343]}, 'cube26': {'dims': [0.3, 0.3, 0.2], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube27': {'dims': [0.3, 0.3, 0.3], 'pose': [0.0, 3.0, 0.0, 0, 0, 0, 1.0]}, 'cube28': {'dims': [2.0, 2.0, 0.2], 'pose': [0.0, 0.0, -0.1, 0, 0, 0, 1.0]}}}}},
@@ -147,7 +151,7 @@ class MpcRobotInteractive:
         # <<<
         
         # File variables
-        self.vis_ee_target = True
+        self.vis_ee_target = True # Dan - ?
         self.robot_file = self.args.robot + '.yml'
         self.task_file = self.args.robot + '_reacher.yml'
         self.world_file = 'collision_primitives_3d_origina2.yml'
@@ -321,24 +325,28 @@ class MpcRobotInteractive:
         self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
         self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
-    def step(self, cost_params, mpc_params, i):
+    def step(self, cost_params, mpc_params, step_cnt):
         """
         Update arm parameters. cost_params are the parameters for the mpc cost function. mpc_params are the horizon and number of particles of the mpc.
         Input
+
             - cost_params: dict {cost_name: weight}
             - mpc_params: dict {horizon: num, num_particles: num}
+            - step_cnt (int): current count of steps in episode (Dan) 
         Output # Dan - I found out its not updated... It doesent return what it says.
             - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat, g_pos, g_quat]
             - reward: float reward function for RL
             - done: bool True, False. True if the arm reached te goal or if it is in an invalid configuration
         """
+        print(f'>>>>>> Dan debug step() call START >>>>>>>>>>')
+        
 
         try:
             ####################################################
             # Update Cost and MPC variables dynamically ########
             #print(f"Updating cost_params: {cost_params}")
             self.mpc_control.update_costs(cost_params)
-            if i == 0:
+            if step_cnt == 0:
                 #print(f"Updating MPC parameters: {mpc_params}")
                 self.mpc_control.update_mpc_params(mpc_params)
             ####################################################
@@ -347,6 +355,7 @@ class MpcRobotInteractive:
             self.gym_instance.step() # Dan: elias said its something of the simulation and not related to mpc
 
             if(self.vis_ee_target): 
+                
                 if self.pose == None: # Dan: elias said this is something 
                     self.pose = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle))
                     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose)
@@ -428,7 +437,8 @@ class MpcRobotInteractive:
             done = True
             self.mpc_control.close()
             return None,None,None,None,True
-
+        
+        print('<<<<<<<<< Dan debug step() call FINISHED <<<<<<<<<')
         return self.arm_configuration, self.goal_pose, self.end_effector_pos, self.end_effector_quat, False
 
 
@@ -468,15 +478,25 @@ class MpcRobotInteractive:
         Output
             - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat]
         """
-        print("Resetting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
+        # print("Resetting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        
+        print('>>>>>>>>>> Dan debug: reset() call START <<<<<<<<<<')
+    
+        print(f'* Dan debug: choosing objects to include in next environment and their locations + rotations (quaternions)')
         world_yml = join_path(get_gym_configs_path(), self.world_file)
         world_params, indexes, compressed_world_params = self.modify_dict(world_yml) # modify dict - randonmly seclecting a world
         # iter = 2 # also
         # world_params = world_params_list[iter]
         # compressed_world_params = compressed_world_params_list[iter]
-        print(f"world_params: {world_params}")
-        print(f"compressed_world_params: {compressed_world_params}")
+        # print(f"world_params: {world_params}")
+        # print(f"compressed_world_params: {compressed_world_params}")
+        
+        print(f'* Dan debug all objects - selected and not (world_params):')
+        print(json.dumps(world_params, indent=4))
+        print(f'* Dan debug: selected objects only (compressed_world_params):')
+        print(json.dumps(compressed_world_params, indent=4))
+
+        print(f'* Dan debug: some unknown isaac gym stuff...')
         # refresh observation
         self.gym.refresh_actor_root_state_tensor(self.sim)
 
@@ -498,21 +518,26 @@ class MpcRobotInteractive:
         root_positions[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) 
         #saved_root_tensor[2:-2, 0:7] *= 0
 
+        print(f'* Dan debug: selecting a goal location (pose) +angles (quaternion) for the arm...')
         # Set new goal
-        p = self.generate_random_position(3)
-        q = self.generate_random_quaternion()
+        p = self.generate_random_position(3) # Dan - location (x,y,z)
+        q = self.generate_random_quaternion() # Dan - quaternion (q1,q2,q3,q4) - determines rotation...
         # p = p_list[iter]
         # q = q_list[iter]
-        print(f"p: {p}")
-        print(f"q: {q}")
+        # print(f"p: {p}")
+        # print(f"q: {q}")
         #self.goal_pose = p + q
-        print(f"transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist(): {self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()}")
+        # print(f"transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist(): {self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()}")
         self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0]
         self.update_pose()
-        print(f"self.goal_pose: {self.goal_pose}")
+        # print(f"self.goal_pose: {self.goal_pose}")
 
+        # print(f'Dan debug 3: goal_pose = {self.goal_pose} ')
+        
+        print(f'* Dan debug: selected goal location+angles: (pose_x, pose_y, pose_z, quaternion_1,quaternion_2, quaternion_3, quaternion_4) = {self.goal_pose}')
+        
         root_goal = saved_root_tensor[39, 0:7]
-        print(f"self.w_T_r): {self.w_T_r}!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # print(f"self.w_T_r): {self.w_T_r}!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         root_goal[0:7] = torch.tensor(self.goal_pose)
 
         #root_positions[0, 0:7] = torch.tensor(self.goal_pose)
@@ -527,16 +552,20 @@ class MpcRobotInteractive:
         num_points = 37
         int_linspace = np.linspace(1, 37, num=num_points, dtype=int)
         actor_indices = torch.tensor(np.append(int_linspace, 39), dtype=torch.int32, device="cpu")
-        print(f"saved_root_tensor: {saved_root_tensor.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(f"actor_indices: {actor_indices.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # print(f"saved_root_tensor: {saved_root_tensor.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # print(f"actor_indices: {actor_indices.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         # Dan - sending the new created world, (not the compressed but the whole world), to the simulator (when we send only the compressed its just to the STORM computational code)
-        
+        print(f'* Dan debug: sending the new created world, (not the compressed but the whole world), to the simulator (when we send only the compressed its just to the STORM computational code)')
+        print(f'* Dan debug: Sending all objects (selected and not) to the simulator- gym (not to STORM. STORM should not use it)')
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38)
 
         # Update world_params
+        print(f'Dan debug: sending only the selected objects (compressed_world_params) to STORM ')
         self.mpc_control.update_world_params(compressed_world_params)
-
+        
+        print('>>>>>>>>>>> Dan debug: reset() call END <<<<<<<<<<<')
+        
 
 ###############################################################################################
 #####################h HELPER FUNCTIONS #######################################################
@@ -790,19 +819,42 @@ if __name__ == '__main__':
         mpc_params = {
             "horizon" : 90 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
             "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-            } #dan
-        arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i)
+            } 
+        
+        # Dan: Doing an action (step) in simulator....
+        print(f'*Dan debug: step_cnt: {i}, total steps in current simulation = {i%steps_in_one_epispde}')
+        arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i) # todo Dan check if there's a 
+        goal_pose_no_orientation = goal_pose[:3] # Dan
+        print(f'* Dan debug:\n\
+        step_cnt: {i}\
+        goal_pose: {goal_pose}\
+        end_effector_pose: {end_effector_pos}\
+        end_effector_quat: {end_effector_quat}\
+        done (?): {done}')
+
+        
+
+        print(f'Distance between end effector pose to end effector goal pose: {Helpers.l2norm(np.array(end_effector_pos), np.array(goal_pose_no_orientation))}')
+        
+
+        
         if end_flag:
             start_time = time.time()
             end_flag = False
         end_time = 0
-        if i%steps_in_one_epispde == 0: 
+
+        if i%steps_in_one_epispde == 0: # Dan if reached max step of episode
+            print(f'* Dan Debug: End of episode - max step reached (after {steps_in_one_epispde} steps)...\n\
+                  Episode num {i%steps_in_one_epispde}')
+            
             end_time = time.time()
             end_flag = True
             elapsed_time = end_time - start_time
-            print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            # print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             Mpc.reset()
-        if done:
+        
+        
+        if done: # ?
             break
         i += 1
     
