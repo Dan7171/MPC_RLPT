@@ -6,6 +6,8 @@ import os
 initialized = False
 fh_name = ''
 logger = None
+logger_ticks = 50 # log every  {logger_ticks} time stamps (arm steps)
+
 handlers_dir_parent = './BGU/Rlpt/DebugLogs'
 # # Check if the logger has handlers already attached to avoid duplicate logs
 # if not logger.hasHandlers():
@@ -27,7 +29,9 @@ if not initialized:
 
     # Create a formatter and set it for the handler
     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s - %(funcName)s ::: %(message)s')
+    # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s - %(funcName)s ::: %(message)s')
+    formatter = logging.Formatter('%(module)s-%(funcName)s:::%(message)s')
+
     ch.setFormatter(formatter)
 
     # Add the handler to the logger
@@ -37,6 +41,7 @@ if not initialized:
     fh = logging.FileHandler(handler_path)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(formatter)
+
     logger.addHandler(fh)
   
     
