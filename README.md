@@ -20,11 +20,17 @@ Link to liscene: [./storm/LICENSE](./storm/LICENSE).
     - `cd /home/%user%/%path%/%to%/%project%/%parent_dir%` # replace with yours
     - `git clone <project url>` to clone the project into your parent_dir
     - `cd MPC_RLPT`to enter the git project
-    - `conda create --name <env> --file ./environment.yml`  
+    - `conda create --name <env> --file ./environment.yml`  or `conda env create -f environment.yml` 
+
     creating a conda environment based on the environment file with all the requirements. Some modifications may be reaquired here! (Based on Hardware configuration such as GPUs for example which determines cuda...)
     - `export LD_LIBRARY_PATH=//home/%user%/anaconda3/envs/storm_kit/lib` // path to your anaconda3 dir - mine is /home/dan/anaconda3/envs/storm_kit/lib 
-    - `cd '/storm/isaacgym` // I believe its necessary 1
-    - `pip install -e .` // // I believe its necessary 2
+    - `cd '/storm`
+    - `pip install -e .`
+    - `cd '/storm/isaacgym/python` // I believe its necessary 1
+    - `pip install -e .` // Read ./storm/isaacgym/README.txt
+    - `conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia`
+    - `conda env update --file environment.yml --prune`
+    
 
 ## Running Examples
 - Every time you interact with system

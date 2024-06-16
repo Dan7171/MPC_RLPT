@@ -62,13 +62,18 @@ from storm_kit.differentiable_robot_model.coordinate_transform import quaternion
 from storm_kit.mpc.task.reacher_task import ReacherTask
 np.set_printoptions(precision=2)
 
+# >>>>>>>>>>>>> Dan >>>>>>>>>>>>>>>
+from BGU.Rlpt.DebugTools.logger_config import logger
+# <<<<<<<<<<<<<< Dan <<<<<<<<<<<<<<<<
 
+# >>>>>>>>>>>>> Dan >>>>>>>>>>>>>>>
 class DanDebug:
     def __init__(self):
         self.d = {}
     def print(self, s:str) -> str:
         print(f'*Dan Debug: {s}')
-    
+# <<<<<<<<<<<<<< Dan <<<<<<<<<<<<<<<<
+
 def mpc_robot_interactive(args, gym_instance):
 
     vis_ee_target = True
@@ -243,12 +248,9 @@ def mpc_robot_interactive(args, gym_instance):
     g_q = np.ravel(mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
     
 
-    dd = DanDebug()
-    dd.d['iter'] = i
-
     while(i > -100):
-        dd.print(f'iteration (timestamp, i) = {i}')
-        
+        logger.debug(f'iteration (timestamp, i) = {i}')
+
         try:
             gym_instance.step()
             if(vis_ee_target):
@@ -284,7 +286,9 @@ def mpc_robot_interactive(args, gym_instance):
             qdd_des = copy.deepcopy(command['acceleration'])
             
             ee_error = mpc_control.get_current_error(filtered_state_mpc)
-             
+
+
+            
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
             
             # get current pose:
@@ -297,26 +301,46 @@ def mpc_robot_interactive(args, gym_instance):
             
             if(vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
-            
-            dd.print(f'* g_pos: end effector location - goal - RED MUG LOCATION): {g_pos}')
-            dd.print(f'* g_q: end effector quaternion - goal - RED MUG ROTATION ANGLES): {g_q}')
-
+ 
+            # ---- Caclulate errors at end effector at current state------
+ 
             # if pose is not None:
             #     dd.print(f'pose.p(.x, .y, .z) = {pose.p.x}, {pose.p.y}, {pose.p.z}')
+
+            # Position
+            logger.debug(f'* g_pos: GOAL LOCATION/POSITION (X,Y,Z) FOR END EFFECTOR (REPRESENTED BY TARGET OBJECT (RED MUG)): {g_pos}')
+            logger.debug(f'* e_pos: CURRENT LOCATION/POSITION (X,Y,Z) OF END EFFECTOR (GREEN MUG) : {e_pos}')
             
-            dd.print(f'* e_pos: end effector location - state - GREEN MUG LOCATION) : {e_pos}')
-            dd.print(f'* e_quat: end effector quaternion - state - GREEN MUG ROTATION ANGLES) : {e_quat}')
+            # Orientation
+            logger.debug(f'* g_q: GOAL QUATERNATION/ROTATION STATE (Q1,Q2,Q3,Q4) FOR END EFFECTOR (REPRESENTED BY RED MUG): {g_q}')
+            logger.debug(f'* e_quat: CURRENT QUATERNATION/ROTATION STATE (Q1,Q2,Q3,Q4) OF  END EFFECTOR (GREEN MUG) : {e_quat}')
             
-            # End effector errors in *spatial* location (position, not rotation). Calculated by  = Goal (red mug ) val - Current state (green mug) val   
+            
+            
+            # End end-effector LOCATION/POSITION/CARTEZIAN (POSE) ERRPR. Calculated by  = Goal (red mug ) val - Current state (green mug) val   
             ee_diff_x = g_pos[0] - e_pos[0] # goal end effector loc - current ee loc at axis x
             ee_diff_y =  g_pos[1] - e_pos[1] # goal end effector loc - current ee loc at axis y
             ee_diff_z =  g_pos[2] - e_pos[2] # goal end effector loc - current ee loc at axis z
-            ee_diff: np.array = np.array([ee_diff_x, ee_diff_y, ee_diff_z]) 
-            dd.print(f'Difference between goal (red mug) and current (green mug) end effector locations per axis:')
-            dd.print(f'x: {ee_diff_x}, y: {ee_diff_y}, z :{ee_diff_z}')
+            ee_diff_position: np.array = np.array([ee_diff_x, ee_diff_y, ee_diff_z]) 
             
-            ee_error: float = np.linalg.norm(ee_diff)
-            dd.print(f'ee_error (l2 norm of [(red mug loc - green mug loc)]): {ee_error}') 
+            logger.debug(f'Difference between goal (red mug) and current (green mug) end effector locations per axis:')
+            logger.debug(f'x: {ee_diff_x}, y: {ee_diff_y}, z :{ee_diff_z}')
+            ee_position_error: float = np.linalg.norm(ee_diff_position)
+            logger.debug(f'ee_position_error (l2 norm of [(red mug location (x,y,z) - green mug location (x,y,z))]): {ee_position_error}') 
+            
+            # ---- Caclulate ORIENTATION/ ROTATION/ QUATERNION error at end effector at current state------
+            
+
+            # ***** todo - Dan - I should find a way to calculate quaternion error properly...in the meantimne I took l2 norm****
+            ee_diff_quaternion = np.array([(g_q[i] - e_quat[i]) for i in range(len(g_q))])
+            # ee_quaternion_error_todo_check_formula: float = np.linalg.norm(ee_diff_quaternion) # todo - may be a wrong way to calculate this error...
+            logger.debug(f'Difference between goal (red mug) and current (green mug) end effector quaternion per axis:')
+            logger.debug(f'q0: {ee_diff_quaternion[0]} q1:{ee_diff_quaternion[1]}, q2: {ee_diff_quaternion[2]}, q3: {ee_diff_quaternion[3]}')
+            # dd.print(f'quaternion  error (l2 norm of quaternion difference vector){ee_quaternion_error_todo_check_formula}') 
+            # *****************************************************************************************************************************
+            
+
+ 
             # dd.print(f'ee_pose: {ee_pose}')
             # dd.print(f'end effector pose (ee.pose) x,y,z: {ee_pose.p}')
             # dd.print(f'ee_error[0], ee_error[1], ee_error[2],mpc_control.opt_dt, mpc_control.mpc_dt') # dan - not sure this is true

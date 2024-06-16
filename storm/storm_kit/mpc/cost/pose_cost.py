@@ -25,6 +25,10 @@ import torch.nn as nn
 # import torch.nn.functional as F
 
 from .gaussian_projection import GaussianProjection
+# >>>>>>>>>>>>> Dan >>>>>>>>>>>>>>>
+from BGU.Rlpt.DebugTools.logger_config import logger
+from BGU.Rlpt.DebugTools.storm_tools import is_real_world
+# <<<<<<<<<<<<<< Dan <<<<<<<<<<<<<<<<
 
 class PoseCost(nn.Module):
     """ Rotation cost 
@@ -71,9 +75,9 @@ class PoseCost(nn.Module):
         ee_rot_batch = ee_rot_batch.to(device=self.device,
                                        dtype=self.dtype)
         ee_goal_pos = ee_goal_pos.to(device=self.device,
-                                     dtype=self.dtype)
+                                     dtype=self.dtype) # dan (3x1 - x,y,z coordinates of end effector at goal state)
         ee_goal_rot = ee_goal_rot.to(device=self.device,
-                                     dtype=self.dtype)
+                                     dtype=self.dtype) # dan (3x3 - Rotation matrix of end effector at goal state)
         
         #Inverse of goal transform
         R_g_t = ee_goal_rot.transpose(-2,-1) # w_R_g -> g_R_w
@@ -104,8 +108,19 @@ class PoseCost(nn.Module):
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
-        cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
+        
+        # >>>>>> Dan logging >>>>>
+        w_orient, w_pos = self.weight[0], self.weight[1]
+        weighted_cost_term_orient =  w_orient * self.orientation_gaussian(torch.sqrt(rot_err)) # W orient * 
+        weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err))
+        weighted_cost_term = weighted_cost_term_orient + weighted_cost_term_pos
+        
+        if is_real_world(): # print only when calculating error between real robot steps:
+            logger.debug(f'In pose_cost.py: w_orient: {w_orient}, w_pos: {w_pos}, weighted_cost_term_orient: {weighted_cost_term_orient}, weighted_cost_term_pos: {weighted_cost_term_pos}, weighted_cost_term (total weighted sum)= {weighted_cost_term}')
 
+        # <<<<<< Dan logging <<<<<
+
+        cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         # dimension should be bacth * traj_length
         return cost.to(inp_device), rot_err_norm, goal_dist
     def update_weight(self, weight):
