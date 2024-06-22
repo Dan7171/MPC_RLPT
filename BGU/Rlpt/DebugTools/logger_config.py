@@ -1,6 +1,10 @@
 import logging
-import time
 import os
+import colorlog
+from datetime import datetime
+import numpy as  np
+np.set_printoptions(precision=3)
+
 # Create a logger object
 
 initialized = False
@@ -16,7 +20,8 @@ if not initialized:
 
     if not os.path.exists(handlers_dir_parent):
         os.makedirs(handlers_dir_parent)
-    fh_name = str(time.time())
+    current_time_string = datetime.now().strftime("%m-%d_%H-%M-%S")
+    fh_name = current_time_string
     handler_path = f'{handlers_dir_parent}/{fh_name}.log'
     logger = logging.getLogger('my_project_logger')
     
@@ -30,17 +35,32 @@ if not initialized:
     # Create a formatter and set it for the handler
     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s - %(funcName)s ::: %(message)s')
-    formatter = logging.Formatter('%(module)s-%(funcName)s:::%(message)s')
+    # formatter = logging.Formatter('%(module)s-%(funcName)s:::%(message)s')
 
-    ch.setFormatter(formatter)
-
+    # Define a formatter that adds color
+    formatter_console = colorlog.ColoredFormatter(
+        "%(log_color)s-%(module)s.py/%(funcName)s() : %(message)s",
+        datefmt=None,
+        reset=True,
+        log_colors={
+            'DEBUG':    'cyan',
+            'INFO':     'green',
+            'WARNING':  'yellow',
+            'ERROR':    'red',
+            'CRITICAL': 'bold_red',
+        }
+    )
+    formatter_file =logging.Formatter('%(module)s.py/%(funcName)s() : %(message)s') 
+    
+    ch.setFormatter(formatter_console)
+    
     # Add the handler to the logger
     logger.addHandler(ch)
 
     # Optionally, add a file handler if you want to log to a file as well
     fh = logging.FileHandler(handler_path)
     fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
+    fh.setFormatter(formatter_file)
 
     logger.addHandler(fh)
   

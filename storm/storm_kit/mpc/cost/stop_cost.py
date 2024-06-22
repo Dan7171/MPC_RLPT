@@ -24,6 +24,7 @@ import torch
 import torch.nn as nn
 # import torch.nn.functional as F
 from .gaussian_projection import GaussianProjection
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 
 class StopCost(nn.Module):
     def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float64},
@@ -63,8 +64,19 @@ class StopCost(nn.Module):
 
         vel_abs = vel_abs - self.max_vel
         vel_abs[vel_abs < 0.0] = 0.0
-        cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
+        
+        w1 = self.weight # Dan
+        t1 =  self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))# Dan
+        cost = w1 * t1         
+        # cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
 
+        if is_real_world():        
+            d = RealWorldState.cost['storm_paper']['no_task']['horizon']['stop'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+        
         
         return cost.to(inp_device)
     def update_weight(self, weight):

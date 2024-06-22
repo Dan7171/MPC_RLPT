@@ -71,7 +71,7 @@ class PoseCost(nn.Module):
 
         inp_device = ee_pos_batch.device
         ee_pos_batch = ee_pos_batch.to(device=self.device,
-                                       dtype=self.dtype)
+                                       dtype=self.dtype) # ee for end effector
         ee_rot_batch = ee_rot_batch.to(device=self.device,
                                        dtype=self.dtype)
         ee_goal_pos = ee_goal_pos.to(device=self.device,
@@ -113,20 +113,25 @@ class PoseCost(nn.Module):
         w_orient, w_pos = self.weight[0], self.weight[1] # Originaly: 15, 1000
         
         weighted_cost_term_orient =  w_orient * self.orientation_gaussian(torch.sqrt(rot_err)) # the gaussian matters only when calling pose_cost during rollouts   
-        weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err) )# the gaussian matters only when calling pose_cost during rollouts
-        weighted_cost_term = weighted_cost_term_orient + weighted_cost_term_pos
+        weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err))# the gaussian matters only when calling pose_cost during rollouts
+        # >>>>>>Dan: save orienatation and position costs at time i >>>>>
         
+        w1 = weighted_cost_term_orient # Dan
+        w2 = weighted_cost_term_pos # Dan
+        t1 = self.orientation_gaussian(torch.sqrt(rot_err)) # Dan
+        t2 = self.position_gaussian(torch.sqrt(position_err)) # Dan
+        
+        # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
+        cost = w1 * t1 + w2 * t2         
+        # Final cost calculation of "pose" (position and orientation)
         if is_real_world():
-            RealWorldState.cost['storm_paper']['task']['pose']['orientation'] =  {'cost': float(rot_err[0][0]), 'weight': w_orient}
-            RealWorldState.cost['storm_paper']['task']['pose']['position'] =  {'cost': float(position_err[0][0]), 'weight': w_pos}
-            
-
-            if RealWorldState.real_world_time%logger_ticks == 0: # print only when calculating error between real robot steps:
-                # logger.debug(f'w_orient: {w_orient}, w_pos: {w_pos}, unweighted_cost_term_orient: {rot_err_real_world_state}, unweighted_cost_term_position: {position_err_real_world_state}, weighted_cost_term (total weighted sum)= {weighted_cost_term}')
-                logger.debug(f'Real World Costs: {RealWorldState.cost}')
-        # <<<<<< Dan logging <<<<<
+            # rotation_error = float(rot_err[0][0]) # t1
+            # position_error = float(position_err[0][0]) # t2
+            d = RealWorldState.cost['storm_paper']['task']['pose']         
+            d['total'] = cost
+            d['weights'].extend([w1,w2])
+            d['terms'].extend([t1,t2])
         
-        cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         # dimension should be bacth * traj_length
         return cost.to(inp_device), rot_err_norm, goal_dist
     def update_weight(self, weight):

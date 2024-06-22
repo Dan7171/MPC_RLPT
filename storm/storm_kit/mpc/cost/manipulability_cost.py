@@ -23,9 +23,8 @@
 
 import torch
 import torch.nn as nn
-
-
 from .gaussian_projection import GaussianProjection
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 
 eps = 0.01
 
@@ -55,8 +54,19 @@ class ManipulabilityCost(nn.Module):
         
         score[score > self.thresh] = self.thresh #1.0
         score = (self.thresh - score) / self.thresh
-        cost = self.weight * score 
         
+        
+        w1 = self.weight # Dan
+        t1 = score # Dan
+        cost = w1 * t1
+        # cost = self.weight * score 
+        if is_real_world():        
+            d = RealWorldState.cost['storm_paper']['no_task']['manipulability'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+            
         return cost.to(inp_device)
     def update_weight(self, weight):
         """

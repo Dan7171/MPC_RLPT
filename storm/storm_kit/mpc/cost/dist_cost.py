@@ -23,8 +23,9 @@
 import torch
 import torch.nn as nn
 # import torch.nn.functional as F
-
 from .gaussian_projection import GaussianProjection
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
+ 
 
 class DistCost(nn.Module):
     def __init__(self, weight=None, vec_weight=None, gaussian_params={}, device=torch.device('cpu'), float_dtype=torch.float32, **kwargs):
@@ -53,9 +54,20 @@ class DistCost(nn.Module):
             l1_dist = torch.norm(disp_vec, p=1, dim=-1)
             dist = None
             raise NotImplementedError
-
-        cost = self.weight * self.proj_gaussian(dist)
-
+        
+        w1 = self.weight # Dan
+        t1 = self.proj_gaussian(dist) # Dan
+        cost = w1 * t1 # Dan
+        # cost = self.weight * self.proj_gaussian(dist)
+        
+        if is_real_world():        
+            d = RealWorldState.cost['storm_paper']['no_task']['null_disp'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append(f'proj_gaussian(dist), where dist is {dist_type} of disp_vec') 
+            
+        
         if(RETURN_GOAL_DIST):
             return cost.to(inp_device), dist.to(inp_device)
         return cost.to(inp_device)

@@ -277,7 +277,7 @@ class RobotSim():
         camera_props.width = width
         camera_props.use_collision_geometry = False
 
-        self.num_cameras = 1
+        self.num_cameras = 1 
         camera_handle = self.gym.create_camera_sensor(env_ptr, camera_props)
         robot_camera_pose = gymapi.Transform(
             gymapi.Vec3(robot_camera_pose[0], robot_camera_pose[1], robot_camera_pose[2]),
@@ -292,7 +292,8 @@ class RobotSim():
             camera_handle,
             env_ptr,
             world_camera_pose)
-
+        
+     
         self.camera_handle = camera_handle
         
         return camera_handle

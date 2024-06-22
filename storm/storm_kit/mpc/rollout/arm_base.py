@@ -34,7 +34,7 @@ from ...differentiable_robot_model.coordinate_transform import matrix_to_quatern
 from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
-
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState 
 class ArmBase(RolloutBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
@@ -140,6 +140,7 @@ class ArmBase(RolloutBase):
 
         self.link_pos_seq = torch.zeros((1, 1, len(self.dynamics_model.link_names), 3), **self.tensor_args)
         self.link_rot_seq = torch.zeros((1, 1, len(self.dynamics_model.link_names), 3, 3), **self.tensor_args)
+    # Dan - here are are all the important calcs
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True):
         
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
@@ -169,7 +170,7 @@ class ArmBase(RolloutBase):
             return cost
         if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
             cost += self.manipulability_cost.forward(J_full)
-        
+
         
         if(horizon_cost):
             if self.exp_params['cost']['stop_cost']['weight'] > 0:

@@ -23,12 +23,10 @@
 """
 Distance cost projected into the null-space of the Jacobian
 """
-
 import torch
 import torch.nn as nn
-
 from .dist_cost import DistCost
-
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState 
 
 eps = 0.01
 
