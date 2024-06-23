@@ -23,6 +23,8 @@
 import torch
 import torch.nn as nn
 
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
+
 from .gaussian_projection import GaussianProjection
 
 class ZeroCost(nn.Module):
@@ -36,7 +38,7 @@ class ZeroCost(nn.Module):
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
         self.hinge_val = hinge_val
         self.max_vel = max_vel
-    def forward(self, vels, goal_dist):
+    def forward(self, vels, goal_dist,is_zero_vel=False):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))
         goal_dist = goal_dist.to(self.device)
@@ -48,7 +50,16 @@ class ZeroCost(nn.Module):
         if(self.hinge_val > 0.0):
             vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
 
-        cost = self.weight * self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
-
+        # cost = self.weight * self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
+        w1 = self.weight
+        t1 = self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
+        cost = w1 * t1
+        if is_real_world():
+            cost_type = 'zero_vel' if is_zero_vel else 'zero_acc'
+            d = RealWorldState.cost['storm_paper']['ArmReacher'][cost_type] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append([f'proj_gaussian(square(vel_err))']) 
         
         return cost.to(inp_device)

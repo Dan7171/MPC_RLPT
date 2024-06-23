@@ -25,9 +25,10 @@ import torch.autograd.profiler as profiler
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
 from ..cost import DistCost, PoseCost, ZeroCost, FiniteDifferenceCost
 from ...mpc.rollout.arm_base import ArmBase
-from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world, tensor_to_float
 from BGU.Rlpt.DebugTools.logger_config import logger
-
+import copy
+import json
 class ArmReacher(ArmBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
@@ -65,47 +66,56 @@ class ArmReacher(ArmBase):
             _type_: _description_
         """
         # >>>>> Dan: Getting the costs of all non-task realated terms from ArmBase.cost_fn() >>>>>
-        cost_arm_base = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)
-        cost = cost_arm_base   
+        ArmBase_cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)        
+        cost = copy.deepcopy(ArmBase_cost)   
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
-        
         state_batch = state_dict['state_seq']
         goal_ee_pos = self.goal_ee_pos # Dan - end effector target position
         goal_ee_rot = self.goal_ee_rot # Dan - end effector target rotation (orientation)
         retract_state = self.retract_state #  Dan - we need this?
         goal_state = self.goal_state 
         
-        # is_real_world_step = is_real_world()
-        
-
-        
-            
-        ### >>>> Dan calculate and update goal_cost >>>>>> 
-        # Dan  goal_cost = Weighted sum of two terms: {w1 x position_cost + w2 x orientation cost}. both costs calculated based on how the end effector is differenct from its goal state
-        goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                    goal_ee_pos, goal_ee_rot)
-        ### >>>> Dan calculate and update goal_cost >>>>>>
-            
+        ###>>>>>>>>>>>> Dan - all of the next costs are somehow reletated to goal state: >>>>>>>>>>>>>>>> 
+        ### >>>> cost term 1 - goal >>>>>> 
+        goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch, goal_ee_pos, goal_ee_rot)
         cost += goal_cost        
+        
+        ### >>>> cost term 2 -joint l2 >>>>>> 
         # joint l2 cost
         if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
             disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
+            cost += self.dist_cost.forward(disp_vec, is_joint_l2=True)
             
-            cost += self.dist_cost.forward(disp_vec)
-
+        ans = None # Dan
         if(return_dist):
-            return cost, rot_err_norm, goal_dist
-
-            
-        if self.exp_params['cost']['zero_acc']['weight'] > 0:
-            cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
-
-        if self.exp_params['cost']['zero_vel']['weight'] > 0:
-            cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
+            # return cost, rot_err_norm, goal_dist
+            ans = cost, rot_err_norm, goal_dist
         
-        return cost
+        else:
+            if self.exp_params['cost']['zero_acc']['weight'] > 0:
+                ### >>>> cost term 3 - zero_acc >>>>>> 
+                cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
+
+            if self.exp_params['cost']['zero_vel']['weight'] > 0:
+                ### >>>> cost term 4 - zero_vel >>>>>> 
+                cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist,is_zero_vel=True)
+            ans = cost
+            # return cost
+            
+        ArmReacher_cost = cost - ArmBase_cost
+        if is_real_world():
+            cost_float = tensor_to_float(cost)
+            RealWorldState.cur_step_cost = cost_float
+            RealWorldState.total_cost += cost_float
+            logger.info(f'Real world time: {RealWorldState.real_world_time}\n\
+                total weighted ArmBase cost: {tensor_to_float(ArmBase_cost)}\n\
+                total weighted ArmReacher cost: {tensor_to_float(ArmReacher_cost)}\n\
+                total (ArmBase + ArmReacher): {cost_float}')
+            # logger.debug(f'All costs at current real world time: {RealWorldState.real_world_time}:\n{RealWorldState.cost}\n')
+            
+        return ans
 
 
     def update_params(self, retract_state=None, goal_state=None, goal_ee_pos=None, goal_ee_rot=None, goal_ee_quat=None):

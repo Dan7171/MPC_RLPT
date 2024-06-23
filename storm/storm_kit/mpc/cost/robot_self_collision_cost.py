@@ -22,6 +22,8 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
+
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 # import torch.nn.functional as F
 
 from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix
@@ -104,8 +106,18 @@ class RobotSelfCollisionCost(nn.Module):
         
         cost = res
         
-        cost = self.weight * self.proj_gaussian(cost)
-
+        # cost = self.weight * self.proj_gaussian(cost)
+        w1 = self.weight # Dan
+        t1 = self.proj_gaussian(cost)# Dan
+        cost = w1 * t1 # Dan
+        
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']['ArmBase']['collision']['self'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+            
         return cost
 
     def update_weight(self, weight):

@@ -22,6 +22,8 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
+
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 # import torch.nn.functional as F
 from .gaussian_projection import GaussianProjection
 
@@ -50,7 +52,20 @@ class BoundCost(nn.Module):
         cost[bound_mask] = 0.0
 
         cost = (torch.sum(cost, dim=-1))
-        cost = self.weight * self.proj_gaussian(torch.sqrt(cost))
+        # cost = self.weight * self.proj_gaussian(torch.sqrt(cost))
+        
+        w1 = self.weight # Dan
+        t1 = self.proj_gaussian(torch.sqrt(cost)) # Dan
+        cost = w1 * t1 # Dan
+        # cost = self.weight * cost 
+        
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']['ArmBase']['bound'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+        
         
         return cost.to(inp_device)
     def update_weight(self, weight):

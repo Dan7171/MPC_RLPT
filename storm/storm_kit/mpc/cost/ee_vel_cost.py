@@ -24,6 +24,8 @@
 
 import torch
 import torch.nn as nn
+
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from .gaussian_projection import GaussianProjection
 class EEVelCost(nn.Module):
     def __init__(self, ndofs, device, float_dtype, weight=1.0, vec_weight=[], gaussian_params={}):
@@ -53,7 +55,18 @@ class EEVelCost(nn.Module):
         
         error = torch.sum(torch.square(self.vec_weight * xdot_current), dim=-1)
 
-        cost = self.weight * self.gaussian_projection(error)
+        # cost = self.weight * self.gaussian_projection(error)
+        w1 = self.weight # Dan
+        t1 = self.gaussian_projection(error)# Dan
+        cost = w1 * t1 # Dan
+        
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']['ArmBase']['ee_vel'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+        
         return cost.to(inp_device)
     def update_weight(self, weight):
         """

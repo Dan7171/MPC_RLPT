@@ -39,6 +39,7 @@ class ProjectedDistCost(DistCost):
         self.I = torch.eye(ndofs, device=device, dtype=self.float_dtype)
         self.task_I = torch.eye(6, device=device, dtype=self.float_dtype)
         self.vec_weight = torch.as_tensor(vec_weight, device=device, dtype=float_dtype)
+    
     def forward(self, disp_vec, jac_batch, proj_type="transpose", dist_type="squared_l2", beta=1.0):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)

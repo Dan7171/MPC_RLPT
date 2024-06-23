@@ -22,6 +22,8 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
+
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 # import torch.nn.functional as F
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
@@ -75,8 +77,18 @@ class PrimitiveCollisionCost(nn.Module):
         cost = torch.sum(dist, dim=-1)
 
 
-        cost = self.weight * cost 
-
+        # cost = self.weight * cost 
+        w1 = self.weight # Dan
+        t1 = cost # Dan
+        cost = w1 * t1 # Dan
+        
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']['ArmBase']['collision']['primitive'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
+            
         return cost.to(inp_device)
     def update_weight(self, weight):
         """

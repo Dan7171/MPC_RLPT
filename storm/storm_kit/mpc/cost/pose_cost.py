@@ -127,7 +127,7 @@ class PoseCost(nn.Module):
         if is_real_world():
             # rotation_error = float(rot_err[0][0]) # t1
             # position_error = float(position_err[0][0]) # t2
-            d = RealWorldState.cost['storm_paper']['task']['pose']         
+            d = RealWorldState.cost['storm_paper']['ArmReacher']['goal']         
             d['total'] = cost
             d['weights'].extend([w1,w2])
             d['terms'].extend([t1,t2])

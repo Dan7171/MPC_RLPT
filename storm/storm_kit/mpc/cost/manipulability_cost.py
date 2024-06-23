@@ -61,7 +61,7 @@ class ManipulabilityCost(nn.Module):
         cost = w1 * t1
         # cost = self.weight * score 
         if is_real_world():        
-            d = RealWorldState.cost['storm_paper']['no_task']['manipulability'] 
+            d = RealWorldState.cost['storm_paper']['ArmBase']['manipulability'] 
             d['total'] = cost
             d['weights'].append(w1)
             d['terms'].append(t1)

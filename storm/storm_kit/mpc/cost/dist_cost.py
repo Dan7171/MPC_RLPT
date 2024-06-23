@@ -39,7 +39,7 @@ class DistCost(nn.Module):
             self.vec_weight = 1.0
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
     
-    def forward(self, disp_vec, dist_type="l2", beta=1.0, RETURN_GOAL_DIST=False):
+    def forward(self, disp_vec, dist_type="l2", beta=1.0, RETURN_GOAL_DIST=False, is_joint_l2=False):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
 
@@ -60,8 +60,14 @@ class DistCost(nn.Module):
         cost = w1 * t1 # Dan
         # cost = self.weight * self.proj_gaussian(dist)
         
-        if is_real_world():        
-            d = RealWorldState.cost['storm_paper']['no_task']['null_disp'] 
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']
+            if is_joint_l2: 
+                d = d['ArmReacher']['joint_l2'] 
+                
+            else:
+                d = d['ArmBase']['null_disp']
+                
             d['total'] = cost
             d['weights'].append(w1)
             d['terms'].append(t1)

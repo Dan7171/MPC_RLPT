@@ -21,6 +21,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 import matplotlib
+
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 
@@ -82,8 +84,18 @@ class FiniteDifferenceCost(nn.Module):
         cost = res[:,:,-1]
             
         cost[cost < 0.0001] = 0.0
-        cost = self.weight * cost 
         
+        w1 = self.weight # Dan
+        t1 = cost # Dan
+        cost = w1 * t1 # Dan
+        # cost = self.weight * cost 
+        
+        if is_real_world():
+            d = RealWorldState.cost['storm_paper']['ArmBase']['horizon']['smooth'] 
+            d['total'] = cost
+            d['weights'].append(w1)
+            d['terms'].append(t1)
+            d['terms_meaning'].append('todo')
         
         return cost
     def update_weight(self, weight):

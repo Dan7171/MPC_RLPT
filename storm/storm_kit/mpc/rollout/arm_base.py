@@ -34,7 +34,8 @@ from ...differentiable_robot_model.coordinate_transform import matrix_to_quatern
 from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
-from BGU.Rlpt.DebugTools.storm_tools import RealWorldState 
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world 
+
 class ArmBase(RolloutBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
@@ -114,7 +115,6 @@ class ArmBase(RolloutBase):
 
         
 
-        
         if self.exp_params['cost']['smooth']['weight'] > 0:
             self.smooth_cost = FiniteDifferenceCost(**self.exp_params['cost']['smooth'],
                                                     tensor_args=self.tensor_args)
@@ -152,8 +152,6 @@ class ArmBase(RolloutBase):
         
         retract_state = self.retract_state
         
-        
-        
         J_full = torch.cat((lin_jac_batch, ang_jac_batch), dim=-2)
         
 
@@ -177,7 +175,7 @@ class ArmBase(RolloutBase):
                 cost += self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
 
             if self.exp_params['cost']['stop_cost_acc']['weight'] > 0:
-                cost += self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2 :self.n_dofs * 3])
+                cost += self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2 :self.n_dofs * 3], is_stop_acc=True) # Dan - it goes to the same place as stop to I added that to distinguish
 
             if self.exp_params['cost']['smooth']['weight'] > 0:
                 order = self.exp_params['cost']['smooth']['order']
@@ -212,7 +210,8 @@ class ArmBase(RolloutBase):
                 coll_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
 
-        
+        logger.debug(f'exp params:\n\
+            {self.exp_params['cost']}')
         return cost
     
     def rollout_fn(self, start_state, act_seq):
