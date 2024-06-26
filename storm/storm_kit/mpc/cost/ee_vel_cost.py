@@ -24,9 +24,11 @@
 
 import torch
 import torch.nn as nn
-
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from .gaussian_projection import GaussianProjection
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
 class EEVelCost(nn.Module):
     def __init__(self, ndofs, device, float_dtype, weight=1.0, vec_weight=[], gaussian_params={}):
         super(EEVelCost, self).__init__()
@@ -59,6 +61,9 @@ class EEVelCost(nn.Module):
         w1 = self.weight # Dan
         t1 = self.gaussian_projection(error)# Dan
         cost = w1 * t1 # Dan
+        
+        cost_term_name = 'ee_vel'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
         
         if is_real_world():
             d = RealWorldState.cost['storm_paper']['ArmBase']['ee_vel'] 

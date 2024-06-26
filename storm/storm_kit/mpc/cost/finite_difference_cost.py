@@ -31,6 +31,12 @@ import torch.nn as nn
 # import torch.nn.functional as F
 from .gaussian_projection import GaussianProjection
 from ..model.integration_utils import build_fd_matrix
+
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
+
+
 class FiniteDifferenceCost(nn.Module):
     def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}, weight=1.0, order=1, gaussian_params={}, **kwargs):
         super(FiniteDifferenceCost, self).__init__()
@@ -88,6 +94,8 @@ class FiniteDifferenceCost(nn.Module):
         w1 = self.weight # Dan
         t1 = cost # Dan
         cost = w1 * t1 # Dan
+        cost_term_name = 'smooth'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
         # cost = self.weight * cost 
         
         if is_real_world():

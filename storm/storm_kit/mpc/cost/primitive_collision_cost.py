@@ -27,7 +27,9 @@ from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 # import torch.nn.functional as F
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
-
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
 class PrimitiveCollisionCost(nn.Module):
     def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
                  distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
@@ -81,6 +83,8 @@ class PrimitiveCollisionCost(nn.Module):
         w1 = self.weight # Dan
         t1 = cost # Dan
         cost = w1 * t1 # Dan
+        cost_term_name = 'primitive_collision'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
         
         if is_real_world():
             d = RealWorldState.cost['storm_paper']['ArmBase']['collision']['primitive'] 

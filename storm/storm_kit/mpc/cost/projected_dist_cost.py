@@ -51,9 +51,6 @@ class ProjectedDistCost(DistCost):
         elif proj_type == "identity":
             disp_vec_projected = disp_vec
         
-        
-
-
         return super().forward(disp_vec_projected, dist_type, beta)
 
 

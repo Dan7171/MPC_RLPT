@@ -23,8 +23,13 @@
 
 import torch
 import torch.nn as nn
+
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
+
 
 eps = 0.01
 
@@ -37,10 +42,10 @@ class ManipulabilityCost(nn.Module):
         self.float_dtype = float_dtype
         self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
-
         self.ndofs = ndofs
         self.thresh = thresh
         self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
+        
     def forward(self, jac_batch):
         inp_device = jac_batch.device
         
@@ -59,6 +64,10 @@ class ManipulabilityCost(nn.Module):
         w1 = self.weight # Dan
         t1 = score # Dan
         cost = w1 * t1
+        
+        cost_term_name = 'manipulability'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        
         # cost = self.weight * score 
         if is_real_world():        
             d = RealWorldState.cost['storm_paper']['ArmBase']['manipulability'] 
@@ -66,6 +75,11 @@ class ManipulabilityCost(nn.Module):
             d['weights'].append(w1)
             d['terms'].append(t1)
             d['terms_meaning'].append('todo')
+            # print(f'mainpulability: real world weights: {w1}, real_world_terms = {t1}, total = {cost}')
+        else:
+            pass
+            # print(f'mainpulability: not real world weight: {w1}, real_world_terms = {t1}, total = {cost}')
+            
             
         return cost.to(inp_device)
     def update_weight(self, weight):

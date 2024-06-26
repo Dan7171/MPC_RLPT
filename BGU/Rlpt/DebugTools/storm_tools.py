@@ -1,6 +1,7 @@
 from .call_stack_tools import is_function_in_call_stack
 import copy
 import torch
+import pandas as pd
 def is_real_world()-> bool:
     """
     return True <=> this the caller was called not as part of the call stack of rollout function (meaning its real) 
@@ -18,6 +19,26 @@ def tensor_to_float(torch_tensor: torch.tensor):
     """
     return float(torch_tensor)
 
+# class SimTracker:
+#     def __init__(self, record_keys:list=['real_world_time',
+#                                                         'unix_time',
+#                                                         'is_real_world',
+#                                                         'particle_num', # only when is_real_world = False
+#                                                         'action_num', # only when is_real_world = False
+#                                                         'null_disp_w',
+#                                                         'null_disp_t',
+#                                                         'manipulability_w',
+#                                                         'manipulability_t',
+#                                                         'horizon_stop_w',
+#                                                         'horizon_stop_t',
+#                                                         'horizon_stop_acc_w',
+#                                                         'horizon_smooth_w',
+#                                                         ]):
+#         self.items = []
+#         self.record_keys = record_keys
+        
+#     def append_iten(self,item: dict):
+#         pass
 class RealWorldState:
     
     @staticmethod
@@ -226,3 +247,6 @@ if __name__ == '__main__':
     ans = RealWorldState.get_costs_weight_list(RealWorldState.cost_template)
     for item in ans:
         print(item)
+        
+        
+        

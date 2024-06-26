@@ -29,7 +29,7 @@ world_model:
     cube:
       cube1:
         dims: [0.3, 0.1, 0.4] # x, y, z
-        pose: [0.4, 0.2, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+        pose: [0.4, 0.2, 0.2, 1, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
 
       cube2:
         dims: [0.3, 0.1, 0.5] # x, y, z
@@ -46,5 +46,7 @@ world_model:
       cube5:
         dims: [2.0, 2.0, 0.2] # x, y, z
         pose: [0.0, 0.0, -0.1, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
-      
-      
+  
+      # cube6: # Dan
+      #   dims: [4.0, 4.0, 4.0] # x, y, z
+      #   pose: [4.0, 4.0, 4, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw

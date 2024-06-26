@@ -25,7 +25,10 @@ import torch.nn as nn
 # import torch.nn.functional as F
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
- 
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
+
 
 class DistCost(nn.Module):
     def __init__(self, weight=None, vec_weight=None, gaussian_params={}, device=torch.device('cpu'), float_dtype=torch.float32, **kwargs):
@@ -58,16 +61,19 @@ class DistCost(nn.Module):
         w1 = self.weight # Dan
         t1 = self.proj_gaussian(dist) # Dan
         cost = w1 * t1 # Dan
+        
+        cost_term_name = 'joint_l2' if is_joint_l2 else 'null_disp'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        
         # cost = self.weight * self.proj_gaussian(dist)
+        
         
         if is_real_world():
             d = RealWorldState.cost['storm_paper']
             if is_joint_l2: 
                 d = d['ArmReacher']['joint_l2'] 
-                
             else:
                 d = d['ArmBase']['null_disp']
-                
             d['total'] = cost
             d['weights'].append(w1)
             d['terms'].append(t1)

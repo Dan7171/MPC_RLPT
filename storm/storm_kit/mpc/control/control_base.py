@@ -28,6 +28,7 @@ import copy
 import numpy as np
 import torch
 import torch.autograd.profiler as profiler
+from BGU.Rlpt.DebugTools.logger_config import logger
 
 
 class Controller(ABC):
@@ -245,8 +246,8 @@ class Controller(ABC):
             with torch.no_grad():
                 for _ in range(n_iters):
                     # generate random simulated trajectories
-                    trajectory = self.generate_rollouts(state)
-
+                    trajectory = self.generate_rollouts(state) #Dan: 1. nxk7 actions seqs, nxkx1 costs,nxkx3 end effector positions (x,y,z), rollout time. Dan this starts the rollout of mpc
+                    # logger.debug(f'trajectory dict:\n{trajectory}')
                     # update distribution parameters
                     with profiler.record_function("mppi_update"):
                         self._update_distribution(trajectory)

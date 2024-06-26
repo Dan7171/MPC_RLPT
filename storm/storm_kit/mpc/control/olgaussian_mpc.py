@@ -29,7 +29,6 @@ import copy
 import numpy as np
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal
-
 from .control_base import Controller
 from .control_utils import generate_noise, scale_ctrl, generate_gaussian_halton_samples, generate_gaussian_halton_samples, gaussian_entropy, matrix_cholesky, batch_cholesky, get_stomp_cov
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib

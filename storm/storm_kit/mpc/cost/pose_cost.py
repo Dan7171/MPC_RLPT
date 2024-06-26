@@ -28,6 +28,9 @@ from .gaussian_projection import GaussianProjection
 # >>>>>>>>>>>>> Dan >>>>>>>>>>>>>>>
 from BGU.Rlpt.DebugTools.logger_config import logger, logger_ticks
 from BGU.Rlpt.DebugTools.storm_tools import is_real_world, RealWorldState
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
 # <<<<<<<<<<<<<< Dan <<<<<<<<<<<<<<<<
 
 class PoseCost(nn.Module):
@@ -120,9 +123,15 @@ class PoseCost(nn.Module):
         w2 = weighted_cost_term_pos # Dan
         t1 = self.orientation_gaussian(torch.sqrt(rot_err)) # Dan
         t2 = self.position_gaussian(torch.sqrt(position_err)) # Dan
-        
+        logger.debug(f'goal weights: orientation = {w1}, position = {w2}')
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = w1 * t1 + w2 * t2         
+        
+        cost_term_name = 'goal_orientation'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        cost_term_name = 'goal_position'        
+        sniffer.set(cost_term_name, CostTerm(w2, t2))
+        
         # Final cost calculation of "pose" (position and orientation)
         if is_real_world():
             # rotation_error = float(rot_err[0][0]) # t1

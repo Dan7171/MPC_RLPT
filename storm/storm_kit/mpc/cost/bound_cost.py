@@ -22,10 +22,12 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
-
-from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 # import torch.nn.functional as F
 from .gaussian_projection import GaussianProjection
+from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
 
 class BoundCost(nn.Module):
     def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float64},
@@ -57,6 +59,8 @@ class BoundCost(nn.Module):
         w1 = self.weight # Dan
         t1 = self.proj_gaussian(torch.sqrt(cost)) # Dan
         cost = w1 * t1 # Dan
+        cost_term_name = 'state_bound'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
         # cost = self.weight * cost 
         
         if is_real_world():

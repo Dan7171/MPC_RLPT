@@ -53,11 +53,24 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 np.set_printoptions(precision=5)
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState
 from BGU.Rlpt.DebugTools.logger_config import logger, logger_ticks
+from BGU.Rlpt.DebugTools.globs import globs
+
 import json
 
+import threading
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 
-
-def goal_test(position_norm:float,orientation_norm:float, orientation_epsilon = 0.2, position_epsilon = 0.2) -> bool:
+import threading
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+ 
+def goal_test(position_norm:float,orientation_norm:float, orientation_epsilon = 0.01, position_epsilon = 0.01) -> bool:
     reached_position = position_norm < position_epsilon
     reached_orientation = orientation_norm < orientation_epsilon
     return reached_position and reached_orientation 
@@ -68,10 +81,12 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     vis_ee_target = True # Dan - what is this ?
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
-    world_file = 'collision_primitives_3d.yml'
+    # world_file = 'collision_primitives_3d.yml'
+    world_file = 'collision_primitives_3d_dan.yml'
+    
     gym = gym_instance.gym # Dan - what is this ? Gym object
     sim = gym_instance.sim # Dan - what is this ?
-    world_yml = join_path(get_gym_configs_path(), world_file)
+    world_yml = join_path(get_gym_configs_path(), world_file) # Dan - this is the location of static items (Cubes, balls)
     with open(world_yml) as file:
         world_params = yaml.load(file, Loader=yaml.FullLoader)
     robot_yml = join_path(get_gym_configs_path(),args.robot + '.yml')
@@ -254,8 +269,16 @@ def mpc_robot_interactive(args, gym_instance:Gym):
             current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
             
             # >>>> Dan - get_command() - predict forward from previous action and previous state (?????) >>>>>>>>>>            
-            # This is the command the mpc calculated with rollouts (command to the 7 joints). It will be sent to the real robot
+            
+            
+            ####################
+            ####################
+            # mpc_control.get_command running the mpc rollouts and then returns 
+            # the command to the real contoller
+            #####################
+            #####################
             command = mpc_control.get_command(t_step, current_robot_state, control_dt=sim_dt, WAIT=True) 
+            
             # command format = command.keys() = ['name', 'position', 'velocity', 'acceleration'])
             # example:
             # {'name': ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'], 'position': array([ 0.88,  0.14, -0.97, -2.04,  0.24,  2.09,  0.98], dtype=float32), 'velocity': array([-0.03,  0.58, -0.19,  0.15,  0.42,  0.09,  0.19], dtype=float32), 'acceleration': array([-0.13, -0.22,  0.25,  0.15, -0.01, -0.16,  0.02], dtype=float32)}
@@ -400,7 +423,6 @@ if __name__ == '__main__':
     sim_params['headless'] = args.headless
     logger.info('starting gym gui...\n')
     gym_instance = Gym(**sim_params) # Dan - starting the gym gui window
-    
     logger.info('starting simulation...\n')
     
     mpc_robot_interactive(args, gym_instance)

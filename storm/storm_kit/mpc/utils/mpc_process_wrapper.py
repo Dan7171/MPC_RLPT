@@ -108,7 +108,7 @@ class ControlProcess(object):
 
 
         mpc_time = time.time()
-        command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps))
+        command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps)) # generating rollouts
         mpc_time = time.time() - mpc_time
         command[0] = command[0].cpu().numpy()
         self.command_tstep = self.traj_tstep + t_step

@@ -26,7 +26,9 @@ import torch.nn as nn
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 
 from .gaussian_projection import GaussianProjection
-
+from BGU.Rlpt.Classes.CostTerm import CostTerm
+from BGU.Rlpt.DebugTools.globs import globs
+sniffer = globs.cost_fn_sniffer
 class ZeroCost(nn.Module):
     def __init__(self, device=torch.device('cpu'), float_dtype=torch.float64,
                  hinge_val=100.0, weight=1.0, gaussian_params={}, max_vel=0.01):
@@ -54,9 +56,10 @@ class ZeroCost(nn.Module):
         w1 = self.weight
         t1 = self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
         cost = w1 * t1
+        cost_term_name = 'zero_vel' if is_zero_vel else 'zero_acc'        
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
         if is_real_world():
-            cost_type = 'zero_vel' if is_zero_vel else 'zero_acc'
-            d = RealWorldState.cost['storm_paper']['ArmReacher'][cost_type] 
+            d = RealWorldState.cost['storm_paper']['ArmReacher'][cost_term_name] 
             d['total'] = cost
             d['weights'].append(w1)
             d['terms'].append(t1)
