@@ -75,27 +75,29 @@ class CostTerm:
         
         return m
     
-    def mean(self) -> np.float64:
+    def mean(self, weighted_cost=True):
         """Get the mean cost of the Cost-Term (tensor of ).
 
         Returns:
-            np.float64: _description_
+            np.float64: 
         """
-        return self._get_tensor_mean(self.cost, type=np.float64)
+        t = self.cost if weighted_cost else self.term
 
-    
-    def mean_term(self) -> np.float64:
-        """Get the mean of the terms 
+        return self._get_tensor_mean(t, type=np.float64)
 
-        Returns:
-            np.float64: _description_
-        """
-        return self._get_tensor_mean(self.term, dtype=np.float64)
+    def mean_over_ith_episode(self,i,weighted_cost=True):
+        t = self.cost if weighted_cost else self.term
+        ith_episode = t[i,:]
+        return self._get_tensor_mean(ith_episode, type=np.float64) # return mean over the ith column in nxk costs tensor ()
     
-    # def total_weighted(self):
-    #     return self.weights @ self.terms
-     
+    def mean_over_jth_action(self, j, weighted_cost=True):
+        t = self.cost if weighted_cost else self.term
+        jth_action_over_all_rollouts = t[:, j]
+        return self._get_tensor_mean(jth_action_over_all_rollouts, type=np.float64) # return mean over the ith column in nxk costs tensor ()
+ 
+    def mean_over_first_action(self, weighted_cost=True):
+        return self.mean_over_ith_episode(0, weighted_cost)
     
-     
-    
+        
+        
      

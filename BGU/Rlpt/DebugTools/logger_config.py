@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as  np
 np.set_printoptions(precision=3)
 
-# Create a logger object
+logger_level = logging.INFO  # modifiable
 
 initialized = False
 fh_name = ''
@@ -26,11 +26,11 @@ if not initialized:
     logger = logging.getLogger('my_project_logger')
     
     # Set the global logging level
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logger_level)
 
     # Create a console handler and set its logging level
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(logger_level)
 
     # Create a formatter and set it for the handler
     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -59,7 +59,7 @@ if not initialized:
 
     # Optionally, add a file handler if you want to log to a file as well
     fh = logging.FileHandler(handler_path)
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(logger_level)
     fh.setFormatter(formatter_file)
 
     logger.addHandler(fh)
