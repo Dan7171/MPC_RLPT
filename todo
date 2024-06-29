@@ -1,0 +1,137 @@
+___________________________________________________________________
+1. Config file tasks: 
+
+make next parameters available in a config file:
+
+a. activate cost gui: on/off
+b. cost gui: mpc costs: show mean cost for cost term over all actions in nxk matrix / show mean cost over first action only. It is already implemented, just needs a config support
+  See:
+  # Option 1 - Display at the mpc graph the mean cost over all trajectories
+  # display_data = {ct_name: ct.mean() for ct_name, ct in raw_display_data.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
+  
+  # Option 2 - display the mean cost only over the first actions in rollouts
+  # Display at the mpc graph the mean cost over all trajectories
+  # display_data = {ct_name: ct.mean_over_first_action() for ct_name, ct in raw_display_data.items()}
+c. logger level (INFO/DEBUG)
+d. 
+
+
+___________________________________________________________________
+
+2. Other tasks (less immediated):
+a. cost gui- small bug: check why its start 2 instances from each dashboard in firefox
+b. cost gui- better coding to support other environments: change firefox to diffrerent browser
+c. cost gui- better code architecture:
+
+for each pair in next 2 pairs of threads, make each pair one thread: (better progreamming)  
+pair 1: 
+# threading.Thread(target=self._gui_dashboard1.run, daemon=True).start()
+# threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": True}).start()
+pair 2:
+# threading.Thread(target=self._gui_dashboard2.run, daemon=True).start()
+# threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False}).start()
+unite each pair to one thread! its redundant to use 2 different threads I guess, because they work sequentially...
+
+d. cost gui- better code architecture:
+move "class Gui" from "class CostSniffer" into a seperate file (each class at a different file)
+
+
+
+
+
+
+___________________________________________________________________
+
+3. Clean and descriptive logging: 
+
+The goal:
+Logging costs per action to data stream that we can analyze.
+
+proposed design:
+
+The idea: log cost (gui/real world) to data frame and then to csv at each timestamp:
+
+- rows: EACH ROW WILL REPRESENT AN ACTION - REAL OR AS PART OF ROLLOUTS!
+
+- columns:
+
+# A - mandatory columns - left to right:
+
+# A.1 meta date of this action:
+- "sim_id" - simulation id[unsigned int 16] - in case we run more than one simulation in a row 
+- "is_real" [bool] -  is this action was taken in the context (as a part of a "step") of real world only) or not. True means a real world step - (one action). False means the "step" is an MPC step which generates nxk actions)
+- "step number"[unsigned int 32] - The counter of the "step" taken by each the real world controller or by MPC. If "is_real" column is true, then step number is the counter of the actions in the real envirnment = The index of the current action since the simulation started. Else, if its False (we are in an MPC step), the step counter will be the num of mpc steps that were taken. Sanity check: SINCE AFTER EACH MPC STEP COMES A REAL WORLD STEP, THE "step number column" should look like: [0,0,1,1,2,2...] where even indices are the mpc and odd indices are the real world controller. 
+- "unix_time": [float?] - taken with time.time() (will use use to measure how long the calculation took)
+* - "cpu_time": [float?] - better alternative to unix_time - cleans out the other processes in system, gives us the net t"ime of the python process.
+- "seq_ind"[unsigned int 16 bit] - the index of the "action sequence" that this action was taken at, from the "serieses"(sequence) in this "step". If "is_real", then "step" is composed from  one "series"/"series" of actions in length 1 (one action). So "seq_ind" will be 0 (index 0). Else, if not "is_real", we are in an mpc "step", so the term "series" realates here to a rollout- each is a sequence of actions.In this case- "seq_ind" will get a value between 0 to n-1 inclusive - represents the rollout (particle) range in the step.
+- "a_ind"[unsigned int 16 bit]: index (represents the order (index) by time, at the given sequence of actions. If "is_real" - it will be 0 (only 1 action at the 1 sequence- what sent to the controller). Else ("is_real" is False) The value of "a_ind" will run from 0 to k-1 inclusive, where k is the horizon- the maximal action sequence length.
+
+# A.2 the action itself:
+- for each feature in the action that was taken:
+  - "%ai%" = "% name of the  ith feature of action%"[float32]- action at feature i.
+    coulms from the shape
+    (%ai%,...,%am%) where m is the number of feactures in action
+
+# A.3 cost terms info
+-for each cost term i (we mark its name at "%ct name i%"):
+  - 1. "%ct name i%" + "rlpt w"[float32] =  (rlpt (user)) input weight(at this timestamp)
+  - 2. "%ct name i%" + "real w"[float32] = actual weight that multiplied by the raw cost[float] = CostTerm.weight (we saw it can change, for exapmle in goal costs (position and rotation))
+  - 3. "%ct name i%" + "uw cost"[float32] = the un-weighted cost term 
+  - 4. "%ct name i%" + "w cost"[float32] = the weighted cost (actual (real) weight * unweighted cost term)
+  # optional:
+  - 5. "%ct name i%" + "eot"[float32] = means 'effect on total' - how this term affected the total cost. Formula: (cost term i weighted cost / total cost of all terms in action* (row). *See 1 at all terms statistics
+
+# A.4 all terms statistics:
+- 1. "total w cost"[float32] = total weighted cost (action cost) = sum of the weighted costs of different cost term
+- 2. "total uw cost"[float32] = total un-weighted cost(action cost) = sum of the weighted costs of different cost term
+
+
+# B - non mandatory - "only if possible" columns
+
+# B.1 - arm state
+- for each feature in the robot state:
+  -"%name of ith feature at arm's state%"[float32] - robot state at feature i (position, orientation, velocity?)
+
+# B.2 - target state
+- for each feature in the target state: # relvenat for futural moving targets
+  - -"%name of ith feature at goal state%"[float32]  =  target state at feature i (position, orientation)
+
+Note: need to change CostTerm class to support that requirements of column structure:
+1. add "rlpt weight" attribute 
+2. add "name" (of cost term) attribute 
+
+
+___________________________________________________________________
+4. GUI:
+1. Change diagram to bar diagram (code is already ther)
+- X axis: the cost term names (as now)
+- F(x) = y axis:
+- F1(X) = First bar - color 1:  first bar is the weighted cost of the cost term)
+- F2(X) = First bar - color 2:  user input weight for this cost term 
+- F3(X) = First bar - color 3:  actual CostTerm.weight for this cost term
+
+___________________________________________________________________
+5. get the components of elias's interactive parameter changing (per timestamp) work and simulation resetting work into my work (gui, logging)
+ - can be hard and take time
+ - even after I do it, its not yet obvious that we have a way to see the simulations seperately. we need to add to the code and to the logs (actions log, see avo) some simulation index too
+
+____________________________________________________________________
+6. Ronen's Task:
+Requirements: a.  integrating elias's work to mine  - so I can modify rlpt weights b. completing the logging to dataframe/csv part.
+Goals: to get for each simulation:
+Method:
+- Select 1. horizon, 2. particles + 6/10 cost terms which seem to have the greatest effect on cost (for that I needed gui). Make C = 3^8 confiurations (~7k) 
+- Select 3 "rlpt" weights for each cost term (min,mid (current value of storm), max)
+- Select a world: I think world_file = 'collision_primitives_3d.yml' Is good since it takes 10-15 seconds to reach target.
+
+Repet: (will take ~ 55 hours, assuming a simulation will take ~30 seconds)
+  1. Select one configuration of weights cfg_i from C.
+  2. Set weights before sim to cfg_i. 
+  3. Run a simulation and see what happens in (the real world) to the:
+    - total time (unix time/cpu time) to reach target.
+    - "position error between ee and target after 10, 20, 30,convergence time seconds"
+    - "orientation error between ee and target after 10, 20, 30, convergence time seconds"
+    - "Safety (collision) error over all steps": Measured by some saftey metric. Here there is a challenge. We need some metric to the real world collisions along simulation... (how? I need to somehow count the contacts, but its not that trivial from code how.Look for it in the docs of Gym). Consider adding a True/False "contact_with_obstacle" column to dataframe log. Ronen offered to calculate the minimal distance of the arm from any obstace along the whole simulation but its very complicate. Maybe there is a way to figure it out from the prmetive (static obstacles) cost. Now this cost is active only at the mpc steps and not in the real woirld. If when its >0 it means that there was contact with some obstace (check in the paper and code what it means!) we can maybe calculate at every real world step too (just to know if there was contact, and then to count contacts along the simulation as a metric to safety).  
+    - Avergae smoothness over all steps: Similarly to the last idea in the safety metric-  we can take here too storm's smoothnes cost, and apply it in the real world too.
+
+Finally: analyze results and see the affects.
