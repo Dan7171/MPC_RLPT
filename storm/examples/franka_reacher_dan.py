@@ -81,8 +81,8 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     vis_ee_target = True # Dan - what is this ?
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
-    # world_file = 'collision_primitives_3d.yml'
-    world_file = 'collision_primitives_3d_dan.yml'
+    world_file = 'collision_primitives_3d.yml'
+    # world_file = 'collision_primitives_3d_dan.yml'
     
     gym = gym_instance.gym # Dan - what is this ? Gym object
     sim = gym_instance.sim # Dan - what is this ?

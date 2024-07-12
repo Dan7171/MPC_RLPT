@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as  np
 np.set_printoptions(precision=3)
 
-logger_level = logging.INFO  # modifiable
+logger_level = logging.DEBUG  # modifiable
 
 initialized = False
 fh_name = ''

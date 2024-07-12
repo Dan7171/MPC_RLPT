@@ -115,12 +115,12 @@ class PoseCost(nn.Module):
         # >>>>>> Dan logging >>>>>
         w_orient, w_pos = self.weight[0], self.weight[1] # Originaly: 15, 1000
         
-        weighted_cost_term_orient =  w_orient * self.orientation_gaussian(torch.sqrt(rot_err)) # the gaussian matters only when calling pose_cost during rollouts   
-        weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err))# the gaussian matters only when calling pose_cost during rollouts
+        # weighted_cost_term_orient =  w_orient * self.orientation_gaussian(torch.sqrt(rot_err)) # the gaussian matters only when calling pose_cost during rollouts   
+        # weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err))# the gaussian matters only when calling pose_cost during rollouts
         # >>>>>>Dan: save orienatation and position costs at time i >>>>>
         
-        w1 = weighted_cost_term_orient # Dan
-        w2 = weighted_cost_term_pos # Dan
+        w1 = w_orient # Dan
+        w2 = w_pos # Dan
         t1 = self.orientation_gaussian(torch.sqrt(rot_err)) # Dan
         t2 = self.position_gaussian(torch.sqrt(position_err)) # Dan
         logger.debug(f'goal weights: orientation = {w1}, position = {w2}')
