@@ -29,6 +29,8 @@ import time
 from isaacgym import gymapi
 from isaacgym import gymutil
 import torch
+from isaacgym import gymtorch
+
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
 torch.backends.cudnn.benchmark = False

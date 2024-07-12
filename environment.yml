@@ -22,7 +22,7 @@ dependencies:
   - scipy
   - setuptools
   - readline
-  - pytorch=2.3.0
+  # - pytorch=2.3.0 - install manually after you run prune with gpu configiration from reame instructions. go to pytorch.com for help
   - cudatoolkit=11.8
   # - cudatoolkit=12.1
   - numpy

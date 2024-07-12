@@ -28,9 +28,8 @@ Link to liscene: [./storm/LICENSE](./storm/LICENSE).
     - `pip install -e .`
     - `cd '/storm/isaacgym/python` // I believe its necessary 1
     - `pip install -e .` // Read ./storm/isaacgym/README.txt
-    - `conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia`
     - `conda env update --file environment.yml --prune`
-    
+    - `conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia`  
 
 ## Running Examples
 - Every time you interact with system
