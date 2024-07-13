@@ -74,7 +74,9 @@ class CostTerm:
             return np.float64(m)
         
         return m
-    
+    # def weight(self):
+    #     return self.weight
+        
     def mean(self, weighted_cost=True):
         """Get the mean cost of the Cost-Term (tensor of ).
 

@@ -24,6 +24,9 @@ lock2 = threading.Lock()
 
 class Gui:
     def __init__(self, title, port):
+        
+        self.latest_data = {}
+        self.axis_names = []
         self.app = dash.Dash(__name__)
         self.port = port
         self.app.layout = html.Div([
@@ -38,11 +41,7 @@ class Gui:
         # run browser
         
         subprocess.Popen(f'firefox {local_address}:{port}', shell=True)
-
         
-        # Store the latest data to be displayed
-        self.latest_data = {}
-            
         @self.app.callback(Output('live-graph', 'figure'),
                            [Input('interval-component', 'n_intervals')])
         
@@ -50,15 +49,26 @@ class Gui:
             if not self.latest_data:
                 return go.Figure()
                 # return go.Bar()
-            x = list(self.latest_data.keys())
-            y = list(self.latest_data.values())
-            fig = go.Figure(data=[go.Scatter(x=x, y=y, mode='lines+markers'),go.Scatter(x=x, y=[y1 + 10 for y1 in y], mode='lines+markers')])
+            term_names = list(self.latest_data.keys())
+            ys = self.latest_data.values()
+            costs = [v[0] for v in ys], self.axis_names[1]
+            weights = [v[1] for v in ys], self.axis_names[2]
+            weights_only = [float(t) for t in weights[0]] 
+            
+            show_weights = True
+            data = [go.Scatter(x=term_names, y=costs[0], mode='lines+markers', name=costs[1])]
+            if show_weights:
+                data.append(go.Scatter(x=term_names, y=weights_only, mode='lines+markers',name=weights[1]))
+            fig = go.Figure(data=data)
             # fig = go.Figure(data=[go.Bar(x=x, y=y)])
             
             return fig
 
-    def update(self, data):
+    def update(self, data, axis_names):
         self.latest_data = data
+        if not self.axis_names is None:
+            self.axis_names = axis_names
+        
 
     def run(self):
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
@@ -116,33 +126,34 @@ class CostFnSniffer:
             dst_array.append(copy.deepcopy(self._buffer))
 
         
-    def _cost_terms_reading_loop(self, real_world: bool):  # thread target
-        read_from_real_world = real_world
+    def _cost_terms_reading_loop(self, real_world: bool,full_horizon=False):  # thread target
         update_rate = 0.1
         while True:
-            dst_array =  self.costs_real if real_world else self.costs_mpc
-            if len(dst_array): # wait for first write to dest array        
-                if read_from_real_world:
+            all_costs =  self.costs_real if real_world else self.costs_mpc
+            if len(all_costs): # wait for first write to dest array        
+                if real_world:
                     lock = lock1
                     gui = self._gui_dashboard1
-                    
                 else:
                     lock = lock2
                     gui = self._gui_dashboard2
                 
-                raw_display_data = dst_array[-1]    
-                
-                # Option 1 - Display at the mpc graph the mean cost over all trajectories
-                # display_data = {ct_name: ct.mean() for ct_name, ct in raw_display_data.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
-                
-                # Option 2 - display the mean cost only over the first actions in rollouts
-                # Display at the mpc graph the mean cost over all trajectories
-                display_data = {ct_name: ct.mean_over_first_action() for ct_name, ct in raw_display_data.items()}
-                
+                last_t_costs = all_costs[-1]    
+                if full_horizon:
+                    # Option 1 - Display at the mpc graph the mean cost over all trajectories
+                    display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in last_t_costs.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
+                    
+                else:
+                    # Option 2 - display the mean cost only over the first actions in rollouts
+                    # Display at the mpc graph the mean cost over all trajectories
+                    display_data = {ct_name: (ct.mean_over_first_action(),ct.weight) for ct_name, ct in last_t_costs.items()}
+                    
                 
                 with lock:
-                    if len(dst_array):
-                        gui.update(display_data)
+                    x = 'cost term'
+                    y1 = f'mean weighted cost, over: all rollouts and '+ 'full horizon' if full_horizon else 'first action in horizon only'  
+                    y2 = f'weight'
+                    gui.update(display_data,(x,y1,y2))
                         
             
             time.sleep(update_rate)
