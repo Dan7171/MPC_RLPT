@@ -118,17 +118,6 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     
     tensor_args = {'device':device, 'dtype':torch.float32}
     
-    # Dan: tried to debug camera... failed
-        # youtube: https://www.google.com/search?q=isaac-gym+rotate+camera&oq=isaac-gym+rotate+camera&gs_lcrp=EgZjaHJvbWUyBggAEEUYOTIHCAEQIRigAdIBCDU4ODJqMGo3qAIAsAIA&sourceid=chrome&ie=UTF-8#fpstate=ive&vld=cid:1201e946,vid:nleDq-oJjGk,st:0    
-        # debug_camera = True
-        # if debug_camera:                
-        #     camera_props = gymapi.CameraProperties()
-        #     camera_props.width = 128
-        #     camera_props.height = 128
-        #     camera_handle = gym.create_camera_sensor(env_ptr, camera_props)
-        #     gym.set_camera_location(camera_handle, env_ptr, gymapi.Vec3(100,100,100), gymapi.Vec3(0,0,0))
-        #     gym.render_all_camera_sensors(sim)
-        
     # spawn camera:
     robot_camera_pose = np.array([1.6,-1.5, 1.8,0.707,0.0,0.0,0.707])
     q = as_float_array(from_euler_angles(-0.5 * 90.0 * 0.01745, 50.0 * 0.01745, 90 * 0.01745))
@@ -246,18 +235,17 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     while(i > -100): # Dan - every iter makes a step in real world
         
         RealWorldState.reset(i)
-        # if i % logger_ticks == 0:
-        #     logger.debug(f'Real world time = {RealWorldState.real_world_time}')
+     
         try:
             # >>>>>> Dan: REAL WORLD/GUI STEP >>>>>>>>
             gym_instance.step()
-            #all_weights.append(RealWorldState.get_costs_weight_list(RealWorldState.filter_out_tensors(RealWorldState.cost)))
-            
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            if(vis_ee_target): # Dan what is 'vis'?
+            if(vis_ee_target): #Dan - always true
                 pose = copy.deepcopy(world_instance.get_pose(obj_body_handle))
                 pose = copy.deepcopy(w_T_r.inverse() * pose)
-                if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
+                # if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
+                reached_target_position = not np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001
+                reached_target_rotation = not np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0 # dan - maybe has something to do with no convergence of orientation?
+                if not (reached_target_position and reached_target_rotation): # todo: figure out why they update the goal position to be the current state. maybe a bug?
                     g_pos[0] = pose.p.x
                     g_pos[1] = pose.p.y
                     g_pos[2] = pose.p.z
@@ -265,26 +253,12 @@ def mpc_robot_interactive(args, gym_instance:Gym):
                     g_q[2] = pose.r.y
                     g_q[3] = pose.r.z
                     g_q[0] = pose.r.w
-                    mpc_control.update_params(goal_ee_pos=g_pos,
-                                              goal_ee_quat=g_q)
+                    mpc_control.update_params(goal_ee_pos=g_pos, goal_ee_quat=g_q)
+                    
             t_step += sim_dt
             current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
-            
-            # >>>> Dan - get_command() - predict forward from previous action and previous state (?????) >>>>>>>>>>            
-            
-            
-            ####################
-            ####################
-            # mpc_control.get_command running the mpc rollouts and then returns 
-            # the command to the real contoller
-            #####################
-            #####################
-            command = mpc_control.get_command(t_step, current_robot_state, control_dt=sim_dt, WAIT=True) 
-            
-            # command format = command.keys() = ['name', 'position', 'velocity', 'acceleration'])
-            # example:
-            # {'name': ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'], 'position': array([ 0.88,  0.14, -0.97, -2.04,  0.24,  2.09,  0.98], dtype=float32), 'velocity': array([-0.03,  0.58, -0.19,  0.15,  0.42,  0.09,  0.19], dtype=float32), 'acceleration': array([-0.13, -0.22,  0.25,  0.15, -0.01, -0.16,  0.02], dtype=float32)}
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            command = mpc_control.get_command(t_step, current_robot_state, control_dt=sim_dt, WAIT=True)# Dan the command which was chosen after rollouts to send to  the real contoller
+
 
             # >>>>>>>>>>>>>>>> Dan - FETCH STATE OF JOINTS from cuurent_state  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>
             # Dan: this is a dict of the joint state (position, velocity, acceleration)... They use a few objects for representing it
