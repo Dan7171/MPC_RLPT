@@ -52,7 +52,7 @@ class Gui:
                 # return go.Bar()
             x = list(self.latest_data.keys())
             y = list(self.latest_data.values())
-            fig = go.Figure(data=[go.Scatter(x=x, y=y, mode='lines+markers')])
+            fig = go.Figure(data=[go.Scatter(x=x, y=y, mode='lines+markers'),go.Scatter(x=x, y=[y1 + 10 for y1 in y], mode='lines+markers')])
             # fig = go.Figure(data=[go.Bar(x=x, y=y)])
             
             return fig
