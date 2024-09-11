@@ -79,8 +79,8 @@ class CostFnSniffer:
         self.costs_mpc = []   # all mpc costs which were calculated during the simulation
         self._buffer = {}     # We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
         self.gui = gui
-        self._hm_real = None
-        self._hm_mpc = None
+        # self._hm_real = None
+        # self._hm_mpc = None
         
         if self.gui:           
             

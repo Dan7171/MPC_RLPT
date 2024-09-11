@@ -165,7 +165,7 @@ class ArmBase(RolloutBase):
         #null-space cost
         #if self.exp_params['cost']['null_space']['weight'] > 0:
         
-        # C
+        
         null_disp_cost = self.null_cost.forward(state_batch[:,:,0:self.n_dofs] -
                                                 retract_state[:,0:self.n_dofs],
                                                 J_full,
@@ -175,39 +175,37 @@ class ArmBase(RolloutBase):
         cost = None
         new_cost = null_disp_cost 
         cost = new_cost
-        logger.debug(f'cost = null_disp_cost=\n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
+        # logger.debug(f'cost = null_disp_cost=\n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
         if(no_coll == True and horizon_cost == False):
-            logger.debug(f'no_coll is True and horizon_cost is False.')
+            # logger.debug(f'no_coll is True and horizon_cost is False.')
             return cost
         
         
         if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
-            logger.debug(f"manipulability weight = {self.exp_params['cost']['manipulability']['weight']} > 0 => cost += new cost")
-            # C
+            # logger.debug(f"manipulability weight = {self.exp_params['cost']['manipulability']['weight']} > 0 => cost += new cost")
+            
             new_cost = self.manipulability_cost.forward(J_full) 
-            logger.debug(f'manipulability cost =  \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
+            # logger.debug(f'manipulability cost =  \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
             cost += new_cost
             
         
         if(horizon_cost):
-            logger.debug("horizon_cost = True. => can OPTIONALLY use stop_cost, stop_acc cost, smooth cost")
+            # logger.debug("horizon_cost = True. => can OPTIONALLY use stop_cost, stop_acc cost, smooth cost")
             
             if self.exp_params['cost']['stop_cost']['weight'] > 0:
-                logger.debug(f"stop_cost weight = {self.exp_params['cost']['stop_cost']['weight']}  > 0 => cost += new cost")
-                # C
+                # logger.debug(f"stop_cost weight = {self.exp_params['cost']['stop_cost']['weight']}  > 0 => cost += new cost")
                 new_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2]) 
-                logger.debug(f'stop_cost = \n {new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
+                # logger.debug(f'stop_cost = \n {new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
                 cost += new_cost
 
             if self.exp_params['cost']['stop_cost_acc']['weight'] > 0:
-                logger.debug(f"stop_cost_acc weight  = {self.exp_params['cost']['stop_cost_acc']['weight']} > 0 => cost += new cost")
-                # C
+                # logger.debug(f"stop_cost_acc weight  = {self.exp_params['cost']['stop_cost_acc']['weight']} > 0 => cost += new cost")
                 new_cost = self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2 :self.n_dofs * 3], is_stop_acc=True)
-                logger.debug(f"stop_cost_acc = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}")
+                # logger.debug(f"stop_cost_acc = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}")
                 cost += new_cost # Dan - it goes to the same place as stop to I added that to distinguish
 
             if self.exp_params['cost']['smooth']['weight'] > 0:
-                logger.debug(f"smooth weight = {self.exp_params['cost']['smooth']['weight']} > 0 => cost += new cost")
+                # logger.debug(f"smooth weight = {self.exp_params['cost']['smooth']['weight']} > 0 => cost += new cost")
                 
                 order = self.exp_params['cost']['smooth']['order']
                 prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
@@ -217,49 +215,49 @@ class ArmBase(RolloutBase):
                 p_state = p_state.expand(state.shape[0], -1, -1)
                 state_buffer = torch.cat((p_state, state), dim=1)
                 traj_dt = torch.cat((prev_dt, self.traj_dt))
-                # C
+                
                 new_cost = self.smooth_cost.forward(state_buffer, traj_dt) 
-                logger.debug(f'smooth cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
+                # logger.debug(f'smooth cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
                 cost += new_cost
 
 
         if self.exp_params['cost']['state_bound']['weight'] > 0:
-            logger.debug(f"state bound weight = {self.exp_params['cost']['state_bound']['weight']} > 0 => cost += new cost")
+            # logger.debug(f"state bound weight = {self.exp_params['cost']['state_bound']['weight']} > 0 => cost += new cost")
             # compute collision cost:
-            # C
+            
             new_cost = self.bound_cost.forward(state_batch[:,:,:self.n_dofs * 3]) 
-            logger.debug(f'bound cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
+            # logger.debug(f'bound cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
             cost += new_cost
 
         if self.exp_params['cost']['ee_vel']['weight'] > 0:
-            logger.debug(f"ee_vel weight = {self.exp_params['cost']['ee_vel']['weight']} > 0 => cost += new cost")
+            # logger.debug(f"ee_vel weight = {self.exp_params['cost']['ee_vel']['weight']} > 0 => cost += new cost")
             # C
             new_cost = self.ee_vel_cost.forward(state_batch, lin_jac_batch)
-            logger.debug(f'ee_vel cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
+            # logger.debug(f'ee_vel cost = \n{new_cost}.\nChanged total cost? {bool((new_cost != 0).any())}')
             cost += new_cost
             
         if(not no_coll):
-            logger.debug("not no_coll = True. => can COPTIONALLY use robot_self_collision cost, primitive_collision cost, voxel_collision cost")
+            # logger.debug("not no_coll = True. => can COPTIONALLY use robot_self_collision cost, primitive_collision cost, voxel_collision cost")
 
             if self.exp_params['cost']['robot_self_collision']['weight'] > 0:
-                logger.debug(f"robot_self_collision weight = {self.exp_params['cost']['robot_self_collision']['weight']} > 0 => cost += new cost")
-                # C
+                # logger.debug(f"robot_self_collision weight = {self.exp_params['cost']['robot_self_collision']['weight']} > 0 => cost += new cost")
+                
                 new_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
-                logger.debug(f'self_collision_cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
+                # logger.debug(f'self_collision_cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
                 cost += new_cost
             
             if self.exp_params['cost']['primitive_collision']['weight'] > 0:
-                logger.debug(f"primitive_collision weight = {self.exp_params['cost']['primitive_collision']['weight']} > 0 => cost += new cost")
-                # C
+                # logger.debug(f"primitive_collision weight = {self.exp_params['cost']['primitive_collision']['weight']} > 0 => cost += new cost")
+                
                 new_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-                logger.debug(f'primitive collision cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
+                # logger.debug(f'primitive collision cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
                 cost += new_cost
                 
             if self.exp_params['cost']['voxel_collision']['weight'] > 0:
-                logger.debug(f"voxel_collision weight = {self.exp_params['cost']['voxel_collision']['weight']} > 0 => cost += new cost")
+                # logger.debug(f"voxel_collision weight = {self.exp_params['cost']['voxel_collision']['weight']} > 0 => cost += new cost")
                 # C
                 new_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
-                logger.debug(f'voxel collision cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
+                # logger.debug(f'voxel collision cost = \n{new_cost}\nChanged total cost? {bool((new_cost != 0).any())}')
                 cost += new_cost
 
         # logger.debug(f'exp params:{self.exp_params['cost']}')
