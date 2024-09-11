@@ -77,9 +77,31 @@ def goal_test(position_norm:float,orientation_norm:float, orientation_epsilon = 
     reached_orientation = orientation_norm < orientation_epsilon
     return reached_position and reached_orientation 
     
+def draw_lines(gym_instance,mpc_control,w_robot_coord):
+    """_summary_
+    Drawing the green (good) & red (bed) trajectories in gui, at every real-world time step
+    """
+    # >>>>> Dan - removing the red and green colors from screen. Comment out to see what happens >>>>>>>>>>
+    gym_instance.clear_lines()
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    
+    top_trajs = mpc_control.top_trajs.cpu().float()#.numpy()
+    n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+    w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
+    # >>>>> Dan - this block is making the green/red lines (good/bad trajectories) in gui at every step in gui. comment it out to see >>> 
+    top_trajs = w_pts.cpu().numpy()
+    color = np.array([0.0, 1.0, 0.0])
+    for k in range(top_trajs.shape[0]):
+        pts = top_trajs[k,:,:]
+        color[0] = float(k) / float(top_trajs.shape[0])
+        color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+        gym_instance.draw_lines(pts, color=color)
+    
 def mpc_robot_interactive(args, gym_instance:Gym):
-
+    """
+    simulation loop
+    """
     vis_ee_target = True # Dan - what is this ?
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
@@ -229,7 +251,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
         'total_cost' : None,
         'smoothness': None
     }
-    #all_weights = [] # over all steps in real world
+    
     all_costs = []
     time_start = time.process_time()
     while(i > -100): # Dan - every iter makes a step in real world
@@ -237,7 +259,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
         RealWorldState.reset(i)
      
         try:
-            # >>>>>> Dan: REAL WORLD/GUI STEP >>>>>>>>
+            # >>>>>> Dan: IN WORLD STEP (appears in GUI) >>>>>>>>
             gym_instance.step()
             if(vis_ee_target): #Dan - always true
                 pose = copy.deepcopy(world_instance.get_pose(obj_body_handle))
@@ -245,7 +267,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
                 # if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
                 reached_target_position = not np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001
                 reached_target_rotation = not np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0 # dan - maybe has something to do with no convergence of orientation?
-                if not (reached_target_position and reached_target_rotation): # todo: figure out why they update the goal position to be the current state. maybe a bug?
+                if not (reached_target_position and reached_target_rotation):
                     g_pos[0] = pose.p.x
                     g_pos[1] = pose.p.y
                     g_pos[2] = pose.p.z
@@ -335,36 +357,20 @@ def mpc_robot_interactive(args, gym_instance:Gym):
                     time.sleep(1)
                 break
             
-            # >>>>>> Dan: print every logger_ticks time-units >>>>>>>>>>>>>>
-            if i % logger_ticks == 0:
-                logger.debug(f'-------------{i} steps in real world have passed, sim time gym = {gym_instance.get_sim_time()} -------------')
-                logger.debug(f'target position (red mug): {target_position}')
-                logger.debug(f'current position (green mug): {current_position}')
-                logger.debug(f'target orientation (red mug): {target_orientation}')
-                logger.debug(f'current orientation (green mug) : {current_orientation}')    
-                logger.debug(f'target position  - current position =  {vdiff_position}')
-                logger.debug(f'distance to target position (l2 norm) = {vdiff_position_norm} ') 
-                logger.debug(f'target orientaion - current orientaion = {vdiff_orientation}')
-                logger.debug(f'distance to target orientation (l2 norm) = {vdiff_orientation_norm}\n') 
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<,<<<<<
+            # # >>>>>> Dan: print every logger_ticks time-units >>>>>>>>>>>>>>
+            # if i % logger_ticks == 0:
+            #     logger.debug(f'-------------{i} steps in real world have passed, sim time gym = {gym_instance.get_sim_time()} -------------')
+            #     logger.debug(f'target position (red mug): {target_position}')
+            #     logger.debug(f'current position (green mug): {current_position}')
+            #     logger.debug(f'target orientation (red mug): {target_orientation}')
+            #     logger.debug(f'current orientation (green mug) : {current_orientation}')    
+            #     logger.debug(f'target position  - current position =  {vdiff_position}')
+            #     logger.debug(f'distance to target position (l2 norm) = {vdiff_position_norm} ') 
+            #     logger.debug(f'target orientaion - current orientaion = {vdiff_orientation}')
+            #     logger.debug(f'distance to target orientation (l2 norm) = {vdiff_orientation_norm}\n') 
+            # # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<,<<<<<
         
-            # >>>>> Dan - removing the red and green colors from screen. Comment out to see what happens >>>>>>>>>>
-            gym_instance.clear_lines()
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            
-            top_trajs = mpc_control.top_trajs.cpu().float()#.numpy()
-            n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
-            w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
-
-            # >>>>> Dan - this block is making the green/red lines (good/bad trajectories) in gui at every step in gui. comment it out to see >>> 
-            top_trajs = w_pts.cpu().numpy()
-            color = np.array([0.0, 1.0, 0.0])
-            for k in range(top_trajs.shape[0]):
-                pts = top_trajs[k,:,:]
-                color[0] = float(k) / float(top_trajs.shape[0])
-                color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
-                gym_instance.draw_lines(pts, color=color)
-            
+            draw_lines(gym_instance, mpc_control, w_robot_coord) # drawing trajectory lines on screen. Can comment out
             # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             robot_sim.command_robot_position(q_des, env_ptr, robot_ptr) # Dan - RobotSim..gym.set_actor_dof_position_targets()
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
