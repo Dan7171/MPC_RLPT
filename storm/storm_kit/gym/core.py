@@ -32,8 +32,43 @@ from quaternion import from_rotation_matrix
 from .helpers import load_struct_from_dict
 
 class Gym(object):
-    def __init__(self,sim_params={}, physics_engine='physx', compute_device_id=0, graphics_device_id=1, num_envs=1, headless=False, **kwargs):
+    """_summary_
 
+    The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To
+    create a simulation, you need to call the create_sim method:
+
+    sim_params = gymapi.SimParams() 
+    sim = gym.create_sim(compute_device_id, graphics_device_id, gymapi.SIM_PHYSX, sim_params)
+
+    The sim object contains physics and graphics contexts that will allow you to load assets, create
+    environments, and interact with the simulation.
+
+    The first argument to create_sim is the compute device ordinal, which selects the GPU for
+    physics simulation. The second argument is the graphics device ordinal, which selects the GPU
+    for rendering. In multi-GPU systems, you can use different devices to perform these roles. For
+    headless simulation (without a viewer) that doesn’t require any sensor rendering, you can set the
+    graphics device to -1, and no graphics context will be created.
+    The third argument specifies which physics backend you wish to use. Presently, the choices are
+    SIM_PHYSX or SIM_FLEX .
+    The PhysX backend offers robust rigid body and articulation simulation that can run on
+    either CPU or GPU. It is presently the only backend that fully supports the new tensor
+    API.
+    The Flex backend offers soft body and rigid body simulation that runs entirely on the
+    GPU, but it does not fully support the tensor API yet.
+    The last argument to create_sim contains additional simulation parameters, discussed below.
+    """
+    
+    def __init__(self,sim_params={}, physics_engine='physx', compute_device_id=0, graphics_device_id=1, num_envs=1, headless=False, **kwargs):
+        """_summary_
+
+        Args:
+            sim_params (dict, optional): _description_. Defaults to {}. 
+            physics_engine (str, optional): _description_. Defaults to 'physx'.
+            compute_device_id (int, optional): _description_. Defaults to 0.
+            graphics_device_id (int, optional): _description_. Defaults to 1.
+            num_envs (int, optional): _description_. Defaults to 1.
+            headless (bool, optional): _description_. Defaults to False.
+        """
         if(physics_engine=='physx'):
             physics_engine = gymapi.SIM_PHYSX
         elif(physics_engine == 'flex'):
@@ -45,11 +80,8 @@ class Gym(object):
         sim_engine_params = load_struct_from_dict(sim_engine_params, sim_params)
         self.headless = headless
 
-        self.gym = gymapi.acquire_gym()
-        self.sim = self.gym.create_sim(compute_device_id,
-                                       graphics_device_id,
-                                       physics_engine,
-                                       sim_engine_params)
+        self.gym = gymapi.acquire_gym() # All of the Gym API functions can be accessed as methods of a singleton Gym object acquired on startup. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
+        self.sim = self.gym.create_sim(compute_device_id, graphics_device_id, physics_engine, sim_engine_params) # The sim object contains physics and graphics contexts that will allow you to load assets, create environments, and interact with the simulation. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
 
         self.env_list = []#None
         self.viewer = None

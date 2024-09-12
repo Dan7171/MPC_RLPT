@@ -7,15 +7,14 @@ import yaml
 from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 
 ##### Globals ######
-@dataclass
 class Globs:
     """ Global variables. Put your global variables here
     """
     
     cfg_path = 'BGU/Rlpt/Run/configs/main.yml'
-    cfg = None
+    # cfg = None
     with open(cfg_path) as file:
-        cfg = yaml.load(file, Loader=yaml.FullLoader)
+        cfg:dict = yaml.load(file, Loader=yaml.FullLoader)
 
     if 'cost_sniffer' in cfg:        
         cost_fn_sniffer: CostFnSniffer = CostFnSniffer(*cfg['cost_sniffer'])

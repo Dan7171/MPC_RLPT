@@ -12,6 +12,16 @@ Link to liscene: [./storm/LICENSE](./storm/LICENSE).
 - python >= 3.8 https://www.python.org/downloads/
 - linux (we used ubuntu >= 20.04)
 - 
+
+## Docs:
+### Storm: 
+- MPC_RPT/storm/docs/_build/html/index.html # ALT + l + ALT + o
+- or STORM_DOCS/docs/_build/html/index.html # ALT + l + ALT + o
+### Isaac Gym: 
+- html: LINK MPC_RLPT/storm/isaacgym/docs/index.html # ALT + l + ALT + o
+- pdfs: LINK MPC_RPT/GYM_DOCS 
+
+
 ## Installation 
 
 - Only at first time you start working on your pc:

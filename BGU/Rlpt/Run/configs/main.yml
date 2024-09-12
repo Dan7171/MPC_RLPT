@@ -3,7 +3,7 @@ cost_sniffer: # remove from comment to use
   save_costs: true
   buff_n: 1000
 
-mem_profile: false 
+# profile_memory: "mem_profile.pickle" 
   
 
 sim:
