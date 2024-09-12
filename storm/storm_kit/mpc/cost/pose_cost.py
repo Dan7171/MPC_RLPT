@@ -131,17 +131,7 @@ class PoseCost(nn.Module):
         sniffer.set(cost_term_name, CostTerm(w1, t1))
         cost_term_name = 'goal_position'        
         sniffer.set(cost_term_name, CostTerm(w2, t2))
-        
-        # Final cost calculation of "pose" (position and orientation)
-        if is_real_world():
-            # rotation_error = float(rot_err[0][0]) # t1
-            # position_error = float(position_err[0][0]) # t2
-            d = RealWorldState.cost['storm_paper']['ArmReacher']['goal']         
-            d['total'] = cost
-            d['weights'].extend([w1,w2])
-            d['terms'].extend([t1,t2])
-        
-        # dimension should be bacth * traj_length
+    
         return cost.to(inp_device), rot_err_norm, goal_dist
     def update_weight(self, weight):
         self.weight = weight

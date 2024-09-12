@@ -23,6 +23,7 @@
 """ Example spawning a robot in gym 
 
 """
+
 import copy
 import math
 import time
@@ -72,6 +73,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
  
+
+
+
 def goal_test(position_norm:float,orientation_norm:float, orientation_epsilon = 0.01, position_epsilon = 0.01) -> bool:
     reached_position = position_norm < position_epsilon
     reached_orientation = orientation_norm < orientation_epsilon
@@ -102,6 +106,9 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     """
     simulation loop
     """
+    
+    
+    
     vis_ee_target = True # Dan - what is this ?
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
@@ -158,6 +165,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     w_T_robot[1,3] = w_T_r.p.y
     w_T_robot[2,3] = w_T_r.p.z
     w_T_robot[:3,:3] = rot[0]
+    print(w_T_r)
     world_instance = World(gym, sim, env_ptr, world_params, w_T_r=w_T_r)
     
     # >>>>>> Dan - we need those??? >>>>>>>>>>>>>>>>>>>
@@ -256,8 +264,8 @@ def mpc_robot_interactive(args, gym_instance:Gym):
     time_start = time.process_time()
     while(i > -100): # Dan - every iter makes a step in real world
         
+        
         RealWorldState.reset(i)
-     
         try:
             # >>>>>> Dan: IN WORLD STEP (appears in GUI) >>>>>>>>
             gym_instance.step()
@@ -267,7 +275,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
                 # if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
                 reached_target_position = not np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001
                 reached_target_rotation = not np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0 # dan - maybe has something to do with no convergence of orientation?
-                if not (reached_target_position and reached_target_rotation):
+                if not (reached_target_position and reached_target_rotation): # if not yet reached to final location completely
                     g_pos[0] = pose.p.x
                     g_pos[1] = pose.p.y
                     g_pos[2] = pose.p.z
@@ -297,6 +305,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
             # ???????????????????? Dan - get end effector current ERROR (we need it?) ????????????????????    
             # Dan: BaseTask/get_current_error() -> ArmBase.current_cost()->cost_fn() -> returns end effector error            
             ee_error = mpc_control.get_current_error(filtered_state_mpc) 
+            #print(ee_error)
             # ee_error[0] = tensor([[768.1894]], device='cuda:0', dtype=torch.float32)            
             # ee_error[1] =tensor([[1.3212]], device='cuda:0', dtype=torch.float32)
             # ee_error[2] = tensor([[[0.7462]]], device='cuda:0', dtype=torch.float32
@@ -327,15 +336,7 @@ def mpc_robot_interactive(args, gym_instance:Gym):
             vdiff_position_norm = np.linalg.norm(vdiff_position) 
             vdiff_orientation_norm = np.linalg.norm(vdiff_orientation)
             
-            cost_current_state = RealWorldState.cost
-            clean_view_cost_current_state = RealWorldState.clean_view(cost_current_state) 
-            
-            # clean_view_cost_current_state_weights_only = RealWorldState.get_costs_weight_list(clean_view_cost_current_state)
-            # all_weights.append(clean_view_cost_current_state_weights_only)
-            all_costs.append(clean_view_cost_current_state)
-            if RealWorldState.real_world_time == 0:
-                episode_parameters['weights'] = RealWorldState.get_costs_weight_list(clean_view_cost_current_state)
-            
+          
             # >>>>>>>>>>> Dan - goal test - reached target? >>>>>>>>>>>.
             if goal_test(vdiff_position_norm, vdiff_orientation_norm): 
                 logger.info(f'----------------------------SIMULATION IS OVER----------------------------')
@@ -357,21 +358,9 @@ def mpc_robot_interactive(args, gym_instance:Gym):
                     time.sleep(1)
                 break
             
-            # # >>>>>> Dan: print every logger_ticks time-units >>>>>>>>>>>>>>
-            # if i % logger_ticks == 0:
-            #     logger.debug(f'-------------{i} steps in real world have passed, sim time gym = {gym_instance.get_sim_time()} -------------')
-            #     logger.debug(f'target position (red mug): {target_position}')
-            #     logger.debug(f'current position (green mug): {current_position}')
-            #     logger.debug(f'target orientation (red mug): {target_orientation}')
-            #     logger.debug(f'current orientation (green mug) : {current_orientation}')    
-            #     logger.debug(f'target position  - current position =  {vdiff_position}')
-            #     logger.debug(f'distance to target position (l2 norm) = {vdiff_position_norm} ') 
-            #     logger.debug(f'target orientaion - current orientaion = {vdiff_orientation}')
-            #     logger.debug(f'distance to target orientation (l2 norm) = {vdiff_orientation_norm}\n') 
-            # # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<,<<<<<
-        
+         
+
             draw_lines(gym_instance, mpc_control, w_robot_coord) # drawing trajectory lines on screen. Can comment out
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             robot_sim.command_robot_position(q_des, env_ptr, robot_ptr) # Dan - RobotSim..gym.set_actor_dof_position_targets()
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
             current_state = command # Dan - we need it?
@@ -385,10 +374,24 @@ def mpc_robot_interactive(args, gym_instance:Gym):
             print('Closing')
             done = True
             break
+        
+        
+                
     mpc_control.close()
+    
+    
     return 1 
     
 if __name__ == '__main__':
+    
+    # custom settings parsing
+    # settings by user
+    profile_memory = 'profile_memory' in globs.cfg
+    
+    if profile_memory:
+        torch.cuda.memory._record_memory_history(max_entries=100000)
+    
+    
     
     # instantiate empty gym:
     logger.info('parsing arguments...\n')
@@ -399,13 +402,26 @@ if __name__ == '__main__':
     parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
     args = parser.parse_args()
     logger.info(f'terminal user arguments: {args}\n')
-    sim_params = load_yaml(join_path(get_gym_configs_path(),'physx.yml'))
-    logger.info(f'simulation params: {sim_params}\n')
+    configs_path = get_gym_configs_path()
+    logger.info(f'simulation params path {configs_path}')
     
-    sim_params['headless'] = args.headless
-    logger.info('starting gym gui...\n')
-    gym_instance = Gym(**sim_params) # Dan - starting the gym gui window
-    logger.info('starting simulation...\n')
     
-    mpc_robot_interactive(args, gym_instance)
+    physx_params_path = join_path(configs_path,'physx.yml')
+    logger.debug(f'reading params from {physx_params_path}')
+    sim_params = load_yaml(physx_params_path) # read physx params
 
+    sim_params['headless'] = args.headless
+    logger.info(f'simulation params: {sim_params}')
+    logger.info('starting simulation...')
+    gym_instance = Gym(**sim_params) # Dan - starting the gym gui window
+    
+    # run sim loop
+    try:
+        mpc_robot_interactive(args, gym_instance)
+    except torch.cuda.OutOfMemoryError: 
+        if profile_memory:
+            # Stop recording memory snapshot history.
+            try: 
+                torch.cuda.memory._dump_snapshot(f"mem_profile.pickle")
+            except Exception as e:
+                    logger.error(f"Failed to capture memory snapshot {e}")

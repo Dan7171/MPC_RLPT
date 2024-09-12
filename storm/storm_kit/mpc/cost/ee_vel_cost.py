@@ -65,13 +65,6 @@ class EEVelCost(nn.Module):
         cost_term_name = 'ee_vel'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
         
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']['ArmBase']['ee_vel'] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
-        
         return cost.to(inp_device)
     def update_weight(self, weight):
         """

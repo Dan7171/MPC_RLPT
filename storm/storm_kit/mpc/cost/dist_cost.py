@@ -65,20 +65,7 @@ class DistCost(nn.Module):
         cost_term_name = 'joint_l2' if is_joint_l2 else 'null_disp'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
         
-        # cost = self.weight * self.proj_gaussian(dist)
-        
-        
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']
-            if is_joint_l2: 
-                d = d['ArmReacher']['joint_l2'] 
-            else:
-                d = d['ArmBase']['null_disp']
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append(f'proj_gaussian(dist), where dist is {dist_type} of disp_vec') 
-            
+      
         
         if(RETURN_GOAL_DIST):
             return cost.to(inp_device), dist.to(inp_device)

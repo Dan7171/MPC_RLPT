@@ -85,13 +85,6 @@ class PrimitiveCollisionCost(nn.Module):
         cost = w1 * t1 # Dan
         cost_term_name = 'primitive_collision'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
-        
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']['ArmBase']['collision']['primitive'] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
             
         return cost.to(inp_device)
     def update_weight(self, weight):

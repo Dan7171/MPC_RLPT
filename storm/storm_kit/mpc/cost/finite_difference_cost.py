@@ -97,14 +97,7 @@ class FiniteDifferenceCost(nn.Module):
         cost_term_name = 'smooth'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
         # cost = self.weight * cost 
-        
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']['ArmBase']['horizon']['smooth'] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
-        
+
         return cost
     def update_weight(self, weight):
         """

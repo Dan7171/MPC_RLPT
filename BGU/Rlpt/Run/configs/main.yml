@@ -1,0 +1,10 @@
+cost_sniffer: # remove from comment to use
+  gui: true
+  save_costs: true
+  buff_n: 1000
+
+mem_profile: false 
+  
+
+sim:
+  arg: None

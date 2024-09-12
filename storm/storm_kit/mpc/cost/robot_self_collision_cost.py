@@ -115,13 +115,6 @@ class RobotSelfCollisionCost(nn.Module):
         cost_term_name = 'self_collision'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
         
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']['ArmBase']['collision']['self'] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
-            
         return cost
 
     def update_weight(self, weight):

@@ -66,20 +66,7 @@ class ManipulabilityCost(nn.Module):
         cost = w1 * t1
         
         cost_term_name = 'manipulability'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
-        
-        # cost = self.weight * score 
-        if is_real_world():        
-            d = RealWorldState.cost['storm_paper']['ArmBase']['manipulability'] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
-            # print(f'mainpulability: real world weights: {w1}, real_world_terms = {t1}, total = {cost}')
-        else:
-            pass
-            # print(f'mainpulability: not real world weight: {w1}, real_world_terms = {t1}, total = {cost}')
-            
+        sniffer.set(cost_term_name, CostTerm(w1, t1))        
             
         return cost.to(inp_device)
     def update_weight(self, weight):

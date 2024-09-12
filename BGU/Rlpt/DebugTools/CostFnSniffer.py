@@ -1,5 +1,6 @@
 import copy
 import os
+import pickle
 import subprocess
 import time
 from matplotlib import pyplot as plt
@@ -15,6 +16,7 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import time
 import webbrowser
+import gc
 
 local_address = "http://127.0.0.1"
 
@@ -74,14 +76,21 @@ class Gui:
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
 
 class CostFnSniffer:
-    def __init__(self, gui=True):
-        self.costs_real = []  # all real costs which were calculated during the simulation  
-        self.costs_mpc = []   # all mpc costs which were calculated during the simulation
-        self._buffer = {}     # We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
-        self.gui = gui
-        # self._hm_real = None
-        # self._hm_mpc = None
+    def __init__(self, gui=True, save_costs=False, buff_n=1000):
         
+        self._current_ts_costs_real = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
+        self._current_ts_costs_mpc = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
+        self.save_costs = save_costs # save all costs to a file
+        self.gui = gui
+        
+        # relevant only when save_costs is True:
+        if self.save_costs:    
+            self.costs_buff_real = []  # buffer to store real costs which were calculated during the simulation before flushing them to storage  
+            self.costs_buff_mpc = []   # buffer to store mpc costs which were calculated during the simulation before flushing them to storage
+            self.buff_n = buff_n # the max num of items on each buffer. The larger n is, the less "flush to storage" calls (but longer writing to storage on each time).
+            self.all_costs_file = os.path.join(os.getcwd(), 'costs.pickle') 
+            
+     
         if self.gui:           
             
             # subprocess.Popen(f'firefox {local_address}:0000', shell=True)
@@ -100,37 +109,65 @@ class CostFnSniffer:
             threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False}).start()
             
 
-    def _empty_buffer(self):
-        self._buffer.clear()
-
-    def _set_in_buffer(self, k, v):
-        self._buffer[k] = v
-
     def set(self, ct_name: str, ct: CostTerm):
-        self._buffer[ct_name] = ct
+        is_real = is_real_world()
+        costs = self._current_ts_costs_real if is_real else self._current_ts_costs_mpc
+        costs[ct_name] = ct
+        
+                
+    def _flush_to_storage(self, buff, real_world):
+        pickle_file = self.all_costs_file
+        
+        # Check if the file exists and is non-empty
+        if os.path.exists(pickle_file) and os.path.getsize(pickle_file) > 0:
+            # Load the existing pickle file
+            with open(pickle_file, 'rb') as f:
+                costs = pickle.load(f)
+        else:
+            # Initialize a new dict if the file is empty or doesn't exist
+            costs = {'real': [], 'mpc': []}
+
+        # Append to the correct list based on the 'real' parameter
+        if real_world:
+            costs['real'].extend(buff)
+        else:
+            costs['mpc'].extend(buff)
+
+        # Save the updated dictionary back to the pickle file
+        with open(pickle_file, 'wb') as f:
+            pickle.dump(costs, f)
+        
+        # optinal
+        del buff
+        gc.collect()
 
     def finish(self):
-        self._flush_buffer()
-        self._empty_buffer()
+        
+        if self.save_costs:
+            real_world = is_real_world()
+            buff = self.costs_buff_real if real_world else self.costs_buff_mpc
+            costs = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
+            # lock = lock1 if real_world else lock2
+            
+            if len(buff) == self.buff_n:
+                # with lock:    
+                self._flush_to_storage(buff, real_world)
+                buff = []
+                if real_world:    
+                    self.costs_buff_real = buff
+                else:
+                    self.costs_buff_mpc = buff
+                buff.append(copy.deepcopy(costs))
+ 
     
-    def _flush_buffer(self):
-        flush_to_real_world = is_real_world()
-        if flush_to_real_world:
-            dst_array = self.costs_real
-            lock = lock1
-        else:
-            dst_array = self.costs_mpc
-            lock = lock2
-
-        with lock:
-            dst_array.append(copy.deepcopy(self._buffer))
-
         
     def _cost_terms_reading_loop(self, real_world: bool,full_horizon=False):  # thread target
         update_rate = 0.1
+        time.sleep(update_rate)
         while True:
-            all_costs =  self.costs_real if real_world else self.costs_mpc
-            if len(all_costs): # wait for first write to dest array        
+            # all_costs =  self.costs_buff_real if real_world else self.costs_buff_mpc
+            costs_to_show = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
+            if len(costs_to_show): # wait for first write to dest array        
                 if real_world:
                     lock = lock1
                     gui = self._gui_dashboard1
@@ -138,20 +175,19 @@ class CostFnSniffer:
                     lock = lock2
                     gui = self._gui_dashboard2
                 
-                last_t_costs = all_costs[-1]    
-                if full_horizon:
-                    # Option 1 - Display at the mpc graph the mean cost over all trajectories
-                    display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in last_t_costs.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
-                    
-                else:
-                    # Option 2 - display the mean cost only over the first actions in rollouts
-                    # Display at the mpc graph the mean cost over all trajectories
-                    display_data = {ct_name: (ct.mean_over_first_action(),ct.weight) for ct_name, ct in last_t_costs.items()}
-                    
-                
                 with lock:
+
+                    if full_horizon:
+                        # Option 1 - Display at the mpc graph the mean cost over all trajectories
+                        display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in costs_to_show.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
+                    else:
+                        # Option 2 - display the mean cost only over the first actions in rollouts
+                        # Display at the mpc graph the mean cost over all trajectories
+                        display_data = {ct_name: (ct.mean_over_first_action(),ct.weight) for ct_name, ct in costs_to_show.items()}
+                        
+                
                     x = 'cost term'
-                    y1 = f'mean weighted cost, over: all rollouts and '+ 'full horizon' if full_horizon else 'first action in horizon only'  
+                    y1 = f'mean weighted cost (all rollouts, '+ ('whole horizon)' if full_horizon else 'first action in horizon)')
                     y2 = f'weight'
                     gui.update(display_data,(x,y1,y2))
                         

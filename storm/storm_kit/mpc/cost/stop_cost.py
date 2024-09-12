@@ -76,14 +76,6 @@ class StopCost(nn.Module):
              
         # cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
 
-        if is_real_world():
-            stop_cost_mode = 'stop_acc' if is_stop_acc else 'stop'        
-            d = RealWorldState.cost['storm_paper']['ArmBase']['horizon'][stop_cost_mode] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append('todo')
-        
         
         return cost.to(inp_device)
     def update_weight(self, weight):

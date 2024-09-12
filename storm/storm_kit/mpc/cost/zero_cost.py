@@ -58,11 +58,5 @@ class ZeroCost(nn.Module):
         cost = w1 * t1
         cost_term_name = 'zero_vel' if is_zero_vel else 'zero_acc'        
         sniffer.set(cost_term_name, CostTerm(w1, t1))
-        if is_real_world():
-            d = RealWorldState.cost['storm_paper']['ArmReacher'][cost_term_name] 
-            d['total'] = cost
-            d['weights'].append(w1)
-            d['terms'].append(t1)
-            d['terms_meaning'].append([f'proj_gaussian(square(vel_err))']) 
-        
+ 
         return cost.to(inp_device)
