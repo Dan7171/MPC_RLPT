@@ -264,7 +264,8 @@ class MpcRobotInteractive:
         Output
             - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat, g_pos, g_quat]
             - reward: float reward function for RL
-            - done: bool True, False. True if the arm reached te goal or if it is in an invalid configuration
+            - keyboard_interupt: bool - true if a keyboard interupt was detacted
+        
         """
 
         try:
@@ -355,16 +356,11 @@ class MpcRobotInteractive:
 
             self.arm_configuration = copy.deepcopy(current_state["position"])
             self.update_end_effector_pose(current_state)
-
+            
+            return self.arm_configuration, self.goal_pose, self.end_effector_pos, self.end_effector_quat, False
 
         except KeyboardInterrupt:
-            print('Closing')
-            done = True
-            self.mpc_control.close()
-            return None,None,None,None,True
-
-        return self.arm_configuration, self.goal_pose, self.end_effector_pos, self.end_effector_quat, False
-
+                return None, None, None, None, True
 
     def update_end_effector_pose(self, current_state):
         curr_state = np.hstack((current_state['position'], current_state['velocity'], current_state['acceleration']))
@@ -681,7 +677,25 @@ class MpcRobotInteractive:
 ###############################################################################################
 ###############################################################################################
 
-    
+# some variables for loop
+EPISODES = 10 # How many simulations / episodes to run in total
+EPISODE_MAX_TS = 1000 # maximal number of time steps in a single episode 
+cost_params = {
+            "manipulability": 500, # 30 
+            "stop_cost": 50, 
+            "stop_cost_acc": 0.0, 
+            "smooth": 0.0, 
+            "state_bound": 1000.0, 
+            "ee_vel": 0.0, 
+            "robot_self_collision" : 5000, 
+            "primitive_collision" : 5000, 
+            "voxel_collision" : 0
+            }
+mpc_params = {
+    "horizon" : 90 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
+    "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+    } #dan
+
 if __name__ == '__main__':
     
     # instantiate empty gym:
@@ -695,42 +709,47 @@ if __name__ == '__main__':
     sim_params = load_yaml(join_path(get_gym_configs_path(),'physx.yml')) # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless
     
-    gym_instance = Gym(**sim_params) # The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
-    Mpc = MpcRobotInteractive(args, gym_instance)
-    i = 0
+    gym_instance = Gym(**sim_params) # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
+    Mpc = MpcRobotInteractive(args, gym_instance) 
+   
+    
     end_flag = True
-    steps_in_one_epispde = 1000 # dan - this is the number of time units I guess which and episode takes
-    while(i > -100):
-        # >>> Dan 
-        # Dan - to play with the non 0 cost params and see the affect.
-        # <<<
-        cost_params = {
-            "manipulability": 500, # 30 
-            "stop_cost": 50, 
-            "stop_cost_acc": 0.0, 
-            "smooth": 0.0, 
-            "state_bound": 1000.0, 
-            "ee_vel": 0.0, 
-            "robot_self_collision" : 5000, 
-            "primitive_collision" : 5000, 
-            "voxel_collision" : 0
-            }
-        mpc_params = {
-            "horizon" : 90 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
-            "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-            } #dan
-        arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i)
-        if end_flag:
-            start_time = time.time()
-            end_flag = False
-        end_time = 0
-        if i%steps_in_one_epispde == 0: 
-            end_time = time.time()
-            end_flag = True
-            elapsed_time = end_time - start_time
-            print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            Mpc.reset()
-        if done:
-            break
-        i += 1
+    
+        
+    for ep in range(EPISODES):
+        ep_start_time = time.time()
+        for ts in range(EPISODE_MAX_TS):
+            arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
+            if keyboard_interupt:
+                print('keyboard interupt from user. Exit program')
+                exit()
+            # todo - check goal state !!! Dan 12.9.24
+        ep_end_time = time.time() # episode is over
+        elapsed_time = ep_end_time - ep_start_time
+        Mpc.reset()
+
+            
+    
+         
+    #  i = 0 
+    # steps_in_one_epispde = 1000 # dan - this is the number of time units I guess which and episode takes
+    # while(i > -100):
+    #     # >>> Dan 
+    #     # Dan - to play with the non 0 cost params and see the affect.
+    #     # <<<
+        
+    #     arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i)
+    #     if end_flag:
+    #         start_time = time.time()
+    #         end_flag = False
+    #     end_time = 0
+    #     if i%EPISODE_MAX_TS == 0: 
+    #         end_time = time.time()
+    #         end_flag = True
+    #         elapsed_time = end_time - start_time
+    #         print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    #         Mpc.reset()
+    #     if done:
+    #         break
+    #     i += 1
     
