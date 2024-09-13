@@ -63,7 +63,7 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 np.set_printoptions(precision=2)
 
 def mpc_robot_interactive(args, gym_instance):
-    vis_ee_target = True
+    vis_ee_target = True # Hyper parameter. To display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui. 
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
     world_file = 'collision_primitives_3d.yml'
@@ -238,7 +238,7 @@ def mpc_robot_interactive(args, gym_instance):
         try:
             gym_instance.step()
             if(vis_ee_target):
-                pose = copy.deepcopy(world_instance.get_pose(obj_body_handle))
+                pose = copy.deepcopy(world_instance.get_pose(obj_body_handle)) 
                 pose = copy.deepcopy(w_T_r.inverse() * pose)
 
                 if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
@@ -293,7 +293,7 @@ def mpc_robot_interactive(args, gym_instance):
             n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
             w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
-
+            # This block is what making the green & red lines to appear on screen  (affecting only gui, not the planning)
             top_trajs = w_pts.cpu().numpy()
             color = np.array([0.0, 1.0, 0.0])
             for k in range(top_trajs.shape[0]):

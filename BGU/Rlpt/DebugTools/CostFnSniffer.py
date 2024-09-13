@@ -76,7 +76,7 @@ class Gui:
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
 
 class CostFnSniffer:
-    def __init__(self, gui=True, save_costs=False, buff_n=1000):
+    def __init__(self, gui=False, save_costs=False, buff_n=1000):
         
         self._current_ts_costs_real = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
         self._current_ts_costs_mpc = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
@@ -176,7 +176,7 @@ class CostFnSniffer:
                     gui = self._gui_dashboard2
                 
                 with lock:
-
+                    pass
                     if full_horizon:
                         # Option 1 - Display at the mpc graph the mean cost over all trajectories
                         display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in costs_to_show.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   

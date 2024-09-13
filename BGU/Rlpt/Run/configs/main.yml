@@ -3,8 +3,6 @@ cost_sniffer: # remove from comment to use
   save_costs: true
   buff_n: 1000
 
-# profile_memory: "mem_profile.pickle" 
-  
-
-sim:
-  arg: None
+gui:
+  show_goal_pose: true
+  show_trajectory_lines: true

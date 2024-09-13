@@ -21,7 +21,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 """ 
-Based on Elias's franka_reacher_for_comparison.py """
+Based on Elias's franka_reacher_for_comparison.py 
+"""
 
 import copy
 from isaacgym import gymapi
@@ -54,8 +55,16 @@ from storm_kit.gym.helpers import load_struct_from_dict
 from storm_kit.util_file import get_mpc_configs_path as mpc_configs_path
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
 from storm_kit.mpc.task.reacher_task import ReacherTask
-
+from BGU.Rlpt.Run.configs.default_main import load_config_with_defaults
 np.set_printoptions(precision=2)
+
+
+
+
+BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
+
+
+
 # >>> Dan 
 # told by elias:
 #  each world model is a world to run at. "iter" is the index of the model in world_params_list (should be called "world_index" or simular) 
@@ -87,13 +96,46 @@ q_list = [[0.4146387727380216, -0.38294995859790976, 0.6123508556397315, 0.55357
           [0.6850944927269871, 0.05900626976761275, 0.6943807034646858, 0.21213023079974228],
           [-0.5731224864529111, -0.28861682231262575, -0.38016811946702006, -0.6661104610656589]]
 
+def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
+    """_summary_
+    Drawing the green (good) & red (bed) trajectories in gui, at every real-world time step
+    """
+    # >>>>> Dan - removing the red and green colors from screen. Comment out to see what happens >>>>>>>>>>
+    gym_instance.clear_lines()
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    
+    top_trajs = mpc_control.top_trajs.cpu().float()#.numpy()
+    n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+    w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+
+    # >>>>> Dan - this block is making the green/red lines (good/bad trajectories) in gui at every step in gui. comment it out to see >>> 
+    top_trajs = w_pts.cpu().numpy()
+    color = np.array([0.0, 1.0, 0.0])
+    for k in range(top_trajs.shape[0]):
+        pts = top_trajs[k,:,:]
+        color[0] = float(k) / float(top_trajs.shape[0])
+        color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+        gym_instance.draw_lines(pts, color=color)
+    
 
 class MpcRobotInteractive:
     """
     This class is for controlling the arm base and simulator.
     It contains the functions for RL learning.
+    TODO: This class should be called "Controller" or "SimManager" since its controlling and managing the sim
     """
-    def __init__(self, args, gym_instance):
+    def __init__(self, args, gym_instance: Gym, bgu_cfg:dict):
+        """ An instance of the control loop of the robot. Operating the simulation
+
+        Args:
+            args (_type_): _description_
+            gym_instance (_type_): 
+            bgu_cfg (dict): new parameters. Added to simplify code, improve readibility and more. 
+        """
+        
+        self.gui_settings = bgu_cfg['gui']    
+
+            
         self.args = args
         self.gym_instance = gym_instance
         
@@ -105,7 +147,7 @@ class MpcRobotInteractive:
         self.objects_configuration = None
 
         # File variables
-        self.vis_ee_target = True
+        self.vis_ee_target = True  # Display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui.
         self.robot_file = self.args.robot + '.yml'
         self.task_file = self.args.robot + '_reacher.yml'
         self.world_file = 'collision_primitives_3d_origina2.yml'
@@ -208,7 +250,8 @@ class MpcRobotInteractive:
 
         self.obj_asset_file = "urdf/mug/movable_mug.urdf" # United Robot Description Format https://www.mathworks.com/help/sm/ug/urdf-model-import.html
         self.obj_asset_root = get_assets_path() # path to .../storm/content/assets
-        # ?
+        
+        # Visualizing end effector target settings 
         if(self.vis_ee_target):
             self.target_object = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_target_object')
             self.obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 0)
@@ -233,7 +276,7 @@ class MpcRobotInteractive:
         self.object_pose.r = gymapi.Quat(self.g_q[1], self.g_q[2], self.g_q[3], self.g_q[0])  # goal quaternion (rotation)
         self.object_pose = self.w_T_r * self.object_pose
         
-        if(self.vis_ee_target):
+        if(self.vis_ee_target): 
             self.gym.set_rigid_transform(self.env_ptr, self.obj_base_handle, self.object_pose)
         self.n_dof = self.mpc_control.controller.rollout_fn.dynamics_model.n_dofs
         self.prev_acc = np.zeros(self.n_dof)
@@ -255,6 +298,7 @@ class MpcRobotInteractive:
         self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
         self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
+    
     def step(self, cost_params, mpc_params, i):
         """
         Update arm parameters. cost_params are the parameters for the mpc cost function. mpc_params are the horizon and number of particles of the mpc.
@@ -282,7 +326,9 @@ class MpcRobotInteractive:
             self.gym_instance.step() # Dan: elias said its something of the simulation and not related to mpc
 
             if(self.vis_ee_target): 
-                if self.pose == None: # Dan: elias said this is something 
+                # Actions to do only in case you display red cup in gui (not effecting navigation algorithm)
+                
+                if self.pose == None: 
                     self.pose = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle))
                     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose)
                 self.update_pose()
@@ -334,21 +380,8 @@ class MpcRobotInteractive:
 
             #print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(self.mpc_control.opt_dt),
                   #"{:.3f}".format(self.mpc_control.mpc_dt))
-        
-            
-            self.gym_instance.clear_lines()
-            top_trajs = self.mpc_control.top_trajs.cpu().float()#.numpy()
-            n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
-            w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3) # Rotates point by transform quatertnion and adds transform offset
 
-
-            top_trajs = w_pts.cpu().numpy()
-            color = np.array([0.0, 1.0, 0.0])
-            for k in range(top_trajs.shape[0]):
-                pts = top_trajs[k,:,:]
-                color[0] = float(k) / float(top_trajs.shape[0])
-                color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
-                self.gym_instance.draw_lines(pts, color=color)
+            gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
             
             self.robot_sim.command_robot_position(q_des, self.env_ptr, self.robot_ptr)
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
@@ -710,23 +743,43 @@ if __name__ == '__main__':
     sim_params['headless'] = args.headless
     
     gym_instance = Gym(**sim_params) # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
-    Mpc = MpcRobotInteractive(args, gym_instance) 
-   
     
-    end_flag = True
     
+    bgu_cfg = load_config_with_defaults(BGU_CFG_PATH)
+    profile_memory = bgu_cfg['profile_memory']['include'] # use memory profiling
+    
+    Mpc = MpcRobotInteractive(args, gym_instance, bgu_cfg) 
+    
+    if profile_memory:    
+        torch.cuda.memory._record_memory_history(max_entries=100000)
+
+    try:    
+        ########## Control Loop #############
+        # for each episode (simulation)     
+        for ep in range(EPISODES):
+            # start episode
+            ep_start_time = time.time()
+            for ts in range(EPISODE_MAX_TS):
+                print(f"episode: {ep}, ts: {ts} ")
+                arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
+                if keyboard_interupt:
+                    print('keyboard interupt from user. Exit program')
+                    exit()
+                    
+                # todo - check goal state !!! Dan 12.9.24
+            
+            # end of episode
+            ep_end_time = time.time() 
+            elapsed_time = ep_end_time - ep_start_time
+            Mpc.reset()
         
-    for ep in range(EPISODES):
-        ep_start_time = time.time()
-        for ts in range(EPISODE_MAX_TS):
-            arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
-            if keyboard_interupt:
-                print('keyboard interupt from user. Exit program')
-                exit()
-            # todo - check goal state !!! Dan 12.9.24
-        ep_end_time = time.time() # episode is over
-        elapsed_time = ep_end_time - ep_start_time
-        Mpc.reset()
+        # loop finished
+        if profile_memory:
+            torch.cuda.memory._dump_snapshot(bgu_cfg['profile_memory']['pickle_path']) # stop profiling memory and save it to output path   
+    
+    except torch.cuda.OutOfMemoryError: 
+        if profile_memory:
+            torch.cuda.memory._dump_snapshot(bgu_cfg['profile_memory']['pickle_path']) 
 
             
     
