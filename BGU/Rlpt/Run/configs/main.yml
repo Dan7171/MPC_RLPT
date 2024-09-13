@@ -1,8 +1,3 @@
-cost_sniffer: # remove from comment to use
-  gui: true
-  save_costs: true
-  buff_n: 1000
-
 gui:
   show_goal_pose: true
   show_trajectory_lines: true

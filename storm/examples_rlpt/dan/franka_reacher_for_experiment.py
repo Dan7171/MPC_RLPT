@@ -25,10 +25,12 @@ Based on Elias's franka_reacher_for_comparison.py
 """
 
 import copy
+from typing import Tuple
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 # from isaacgym.gymapi import Tensor
+from sympy import Integer
 import torch
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -57,10 +59,8 @@ from storm_kit.differentiable_robot_model.coordinate_transform import quaternion
 from storm_kit.mpc.task.reacher_task import ReacherTask
 from BGU.Rlpt.Run.configs.default_main import load_config_with_defaults
 np.set_printoptions(precision=2)
-
-
-
-
+from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
 
 
@@ -118,14 +118,31 @@ def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
         gym_instance.draw_lines(pts, color=color)
     
 
+def start_mem_profiling():
+    """
+    start profiling gpu memory consumption.
+    ref: https://pytorch.org/docs/stable/torch_cuda_memory.html
+    """
+    torch.cuda.memory._record_memory_history(max_entries=100000)
+    
+def finish_mem_profiling(output_path):
+    """
+    stop profiling memory and save it to output path
+    drag and drop output file here to analyze: https://pytorch.org/memory_viz
+    """
+    
+    torch.cuda.memory._dump_snapshot(output_path)    
+    print(f"memory usage profile was saved to {output_path}")
+
 class MpcRobotInteractive:
     """
     This class is for controlling the arm base and simulator.
     It contains the functions for RL learning.
-    TODO: This class should be called "Controller" or "SimManager" since its controlling and managing the sim
+    Operations to control the simulation
+    TODO: Don't really like this class. This class should be called "Controller" or "Actions for simulation" since thats what it is
     """
     def __init__(self, args, gym_instance: Gym, bgu_cfg:dict):
-        """ An instance of the control loop of the robot. Operating the simulation
+        """ 
 
         Args:
             args (_type_): _description_
@@ -147,7 +164,7 @@ class MpcRobotInteractive:
         self.objects_configuration = None
 
         # File variables
-        self.vis_ee_target = True  # Display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui.
+        self.vis_ee_target = self.gui_settings['show_goal_pose']   # Display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui.
         self.robot_file = self.args.robot + '.yml'
         self.task_file = self.args.robot + '_reacher.yml'
         self.world_file = 'collision_primitives_3d_origina2.yml'
@@ -298,7 +315,20 @@ class MpcRobotInteractive:
         self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
         self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
+    def _change_g(self):
+        """TODO: Some function that I am not really sure what it does. Complete when known
+        """
+        self.g_pos[0] = self.pose.p.x
+        self.g_pos[1] = self.pose.p.y
+        self.g_pos[2] = self.pose.p.z
+        self.g_q[1] = self.pose.r.x
+        self.g_q[2] = self.pose.r.y
+        self.g_q[3] = self.pose.r.z
+        self.g_q[0] = self.pose.r.w
     
+        self.mpc_control.update_params(goal_ee_pos=self.g_pos,
+                                    goal_ee_quat=self.g_q)
+        
     def step(self, cost_params, mpc_params, i):
         """
         Update arm parameters. cost_params are the parameters for the mpc cost function. mpc_params are the horizon and number of particles of the mpc.
@@ -332,20 +362,11 @@ class MpcRobotInteractive:
                     self.pose = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle))
                     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose)
                 self.update_pose()
-                #self.goal_pose = copy.deepcopy(pose) # RL
-
                 if(np.linalg.norm(self.g_pos - np.ravel([self.pose.p.x, self.pose.p.y, self.pose.p.z])) > 0.00001 or (np.linalg.norm(self.g_q - np.ravel([self.pose.r.w, self.pose.r.x, self.pose.r.y, self.pose.r.z]))>0.0)):
-                    self.g_pos[0] = self.pose.p.x
-                    self.g_pos[1] = self.pose.p.y
-                    self.g_pos[2] = self.pose.p.z
-                    self.g_q[1] = self.pose.r.x
-                    self.g_q[2] = self.pose.r.y
-                    self.g_q[3] = self.pose.r.z
-                    self.g_q[0] = self.pose.r.w
-                    print(f"self.g_pos[0: {self.g_pos[0]}")
-
-                    self.mpc_control.update_params(goal_ee_pos=self.g_pos,
-                                              goal_ee_quat=self.g_q)
+                    self._change_g() # I think its being called just in initiation
+                    
+                    
+                    
             self.t_step += self.sim_dt
             
             current_robot_state = copy.deepcopy(self.robot_sim.get_state(self.env_ptr, self.robot_ptr))
@@ -374,12 +395,12 @@ class MpcRobotInteractive:
             self.ee_pose.r = gymapi.Quat(e_quat[1], e_quat[2], e_quat[3], e_quat[0])
             
             self.ee_pose = copy.deepcopy(self.w_T_r) * copy.deepcopy(self.ee_pose)
-            
             if(self.vis_ee_target):
                 self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose))
-
-            #print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(self.mpc_control.opt_dt),
-                  #"{:.3f}".format(self.mpc_control.mpc_dt))
+                
+            # error (list in length 3 for some reason -), opt_dt (probably the delta of time between operations (in real world) and mpc_dt probably the same but between in mpc steps)
+            # print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(self.mpc_control.opt_dt),
+            #       "{:.3f}".format(self.mpc_control.mpc_dt))
 
             gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
             
@@ -435,9 +456,7 @@ class MpcRobotInteractive:
 
         world_yml = join_path(get_gym_configs_path(), self.world_file)
         world_params, indexes, compressed_world_params = self.modify_dict(world_yml) # modify dict - randonmly seclecting a world
-        # iter = 2 # also
-        # world_params = world_params_list[iter]
-        # compressed_world_params = compressed_world_params_list[iter]
+        
         print(f"world_params: {world_params}")
         print(f"compressed_world_params: {compressed_world_params}")
         # refresh observation
@@ -466,16 +485,16 @@ class MpcRobotInteractive:
         q = self.generate_random_quaternion()
         # p = p_list[iter]
         # q = q_list[iter]
+        print("\n\n\nDebug")
         print(f"p: {p}")
         print(f"q: {q}")
-        #self.goal_pose = p + q
+        self.goal_pose = p + q
         print(f"transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist(): {self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()}")
         self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0]
         self.update_pose()
-        print(f"self.goal_pose: {self.goal_pose}")
-
-        root_goal = saved_root_tensor[39, 0:7]
+        print(f"self.goal_pose: {self.goal_pose}") # this is the x,y,z,quaternion as appears in gui
         print(f"self.w_T_r): {self.w_T_r}!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        root_goal = saved_root_tensor[39, 0:7]
         root_goal[0:7] = torch.tensor(self.goal_pose)
 
         #root_positions[0, 0:7] = torch.tensor(self.goal_pose)
@@ -500,7 +519,48 @@ class MpcRobotInteractive:
         # Update world_params
         self.mpc_control.update_world_params(compressed_world_params)
 
+    def episode(self, max_ts, cost_params, mpc_params, tuning=False) -> Tuple[int, float]:
+        
+        """
+        Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
+        The control during the episode (a control loop) is done by the STORM mppi controller. 
+        
+        max_ts: maximal time step of the episode (maximal duration in unit of steps). The episode will not continue after that timestep (even if robot was not reaching the goal)
+        cost_params: initial parameters for the cost function
+        mpc_params: initial parameters for the cost function
+        tuning: TODO: serving the rlpt. if True, the cost and mpc params will be re-selected throughout the episode frequently (probably on every time step). 
+        
+        Return:
+        a tuple "p" where:
+            p[0](int) is the number of time-steps took took to reach goal position & orientation. -1 if failed to reach  
+            p[1](float) is the total run time of episde in seconds
+        """
+        cost_params = copy.deepcopy(cost_params) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
 
+        # -- start episode control loop --
+        ep_start_time = time.time()
+        for ts in range(EPISODE_MAX_TS):
+            print(f"episode: {ep}, ts: {ts} ")
+            arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
+            if keyboard_interupt:
+                print('keyboard interupt from user. Exit program')
+                exit()
+            # TODO 1.  here to check goal state and then do reset if reached !!! Dan 12.9.24
+            # TODO 2. something like: goal_test =  isclose(goal state position, ene effector position) and isclose(goal state orientation, ene effector orientation)
+            # TODO 3:  if goal_test(): return True    
+            # print(goal_pose, end_effector_pos, end_effector_quat) # self.mpc_control.get_current_error(filtered_state_mpc))
+            goal_test = False # to remove
+            if goal_test: 
+                break
+        # -- end of episode -- 
+        
+        time_steps_to_goal = ts if goal_test else -1
+        total_time = time.time() - ep_start_time 
+
+        return time_steps_to_goal, total_time
+        
+        
+        
 ###############################################################################################
 #####################h HELPER FUNCTIONS #######################################################
     def extract_poses(self, dictionary):
@@ -707,12 +767,17 @@ class MpcRobotInteractive:
 
         return world_params, indexes, compressed_world_params
 
+
+# class SimulationOperator:
+#     def __init__(self, episodes=1, worlds=[])
+    
+    
 ###############################################################################################
 ###############################################################################################
 
 # some variables for loop
 EPISODES = 10 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 1000 # maximal number of time steps in a single episode 
+EPISODE_MAX_TS = 100 # maximal number of time steps in a single episode 
 cost_params = {
             "manipulability": 500, # 30 
             "stop_cost": 50, 
@@ -725,84 +790,51 @@ cost_params = {
             "voxel_collision" : 0
             }
 mpc_params = {
-    "horizon" : 90 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
+    "horizon" : 30 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
     "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
     } #dan
 
 if __name__ == '__main__':
     
-    # instantiate empty gym:
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn')
     parser.add_argument('--cuda', action='store_true', default=True, help='use cuda')
     parser.add_argument('--headless', action='store_true', default=False, help='headless gym')
     parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
     args = parser.parse_args()
-    
     sim_params = load_yaml(join_path(get_gym_configs_path(),'physx.yml')) # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless
-    
+    bgu_cfg = load_config_with_defaults(BGU_CFG_PATH)
+    if bgu_cfg['cost_sniffer']['include']:
+        sniffer_params:dict = copy.deepcopy(bgu_cfg['cost_sniffer'])
+        sniffer_params.pop('include')
+        GLobalVars.cost_sniffer = CostFnSniffer(*sniffer_params)
+
+    profile_memory = bgu_cfg['profile_memory']['include'] # use memory profiling
+    # instantiate empty gym:
     gym_instance = Gym(**sim_params) # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
     
-    
-    bgu_cfg = load_config_with_defaults(BGU_CFG_PATH)
-    profile_memory = bgu_cfg['profile_memory']['include'] # use memory profiling
-    
+    # instantiate the object which is controlling the simulation loop
     Mpc = MpcRobotInteractive(args, gym_instance, bgu_cfg) 
     
+    # if profiling memory usage, start profiling 
     if profile_memory:    
-        torch.cuda.memory._record_memory_history(max_entries=100000)
-
-    try:    
-        ########## Control Loop #############
-        # for each episode (simulation)     
-        for ep in range(EPISODES):
-            # start episode
-            ep_start_time = time.time()
-            for ts in range(EPISODE_MAX_TS):
-                print(f"episode: {ep}, ts: {ts} ")
-                arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
-                if keyboard_interupt:
-                    print('keyboard interupt from user. Exit program')
-                    exit()
-                    
-                # todo - check goal state !!! Dan 12.9.24
-            
-            # end of episode
-            ep_end_time = time.time() 
-            elapsed_time = ep_end_time - ep_start_time
-            Mpc.reset()
+        start_mem_profiling()
         
-        # loop finished
+    ##### main loop of episodes execution: #######
+    try:    
+        ########## All episodes #############     
+        for ep in range(EPISODES):
+            tstg, tt =  Mpc.episode(EPISODE_MAX_TS, cost_params, mpc_params) # tstg = time-steps to goal, tt = total time 
+
+            Mpc.reset() # reset the mpc world
         if profile_memory:
-            torch.cuda.memory._dump_snapshot(bgu_cfg['profile_memory']['pickle_path']) # stop profiling memory and save it to output path   
+            finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])
+            
     
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:
-            torch.cuda.memory._dump_snapshot(bgu_cfg['profile_memory']['pickle_path']) 
-
+            finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])
             
     
-         
-    #  i = 0 
-    # steps_in_one_epispde = 1000 # dan - this is the number of time units I guess which and episode takes
-    # while(i > -100):
-    #     # >>> Dan 
-    #     # Dan - to play with the non 0 cost params and see the affect.
-    #     # <<<
-        
-    #     arm_configuration, goal_pose, end_effector_pos, end_effector_quat, done = Mpc.step(cost_params, mpc_params, i)
-    #     if end_flag:
-    #         start_time = time.time()
-    #         end_flag = False
-    #     end_time = 0
-    #     if i%EPISODE_MAX_TS == 0: 
-    #         end_time = time.time()
-    #         end_flag = True
-    #         elapsed_time = end_time - start_time
-    #         print(f"Execution time: {elapsed_time:.6f} seconds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    #         Mpc.reset()
-    #     if done:
-    #         break
-    #     i += 1
-    
+

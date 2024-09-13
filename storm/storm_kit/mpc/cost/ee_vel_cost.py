@@ -27,8 +27,7 @@ import torch.nn as nn
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 class EEVelCost(nn.Module):
     def __init__(self, ndofs, device, float_dtype, weight=1.0, vec_weight=[], gaussian_params={}):
         super(EEVelCost, self).__init__()
@@ -62,8 +61,9 @@ class EEVelCost(nn.Module):
         t1 = self.gaussian_projection(error)# Dan
         cost = w1 * t1 # Dan
         
-        cost_term_name = 'ee_vel'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:
+            sniffer.set('ee_vel', CostTerm(w1, t1))
         
         return cost.to(inp_device)
     def update_weight(self, weight):

@@ -26,8 +26,8 @@ import torch.nn as nn
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
+
 
 class StopCost(nn.Module):
     def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float64},
@@ -71,12 +71,12 @@ class StopCost(nn.Module):
         w1 = self.weight # Dan
         t1 =  self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))# Dan
         cost = w1 * t1    
-        cost_term_name = 'stop_acc' if is_stop_acc else 'stop'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
-             
-        # cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
-
+        cost_term_name = 'stop_acc' if is_stop_acc else 'stop'    
         
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:    
+            sniffer.set(cost_term_name, CostTerm(w1, t1))
+             
         return cost.to(inp_device)
     def update_weight(self, weight):
         """

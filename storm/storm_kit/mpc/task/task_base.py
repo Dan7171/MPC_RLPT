@@ -99,12 +99,43 @@ class BaseTask():
 
 
     def _state_to_tensor(self, state):
+        """
+        input: a dictionary of the state of all 7 joints, 3 values per joint (position, velocity, acceleration):
+            {
+            'name': ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'],
+            'position': array([ 9.81e-01, -9.88e-01,  1.41e-03, -1.98e+00,  7.27e-04,  1.54e+00,7.54e-01], dtype=float32),
+            'velocity': array([-0.,  0.,  0.,  0.,  0., -0., -0.], dtype=float32),
+            'acceleration': array([-0.,  0.,  0.,  0.,  0., -0., -0.], dtype=float32)
+            } 
+        
+        output: same 3x7 values but in a tensor 
+        tensor([[ 9.8084e-01, -9.8823e-01,  1.4055e-03, -1.9804e+00,  7.2683e-04,
+          1.5439e+00,  7.5390e-01, -0.0000e+00,  0.0000e+00,  0.0000e+00,
+          0.0000e+00,  0.0000e+00, -0.0000e+00, -0.0000e+00, -0.0000e+00,
+          0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00, -0.0000e+00,
+         -0.0000e+00]], device='cuda:0', dtype=torch.float32)
+       
+        """
+        
         state_tensor = np.concatenate((state['position'], state['velocity'], state['acceleration']))
 
         state_tensor = torch.tensor(state_tensor)
         return state_tensor
-    def get_current_error(self, curr_state):
-        state_tensor = self._state_to_tensor(curr_state).to(**self.controller.tensor_args).unsqueeze(0)
+    def get_current_error(self, curr_state) -> list:
+        """
+        explained by example:
+        
+        input: a dictionary of the state of all 7 joints:
+            {
+            'name': ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'],
+            'position': array([ 9.81e-01, -9.88e-01,  1.41e-03, -1.98e+00,  7.27e-04,  1.54e+00,7.54e-01], dtype=float32),
+            'velocity': array([-0.,  0.,  0.,  0.,  0., -0., -0.], dtype=float32),
+            'acceleration': array([-0.,  0.,  0.,  0.,  0., -0., -0.], dtype=float32)
+            } 
+        output: list
+        [1782.576171875, 2.5937154293060303, 1.7414523363113403] # probably some value for each of the 3 (position, velocity, acceleration)
+        """
+        state_tensor = self._state_to_tensor(curr_state).to(**self.controller.tensor_args).unsqueeze(0) # parsing the dict to a tensor and sending it to de
         ee_error,_ = self.controller.rollout_fn.current_cost(state_tensor)
         ee_error = [x.detach().cpu().item() for x in ee_error]
         return ee_error

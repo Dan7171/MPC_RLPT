@@ -27,9 +27,8 @@ import torch.nn as nn
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
-
+from BGU.Rlpt.DebugTools.globs import GLobalVars
+sniffer = GLobalVars.cost_sniffer
 
 eps = 0.01
 
@@ -64,11 +63,13 @@ class ManipulabilityCost(nn.Module):
         w1 = self.weight # Dan
         t1 = score # Dan
         cost = w1 * t1
-        
-        cost_term_name = 'manipulability'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))        
+            
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:          
+            sniffer.set('manipulability', CostTerm(w1, t1))        
             
         return cost.to(inp_device)
+    
     def update_weight(self, weight):
         """
         Update weight dynamically

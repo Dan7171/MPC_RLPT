@@ -30,8 +30,7 @@ from BGU.Rlpt.DebugTools.logger_config import logger
 import copy
 import json
 
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 
 class ArmReacher(ArmBase):
     """
@@ -153,8 +152,11 @@ class ArmReacher(ArmBase):
         logger.debug(f'---------------all cost calculations finisied -----------------\n\
             Final costs:\n\
                 {ans}')
-        
-        sniffer.finish()
+
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:
+            sniffer.finish()
+            
         return ans
 
 

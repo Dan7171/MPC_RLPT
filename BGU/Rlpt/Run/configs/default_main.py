@@ -4,7 +4,7 @@ import yaml
 default_settings = {
     'cost_sniffer':
         {
-        'include': False, # include in run or not. If False, all other settings irrelevant
+        'include': False, # include in run or not. If False, all other settings irrelevant. If True - sniffer will be used (collecting information about costs during run and optionally show them in guit)
         'gui': False, # show costs in gui (interactive graph)
         'save_costs': False, # to save all episode costs (real and mpc) to a pickle file or not
         'buffer_n': 1000  # how many costs to aggregate into each real or mpc buffer, before flushing them to the pickle file (relevant only if saving costs to pickle) 

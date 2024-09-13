@@ -26,8 +26,8 @@ import torch.nn as nn
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
+
 
 
 class DistCost(nn.Module):
@@ -62,8 +62,10 @@ class DistCost(nn.Module):
         t1 = self.proj_gaussian(dist) # Dan
         cost = w1 * t1 # Dan
         
-        cost_term_name = 'joint_l2' if is_joint_l2 else 'null_disp'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:
+            cost_term_name = 'joint_l2' if is_joint_l2 else 'null_disp'     
+            sniffer.set(cost_term_name, CostTerm(w1, t1))
         
       
         

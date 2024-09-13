@@ -29,8 +29,7 @@ from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.DebugTools.logger_config import logger, logger_ticks
 from BGU.Rlpt.DebugTools.storm_tools import is_real_world, RealWorldState
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 # <<<<<<<<<<<<<< Dan <<<<<<<<<<<<<<<<
 
 class PoseCost(nn.Module):
@@ -126,11 +125,11 @@ class PoseCost(nn.Module):
         logger.debug(f'goal weights: orientation = {w1}, position = {w2}')
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = w1 * t1 + w2 * t2         
-        
-        cost_term_name = 'goal_orientation'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
-        cost_term_name = 'goal_position'        
-        sniffer.set(cost_term_name, CostTerm(w2, t2))
+
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:
+            sniffer.set( 'goal_orientation', CostTerm(w1, t1))
+            sniffer.set( 'goal_position', CostTerm(w2, t2))
     
         return cost.to(inp_device), rot_err_norm, goal_dist
     def update_weight(self, weight):

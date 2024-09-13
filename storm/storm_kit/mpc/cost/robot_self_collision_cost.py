@@ -32,8 +32,8 @@ from ...util_file import get_assets_path, join_path
 from ...geom.sdf.robot import RobotSphereCollision
 from .gaussian_projection import GaussianProjection
 from BGU.Rlpt.Classes.CostTerm import CostTerm
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+from BGU.Rlpt.DebugTools.globs import GLobalVars
+
 class RobotSelfCollisionCost(nn.Module):
     def __init__(self, weight=None, robot_params=None,
                  gaussian_params={}, distance_threshold=-0.01, 
@@ -112,8 +112,11 @@ class RobotSelfCollisionCost(nn.Module):
         w1 = self.weight # Dan
         t1 = self.proj_gaussian(cost)# Dan
         cost = w1 * t1 # Dan
-        cost_term_name = 'self_collision'        
-        sniffer.set(cost_term_name, CostTerm(w1, t1))
+        cost_term_name = 'self_collision'    
+        
+        sniffer = GLobalVars.cost_sniffer
+        if sniffer is not None:   
+            sniffer.set(cost_term_name, CostTerm(w1, t1))
         
         return cost
 

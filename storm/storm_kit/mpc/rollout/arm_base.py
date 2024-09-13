@@ -36,8 +36,7 @@ from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world 
 from BGU.Rlpt.DebugTools.logger_config import logger
-from BGU.Rlpt.DebugTools.globs import globs
-sniffer = globs.cost_fn_sniffer
+
 
 class ArmBase(RolloutBase):
     """

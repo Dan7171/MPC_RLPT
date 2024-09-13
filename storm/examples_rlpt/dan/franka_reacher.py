@@ -272,7 +272,7 @@ def mpc_robot_interactive(args, gym_instance):
             ee_error = mpc_control.get_current_error(filtered_state_mpc)
              
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
-            
+            print(pose_state)
             # get current pose:
             e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
             e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
@@ -283,7 +283,7 @@ def mpc_robot_interactive(args, gym_instance):
             
             if(vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
-
+            # error (list in length 3 for some reason -), opt_dt (probably the delta of time between operations (in real world) and mpc_dt probably the same but between in mpc steps)
             print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(mpc_control.opt_dt),
                   "{:.3f}".format(mpc_control.mpc_dt))
         
