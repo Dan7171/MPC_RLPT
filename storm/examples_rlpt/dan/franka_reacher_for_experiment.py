@@ -210,16 +210,7 @@ class MpcRobotInteractive:
         self.robot_sim.spawn_camera(self.env_ptr, 60, 640, 480, self.robot_camera_pose)
 
         # get pose
-        """
-        An assumption to what w_T_r is (by gpt):
-        
-        In the context of this code, w_T_r represents the pose (position and orientation) of the robot in the world frame. Specifically, it is a transformation matrix or object that encapsulates the translation and rotation from the world coordinate system (w) to the robot's base coordinate system (r).
-        w_T_r holds the pose of the robot (position and orientation) after being spawned in the simulation.
-        This is done by copying the robot_sim.spawn_robot_pose using copy.deepcopy(), ensuring that you are working with a local instance of the robot's world transformation.
-        It is later used to update the transformation for things like object poses and end-effector (EE) control in the world coordinate frame.
-        Essentially, w_T_r helps convert poses from the robot's coordinate frame to the world frame and vice versa.
-        """
-
+ 
         self.w_T_r = copy.deepcopy(self.robot_sim.spawn_robot_pose)  # Deep copy the robot's initial pose (position and orientation) after being spawned in the simulation
         self.w_T_robot = torch.eye(4)  # Create a 4x4 identity matrix to represent the transformation matrix of the robot in the world frame (homogeneous transformation matrix)
 
@@ -230,7 +221,7 @@ class MpcRobotInteractive:
         # Convert the quaternion to a rotation matrix (3x3 rotation matrix from the quaternion)
         self.rot = quaternion_to_matrix(self.quat)
 
-        # Set the translation (position) part of the homogeneous transformation matrix
+        # Set the translation (position) part of the homogeneous transformation matrix # 
         self.w_T_robot[0, 3] = self.w_T_r.p.x  # Set x-position
         self.w_T_robot[1, 3] = self.w_T_r.p.y  # Set y-position
         self.w_T_robot[2, 3] = self.w_T_r.p.z  # Set z-position
@@ -451,6 +442,11 @@ class MpcRobotInteractive:
         self.end_effector_quat = copy.deepcopy(e_quat) # RL
     
     def update_pose(self):
+        """
+        First set self.pose to be like self.goal_pose as it is in GUI coordinates, but then multipling it by self.w_T_r.inverse() 
+        so it will be not in storm coordinates. 
+        """
+        # in gui coordinates
         self.pose.p.x = self.goal_pose[0]
         self.pose.p.y = self.goal_pose[1]
         self.pose.p.z = self.goal_pose[2]
@@ -459,7 +455,8 @@ class MpcRobotInteractive:
         self.pose.r.z = self.goal_pose[5]
         self.pose.r.w = self.goal_pose[6]
 
-        self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose)
+        # in storm coordinates
+        self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose) # STORM coordintate system representation of goal pose
         #self.pose = copy.deepcopy(self.w_T_r * self.pose)
 
 
@@ -481,61 +478,49 @@ class MpcRobotInteractive:
         print(f"compressed_world_params: {compressed_world_params}") 
         
         # refresh observation
-        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
 
         # acquire root state tensor descriptor
         _root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         
         # wrap it in a PyTorch Tensor
-        root_tensor = gymtorch.wrap_tensor(_root_tensor)
-
-        # save a copy of the original root states
-        saved_root_tensor = root_tensor.clone()
-        root_positions = saved_root_tensor[1:-2, 0:7] 
-        #print(f"root_positions: {root_positions.shape}")
-       
+        root_tensor = gymtorch.wrap_tensor(_root_tensor) # a matrix of shape of Ix13 where I is the num of items in simulator (inc)
+        
+        saved_root_tensor = root_tensor.clone() # save a copy of the original root states 
+        root_poses = saved_root_tensor[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7)
+        
         # Extract new object poses
-        poses = self.extract_poses(world_params['world_model']['coll_objs']) # dict of spheres and cubes with their attributes (size, loc etc)
+        poses = self.extract_poses(world_params['world_model']['coll_objs']) # dict of I items: spheres and cubes with their attributes (size, loc etc)
 
         # Create a torch tensor from the poses
-        root_positions[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) 
+        root_poses[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) # all I items- position and orientation in gui coordinates
         #saved_root_tensor[2:-2, 0:7] *= 0
         print(f"DEBUG num of objects in world: {len(world_params['world_model']['coll_objs']['sphere']) + len(world_params['world_model']['coll_objs']['cube'])}")
-        # Set new goal
-        p = self.generate_random_position(3)
-        q = self.generate_random_quaternion()
-        # p = p_list[iter]
-        # q = q_list[iter]
-        print("\n\n\nDebug")
-        print(f"p: {p}")
-        print(f"q: {q}")
-        self.goal_pose = p + q
-        print(f"transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist(): {self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()}")
-        self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0]
-        self.update_pose()
-        print(f"self.goal_pose: {self.goal_pose}") # this is the x,y,z,quaternion as appears in gui
-        print(f"self.w_T_r.p: {self.w_T_r.p},self.w_T_r.r {self.w_T_r.r}")
-        root_goal = saved_root_tensor[39, 0:7]
-        root_goal[0:7] = torch.tensor(self.goal_pose)
-
-        #root_positions[0, 0:7] = torch.tensor(self.goal_pose)
-        #root_goal[0:7] = transform_inverse_tensor(torch.tensor(self.goal_pose).unsqueeze(0), self.w_T_r) #self.goal_pose
-        #root_goal[0:7] = torch.tensor([self.pose.p.x, self.pose.p.y, self.pose.p.z,
-                           #self.pose.r.x, self.pose.r.y, self.pose.r.z, self.pose.r.w])
-        #print("Tensor size:", root_positions.size())
-        #print("Tensor:")
-        #print(saved_root_tensor)
+        
+        # Set a new goal pose (position and quaternion)
+        p = self.generate_random_position(3) # [p[0],p[1],p[2]]
+        q = self.generate_random_quaternion() # [q[0],[q[1],q[2],[q[3]]
+        self.goal_pose = p + q #[p[0],p[1],p[2],q[0],[q[1],q[2],[q[3]] - a vector in R7 
+    
+        # gui coordinate system representation of goal pose - multiplying from left by w_T_r   
+        self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0] #in GUI coordinates (w_T_r * p+q) 
+        
+        self.update_pose() # see docstring
+        root_goal = saved_root_tensor[39, 0:7] # the row of the goal pose (vector in R7) in the "root positions" 
+        root_goal[0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+        
 
         # Update simulation object positions
-        num_points = 37
-        int_linspace = np.linspace(1, 37, num=num_points, dtype=int)
-        actor_indices = torch.tensor(np.append(int_linspace, 39), dtype=torch.int32, device="cpu")
-        print(f"saved_root_tensor: {saved_root_tensor.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(f"actor_indices: {actor_indices.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
+        num_points = 37 # more generally: len(root_poses) - 1 
+        int_linspace = np.linspace(1, 37, num=num_points, dtype=int) # array([1,2,..,37])
+        actor_indices = torch.tensor(np.append(int_linspace, 39), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
 
-        # Dan - sending the new created world, (not the compressed but the whole world), to the simulator (when we send only the compressed its just to the STORM computational code)
         
-        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38)
+        # Elias: Now we are sending the new created world (not the compressed but the whole world) to the simulator (gym) - compresses means only the objects that participate in simulation (and not hidden)
+            # This is because Elias for some reason did not find a way to hide them also from the gui (simulator)
+            # when we send only the compressed its just to the STORM computational code, not to the simulator
+        # From docs: Sets actor root state buffer to values provided for given actor indices. Full actor root states buffer should be provided for all actors.
+        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38) # read the docs
 
         # Update world_params
         self.mpc_control.update_world_params(compressed_world_params)
@@ -596,7 +581,10 @@ class MpcRobotInteractive:
         return poses
 
     def transform_tensor(self, tensor, w_T_r):
-        """Parameters:
+        """
+        Transorming a pose (vector in length 7 (3 position, 4 rotation)) from STORM coordinate system to GUI coordinate system.
+        
+        Parameters:
 
         tensor: A PyTorch tensor containing rows of pose data. Each row consists of a position (x, y, z) and a quaternion (x, y, z, w).
         w_T_r: A transformation (gymapi.Transform) representing the relationship between two coordinate frames (e.g., world frame to robot frame).
@@ -608,7 +596,13 @@ class MpcRobotInteractive:
         Store Transformed Pose: Extracts the position and quaternion from the transformed pose and appends it to the transformed_tensor list.
         Return Result: Converts the list of transformed poses into a PyTorch tensor and returns it.
         Purpose: Transforms a list of poses from one coordinate frame to another using the transformation w_T_r.
-        This function is used when you need to apply a transformation to update the poses based on the current simulation state."""
+        This function is used when you need to apply a transformation to update the poses based on the current simulation state.
+        
+        might help: https://mecharithm.com/learning/lesson/homogenous-transformation-matrices-configurations-in-robotics-12
+        https://www.quora.com/What-is-a-homogeneous-transformation-matrix 
+        
+        
+        """
 
         transformed_tensor = []
 
@@ -617,7 +611,7 @@ class MpcRobotInteractive:
             pose.p = gymapi.Vec3(row[0], row[1], row[2])
             pose.r = gymapi.Quat(row[3], row[4], row[5], row[6])
             
-            table_pose = w_T_r * pose
+            table_pose = w_T_r * pose # pose in STORM coordinates -> pose in GUI coordinates 
 
             transformed_row = [table_pose.p.x, table_pose.p.y, table_pose.p.z,
                             table_pose.r.x, table_pose.r.y, table_pose.r.z, table_pose.r.w]
@@ -626,28 +620,30 @@ class MpcRobotInteractive:
 
         return torch.tensor(transformed_tensor)
 
-    def transform_inverse_tensor(self, tensor, w_T_r):
-        """
-        Difference from transform_tensor: This function uses the inverse of the transformation w_T_r.
-        It essentially converts poses back from the transformed frame to the original frame.
-        Purpose: Used when you need to reverse a transformation. 
-        For example, if you previously transformed a pose from the robot frame to the world frame, this function will convert it back to the robot frame.
-        """
-        transformed_tensor = []
+    # def transform_inverse_tensor(self, tensor, w_T_r):
+    #     """
+    #     UPDATE: This function is not realy by use!!!
+        
+    #     Difference from transform_tensor: This function uses the inverse of the transformation w_T_r.
+    #     It essentially converts poses back from the transformed frame to the original frame.
+    #     Purpose: Used when you need to reverse a transformation. 
+    #     For example, if you previously transformed a pose from the robot frame to the world frame, this function will convert it back to the robot frame.
+    #     """
+    #     transformed_tensor = []
 
-        for row in tensor:
-            pose = gymapi.Transform()
-            pose.p = gymapi.Vec3(row[0], row[1], row[2])
-            pose.r = gymapi.Quat(row[3], row[4], row[5], row[6])
+    #     for row in tensor:
+    #         pose = gymapi.Transform()
+    #         pose.p = gymapi.Vec3(row[0], row[1], row[2])
+    #         pose.r = gymapi.Quat(row[3], row[4], row[5], row[6])
             
-            table_pose =   w_T_r.inverse() * pose
+    #         table_pose =   w_T_r.inverse() * pose
 
-            transformed_row = [table_pose.p.x, table_pose.p.y, table_pose.p.z,
-                            table_pose.r.x, table_pose.r.y, table_pose.r.z, table_pose.r.w]
+    #         transformed_row = [table_pose.p.x, table_pose.p.y, table_pose.p.z,
+    #                         table_pose.r.x, table_pose.r.y, table_pose.r.z, table_pose.r.w]
             
-            transformed_tensor.append(transformed_row)
+    #         transformed_tensor.append(transformed_row)
 
-        return torch.tensor(transformed_tensor)
+    #     return torch.tensor(transformed_tensor)
 
     def convert_to_transform(self, pose):
         pose_t = gymapi.Transform()
