@@ -389,7 +389,7 @@ class MpcRobotInteractive:
             
             if(self.vis_ee_target):
                 self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose))
-            
+
             #print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(self.mpc_control.opt_dt),
                   #"{:.3f}".format(self.mpc_control.mpc_dt))
         

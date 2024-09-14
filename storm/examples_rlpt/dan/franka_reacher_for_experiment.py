@@ -466,13 +466,12 @@ class MpcRobotInteractive:
         Input
             - objects: dict {object_type: [pos, dimension]}
             - goal_pos: numpy array [7], (x,y,z, quaternion) of target
-        Output
-            - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat]
+     
         """
         print("Resetting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         world_yml = join_path(get_gym_configs_path(), self.world_file)
-        world_params, indexes, compressed_world_params = self.modify_dict(world_yml) # modify dict - randonmly seclecting a world
+        world_params, indexes, compressed_world_params = self.select_participating_obstacles(world_yml) # modify dict - randonmly seclecting a world
         
         print(f"world_params: {world_params}")
         print(f"compressed_world_params: {compressed_world_params}") 
@@ -517,12 +516,15 @@ class MpcRobotInteractive:
 
         
         # Elias: Now we are sending the new created world (not the compressed but the whole world) to the simulator (gym) - compresses means only the objects that participate in simulation (and not hidden)
-            # This is because Elias for some reason did not find a way to hide them also from the gui (simulator)
-            # when we send only the compressed its just to the STORM computational code, not to the simulator
+        # This is because Elias for some reason did not find a way to hide them also from the gui (simulator)
+        # when we send only the compressed its just to the STORM computational code, not to the simulator
         # From docs: Sets actor root state buffer to values provided for given actor indices. Full actor root states buffer should be provided for all actors.
+        
+        # TLDR: to gym- we pass *all* obstacles (participating and not (hidden and not appear in gui)):
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38) # read the docs
 
-        # Update world_params
+        # TO STORM: Update world_params (compressed only - meaning just a subset of the obstacles that actually participate in simulation (and not hidden)) 
+        # TLDR2: to storm - we pass *only participating* obstacles
         self.mpc_control.update_world_params(compressed_world_params)
 
     def episode(self, max_ts, cost_params, mpc_params, tuning=False) -> Tuple[int, float]:
@@ -740,40 +742,43 @@ class MpcRobotInteractive:
         else:
             return position
         
-    def modify_dict(self, world_yml):
+    def select_participating_obstacles(self, world_yml):
         """
-        Dan: this method 
-        1. selects cubes and spheres (from /home/dan/sw/thesis/storm_dan/storm/content/configs/gym/collision_primitives_3d_origina2.yml)
-        2. changing selected objects locations, using randomize_pos()
+        # Formerly called "modify_dict" but changed to this name for more clarity.
+         
+        This method: 
+        1. selects randomly just a subset of the participating obstacles in next run, out of all available obstacles (cubes and spheres) in  world_yml
+        2. changing randomly the selected obstacles locations, using randomize_pos()
 
         """
-        # Open dictionary
-        world_params = self.open_yaml(world_yml)
-        # Select random indexes
-        min_spheres = 1
-        max_spheres = 10
-        min_cubes = 1
-        max_cubes = 20
-        indexes_spheres = self.select_random_indexes(0, 10, max_spheres, min_spheres)
+        
+        # hyper parameters (can be modified) # TODO - add this as a user parameter sometime
+        min_spheres = 1 # minumum spheres to select
+        max_spheres = 10 # maximum spheres to select
+        min_cubes = 1 # # minimum cubes to select
+        max_cubes = 20 # maximum cubes to select
+        
+        
+        # First we select random obstacles from the file (by selecting indexes that will represent them from disjoint ranges) 
+        
+        indexes_spheres = self.select_random_indexes(0, 10, max_spheres, min_spheres)  
         indexes_cubes = self.select_random_indexes(11, 35, max_cubes, min_cubes)
         indexes = indexes_spheres + indexes_cubes
-        #print(f"indexes: {indexes}")
-        # Get objects from dictionary
+        
+        # Read the dictionary with all optional obstacles
+        world_params = self.open_yaml(world_yml) # = {'world_model': {'coll_objs': {'sphere': {all spheres..},'cube': {all cubes..}}}}
+
         selected_objects = self.get_objects_by_indexes(world_params, indexes)
-        #print(f"selected_objects: {selected_objects}")
-
-        # Create new dictionary
+        
+        # Then we randomly change the pose (position and orientation) of each selected obstacle
         compressed_world_params = {'world_model': {'coll_objs': {'sphere': {},'cube': {}}}}
-
         sphere_index = 1
         cube_index = 1
         for i in range(len(indexes)):
             obj = selected_objects[i]
             name = obj[0]
             base_name = self.get_base_name(name)
-
-            new_pos = self.randomize_pos(obj, base_name)
-
+            new_pos = self.randomize_pos(obj, base_name) 
             if base_name == 'sphere':
                 # Modify dict
                 world_params['world_model']['coll_objs'][base_name][name]['position'] = new_pos
@@ -799,10 +804,8 @@ class MpcRobotInteractive:
             dims_pose['pose'] = world_params['world_model']['coll_objs']['cube']['cube28']['pose']
             compressed_world_params['world_model']['coll_objs']['cube']['cube28'] = dims_pose
 
-        #print(f"modyfied dict: {world_params}")
-        #print(f"new dict: {compressed_world_params}")
 
-        return world_params, indexes, compressed_world_params
+        return world_params, indexes, compressed_world_params # return: all optional obstacles objects
 
 
 # class SimulationOperator:

@@ -66,6 +66,14 @@ class BaseTask():
         return True
 
     def update_world_params(self, kwargs): # Added
+        """
+        Telling both STORM's controller and rollout function what are the obstacles in the environment.
+        
+        Args:
+            kwargs (_type_): Only the participating obstacles (cubes, spheres etc...) in simulation
+        Returns:
+            _type_: 
+        """
         self.controller.rollout_fn.update_world_params(kwargs)
         self.control_process.update_world_params(kwargs)
         return True
