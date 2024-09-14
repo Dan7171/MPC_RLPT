@@ -72,23 +72,28 @@ class PoseCost(nn.Module):
     def forward(self, ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot):
 
         inp_device = ee_pos_batch.device
-        ee_pos_batch = ee_pos_batch.to(device=self.device,
-                                       dtype=self.dtype) # ee for end effector
-        ee_rot_batch = ee_rot_batch.to(device=self.device,
-                                       dtype=self.dtype)
-        ee_goal_pos = ee_goal_pos.to(device=self.device,
-                                     dtype=self.dtype) # dan (3x1 - x,y,z coordinates of end effector at goal state)
-        ee_goal_rot = ee_goal_rot.to(device=self.device,
-                                     dtype=self.dtype) # dan (3x3 - Rotation matrix of end effector at goal state)
         
-        #Inverse of goal transform
-        R_g_t = ee_goal_rot.transpose(-2,-1) # w_R_g -> g_R_w
-        R_g_t_d = (-1.0 * R_g_t @ ee_goal_pos.t()).transpose(-2,-1) # -g_R_w * w_d_g -> g_d_g
+        # paper notations:        
+        # "w" for "world frame" (?)
+        # "X" for position + locaiton (x,y,z) vector (3x1)
+        # "R" for rotation matrix (3x3 matrix)
+        # "g" for goal (the goal pose of the end effector)
+        # "t" for transpose
+        # "d" for translation component (position - (x,y,z))
+        
+        # code notations
+        # "batch" -the "batch" is a list in length n_particles when we are in mpc's planning (mppi) step and 1 when doing a real world action). Each item in batch is a list of "horizon" items. ("horizon" is 30 for example in plannig and 1 in a real world action)
+         
+        ee_pos_batch = ee_pos_batch.to(device=self.device, dtype=self.dtype) # "wdee" in paper notations (chapter 3.2.1) for each batch member 
+        ee_rot_batch = ee_rot_batch.to(device=self.device, dtype=self.dtype) # "wRee in paper notations (chapter 3.2.1 for each batch member        
+        ee_goal_pos = ee_goal_pos.to(device=self.device,dtype=self.dtype) # "wdg" - x,y,z coordinates of end effector at goal state)
+        ee_goal_rot = ee_goal_rot.to(device=self.device, dtype=self.dtype) # "wRg"(Rotation matrix of end effector at goal state)
 
-        
+        #Inverse of goal transform
+        R_g_t = ee_goal_rot.transpose(-2,-1) # Just a transpose: "wRg.T"
+        R_g_t_d = (-1.0 * R_g_t @ ee_goal_pos.t()).transpose(-2,-1)   
         #Rotation part
         R_g_ee = R_g_t @ ee_rot_batch # g_R_w * w_R_ee -> g_R_ee
-        
         
         #Translation part
         # transpose is done for matmul
@@ -111,27 +116,25 @@ class PoseCost(nn.Module):
         rot_err[rot_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
         
-        # >>>>>> Dan logging >>>>>
-        w_orient, w_pos = self.weight[0], self.weight[1] # Originaly: 15, 1000
         
-        # weighted_cost_term_orient =  w_orient * self.orientation_gaussian(torch.sqrt(rot_err)) # the gaussian matters only when calling pose_cost during rollouts   
-        # weighted_cost_term_pos =  w_pos * self.position_gaussian(torch.sqrt(position_err))# the gaussian matters only when calling pose_cost during rollouts
-        # >>>>>>Dan: save orienatation and position costs at time i >>>>>
+        w_orient, w_pos = self.weight[0], self.weight[1] # Originaly: 15, 1000  
         
-        w1 = w_orient # Dan
-        w2 = w_pos # Dan
-        t1 = self.orientation_gaussian(torch.sqrt(rot_err)) # Dan
-        t2 = self.position_gaussian(torch.sqrt(position_err)) # Dan
+        w1 = w_orient 
+        w2 = w_pos 
+        t1 = self.orientation_gaussian(torch.sqrt(rot_err)) 
+        t2 = self.position_gaussian(torch.sqrt(position_err)) 
+        
         logger.debug(f'goal weights: orientation = {w1}, position = {w2}')
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = w1 * t1 + w2 * t2         
-
+        
+        print()
         sniffer = GLobalVars.cost_sniffer
         if sniffer is not None:
             sniffer.set( 'goal_orientation', CostTerm(w1, t1))
             sniffer.set( 'goal_position', CostTerm(w2, t2))
-    
         return cost.to(inp_device), rot_err_norm, goal_dist
+    
     def update_weight(self, weight):
         self.weight = weight
 

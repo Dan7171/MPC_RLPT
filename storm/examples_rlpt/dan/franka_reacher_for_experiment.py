@@ -210,14 +210,33 @@ class MpcRobotInteractive:
         self.robot_sim.spawn_camera(self.env_ptr, 60, 640, 480, self.robot_camera_pose)
 
         # get pose
-        self.w_T_r = copy.deepcopy(self.robot_sim.spawn_robot_pose)    
-        self.w_T_robot = torch.eye(4)
-        self.quat = torch.tensor([self.w_T_r.r.w,self.w_T_r.r.x,self.w_T_r.r.y,self.w_T_r.r.z]).unsqueeze(0)
+        """
+        An assumption to what w_T_r is (by gpt):
+        
+        In the context of this code, w_T_r represents the pose (position and orientation) of the robot in the world frame. Specifically, it is a transformation matrix or object that encapsulates the translation and rotation from the world coordinate system (w) to the robot's base coordinate system (r).
+        w_T_r holds the pose of the robot (position and orientation) after being spawned in the simulation.
+        This is done by copying the robot_sim.spawn_robot_pose using copy.deepcopy(), ensuring that you are working with a local instance of the robot's world transformation.
+        It is later used to update the transformation for things like object poses and end-effector (EE) control in the world coordinate frame.
+        Essentially, w_T_r helps convert poses from the robot's coordinate frame to the world frame and vice versa.
+        """
+
+        self.w_T_r = copy.deepcopy(self.robot_sim.spawn_robot_pose)  # Deep copy the robot's initial pose (position and orientation) after being spawned in the simulation
+        self.w_T_robot = torch.eye(4)  # Create a 4x4 identity matrix to represent the transformation matrix of the robot in the world frame (homogeneous transformation matrix)
+
+        # Extract the quaternion (orientation) from the robot's pose (self.w_T_r) and create a tensor for it
+        # Quaternions are typically represented as (w, x, y, z)
+        self.quat = torch.tensor([self.w_T_r.r.w, self.w_T_r.r.x, self.w_T_r.r.y, self.w_T_r.r.z]).unsqueeze(0)
+
+        # Convert the quaternion to a rotation matrix (3x3 rotation matrix from the quaternion)
         self.rot = quaternion_to_matrix(self.quat)
-        self.w_T_robot[0,3] = self.w_T_r.p.x
-        self.w_T_robot[1,3] = self.w_T_r.p.y
-        self.w_T_robot[2,3] = self.w_T_r.p.z
-        self.w_T_robot[:3,:3] = self.rot[0]
+
+        # Set the translation (position) part of the homogeneous transformation matrix
+        self.w_T_robot[0, 3] = self.w_T_r.p.x  # Set x-position
+        self.w_T_robot[1, 3] = self.w_T_r.p.y  # Set y-position
+        self.w_T_robot[2, 3] = self.w_T_r.p.z  # Set z-position
+
+        # Set the rotation part of the transformation matrix (top-left 3x3 block is the rotation matrix)
+        self.w_T_robot[:3, :3] = self.rot[0]  # The first 3x3 block represents the rotation part
 
         # initiate world
         self.world_instance: World = World(self.gym, self.sim, self.env_ptr, self.world_params, w_T_r=self.w_T_r) 
@@ -398,11 +417,12 @@ class MpcRobotInteractive:
             if(self.vis_ee_target):
                 self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose))
                 
-            # error (list in length 3 for some reason -), opt_dt (probably the delta of time between operations (in real world) and mpc_dt probably the same but between in mpc steps)
+            # error (list in length 3 for some reason -),opt_dt (probably the delta of time between operations (in real world) and mpc_dt probably the same but between in mpc steps)
             # print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(self.mpc_control.opt_dt),
             #       "{:.3f}".format(self.mpc_control.mpc_dt))
-
-            gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
+            
+            if self.gui_settings['show_trajectory_lines']:
+                gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
             
             self.robot_sim.command_robot_position(q_des, self.env_ptr, self.robot_ptr)
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
@@ -458,28 +478,29 @@ class MpcRobotInteractive:
         world_params, indexes, compressed_world_params = self.modify_dict(world_yml) # modify dict - randonmly seclecting a world
         
         print(f"world_params: {world_params}")
-        print(f"compressed_world_params: {compressed_world_params}")
+        print(f"compressed_world_params: {compressed_world_params}") 
+        
         # refresh observation
         self.gym.refresh_actor_root_state_tensor(self.sim)
 
         # acquire root state tensor descriptor
         _root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
-
+        
         # wrap it in a PyTorch Tensor
         root_tensor = gymtorch.wrap_tensor(_root_tensor)
 
         # save a copy of the original root states
         saved_root_tensor = root_tensor.clone()
-        root_positions = saved_root_tensor[1:-2, 0:7]
+        root_positions = saved_root_tensor[1:-2, 0:7] 
         #print(f"root_positions: {root_positions.shape}")
        
         # Extract new object poses
-        poses = self.extract_poses(world_params['world_model']['coll_objs'])
+        poses = self.extract_poses(world_params['world_model']['coll_objs']) # dict of spheres and cubes with their attributes (size, loc etc)
 
         # Create a torch tensor from the poses
         root_positions[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) 
         #saved_root_tensor[2:-2, 0:7] *= 0
-
+        print(f"DEBUG num of objects in world: {len(world_params['world_model']['coll_objs']['sphere']) + len(world_params['world_model']['coll_objs']['cube'])}")
         # Set new goal
         p = self.generate_random_position(3)
         q = self.generate_random_quaternion()
@@ -493,7 +514,7 @@ class MpcRobotInteractive:
         self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0]
         self.update_pose()
         print(f"self.goal_pose: {self.goal_pose}") # this is the x,y,z,quaternion as appears in gui
-        print(f"self.w_T_r): {self.w_T_r}!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print(f"self.w_T_r.p: {self.w_T_r.p},self.w_T_r.r {self.w_T_r.r}")
         root_goal = saved_root_tensor[39, 0:7]
         root_goal[0:7] = torch.tensor(self.goal_pose)
 
@@ -575,6 +596,20 @@ class MpcRobotInteractive:
         return poses
 
     def transform_tensor(self, tensor, w_T_r):
+        """Parameters:
+
+        tensor: A PyTorch tensor containing rows of pose data. Each row consists of a position (x, y, z) and a quaternion (x, y, z, w).
+        w_T_r: A transformation (gymapi.Transform) representing the relationship between two coordinate frames (e.g., world frame to robot frame).
+        Workflow:
+
+        Loop Over Rows: Iterates over each row in the input tensor, where each row represents a pose (position + quaternion).
+        Create Pose: Converts each row into a gymapi.Transform object using the Vec3 (position) and Quat (quaternion) classes.
+        Apply Transformation: Multiplies w_T_r with the pose. This applies the transformation, effectively converting the pose into a new coordinate frame (e.g., transforming an object's pose from the robot frame to the world frame).
+        Store Transformed Pose: Extracts the position and quaternion from the transformed pose and appends it to the transformed_tensor list.
+        Return Result: Converts the list of transformed poses into a PyTorch tensor and returns it.
+        Purpose: Transforms a list of poses from one coordinate frame to another using the transformation w_T_r.
+        This function is used when you need to apply a transformation to update the poses based on the current simulation state."""
+
         transformed_tensor = []
 
         for row in tensor:
@@ -592,6 +627,12 @@ class MpcRobotInteractive:
         return torch.tensor(transformed_tensor)
 
     def transform_inverse_tensor(self, tensor, w_T_r):
+        """
+        Difference from transform_tensor: This function uses the inverse of the transformation w_T_r.
+        It essentially converts poses back from the transformed frame to the original frame.
+        Purpose: Used when you need to reverse a transformation. 
+        For example, if you previously transformed a pose from the robot frame to the world frame, this function will convert it back to the robot frame.
+        """
         transformed_tensor = []
 
         for row in tensor:
@@ -672,7 +713,7 @@ class MpcRobotInteractive:
         return world_params
 
     def get_objects_by_indexes(self, world_params, indexes):
-        coll_objs = world_params['world_model']['coll_objs']
+        coll_objs = world_params['world_model']['coll_objs'] # spheres and cubes
         
         # Flatten the dictionary into a list of (key, value) pairs
         objects = []
