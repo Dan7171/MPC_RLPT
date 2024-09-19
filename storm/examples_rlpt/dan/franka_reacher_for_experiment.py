@@ -26,10 +26,12 @@ Based on Elias's franka_reacher_for_comparison.py
 
 import copy
 from typing import Tuple
+from click import BadArgumentUsage
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 # from isaacgym.gymapi import Tensor
+from matplotlib.transforms import Transform
 from sympy import Integer
 import torch
 torch.multiprocessing.set_start_method('spawn',force=True)
@@ -170,7 +172,7 @@ class MpcRobotInteractive:
         self.world_file = 'collision_primitives_3d_origina2.yml'
 
         # Simulator variables
-        self.pose = None # Goal pose in simulation
+        # self.pose = None # Goal pose in simulation
         self.gym = self.gym_instance.gym
         self.sim = self.gym_instance.sim
         self.world_yml = join_path(get_gym_configs_path(), self.world_file)
@@ -297,10 +299,10 @@ class MpcRobotInteractive:
         self.gym.set_rigid_body_color(self.env_ptr, self.ee_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color)
         
         # goal position and quaternion
-        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy()) # goal position
-        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy()) # goal quaternion (rotation)
-        self.object_pose.p = gymapi.Vec3(self.g_pos[0], self.g_pos[1], self.g_pos[2])  # goal position
-        self.object_pose.r = gymapi.Quat(self.g_q[1], self.g_q[2], self.g_q[3], self.g_q[0])  # goal quaternion (rotation)
+        self.prev_mpc_goal_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy()) # goal position
+        self.prev_mpc_goal_quat = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy()) # goal quaternion (rotation)
+        self.object_pose.p = gymapi.Vec3(self.prev_mpc_goal_pos[0], self.prev_mpc_goal_pos[1], self.prev_mpc_goal_pos[2])  # goal position
+        self.object_pose.r = gymapi.Quat(self.prev_mpc_goal_quat[1], self.prev_mpc_goal_quat[2], self.prev_mpc_goal_quat[3], self.prev_mpc_goal_quat[0])  # goal quaternion (rotation)
         self.object_pose = self.w_T_r * self.object_pose
         
         if(self.vis_ee_target): 
@@ -322,22 +324,27 @@ class MpcRobotInteractive:
         self.qd_des = None
         self.t_step = self.gym_instance.get_sim_time()
 
-        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
-        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
+        self.prev_mpc_goal_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
+        self.prev_mpc_goal_quat = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
-    def _change_g(self, pose):
-        """TODO: Some function that I am not really sure what it does. Complete when known
+    def update_goal_pose_in_mpc(self, new_goal_pose):
         """
-        self.g_pos[0] = pose.p.x
-        self.g_pos[1] = pose.p.y
-        self.g_pos[2] = pose.p.z
-        self.g_q[1] = pose.r.x
-        self.g_q[2] = pose.r.y
-        self.g_q[3] = pose.r.z
-        self.g_q[0] = pose.r.w
+        Informing the mpc about a change in the goal pose at the environment.
+          
+        new_pose: the new goal pose to pass to the mpc.
+        """
+        
+        # register the new mpc update as the last (most recent) update
+        self.prev_mpc_goal_pos[0] = new_goal_pose.p.x
+        self.prev_mpc_goal_pos[1] = new_goal_pose.p.y
+        self.prev_mpc_goal_pos[2] = new_goal_pose.p.z
+        self.prev_mpc_goal_quat[1] = new_goal_pose.r.x
+        self.prev_mpc_goal_quat[2] = new_goal_pose.r.y
+        self.prev_mpc_goal_quat[3] = new_goal_pose.r.z
+        self.prev_mpc_goal_quat[0] = new_goal_pose.r.w
     
-        self.mpc_control.update_params(goal_ee_pos=self.g_pos,
-                                    goal_ee_quat=self.g_q)
+        self.mpc_control.update_params(goal_ee_pos=self.prev_mpc_goal_pos,
+                                    goal_ee_quat=self.prev_mpc_goal_quat)
         
     def step(self, cost_params, mpc_params, step_num: int):
         """
@@ -348,15 +355,14 @@ class MpcRobotInteractive:
             - mpc_params: dict {horizon: num, num_particles: num}
             - step_num: the time step within the episode
         Output
-            - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat, g_pos, g_quat]
+            - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat, prev_mpc_goal_pos, g_quat]
             - reward: float reward function for RL
             - keyboard_interupt: bool - true if a keyboard interupt was detacted
         
         """
-
+        GOAL_POSE_CHANGE_TOLL = 0.0001 # TOLERANCE
+        
         try:
-            
-            
             
             # Update Cost and MPC variables dynamically (RLPT Part)
             self.mpc_control.update_costs(cost_params) 
@@ -365,19 +371,20 @@ class MpcRobotInteractive:
             
             self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
-            if(self.vis_ee_target): 
-                verified_pose_goal_gym = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle)) # exactly as in gui
-                print(verified_pose_goal_gym.p, verified_pose_goal_gym.r)
-                # Actions to do only in case you display red cup in gui (not effecting navigation algorithm)
-                pose = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle)) # gym coordinates
-                pose = copy.deepcopy(self.w_T_r.inverse() * pose) # storm coordinates
-                # self.update_pose()
-                # if(np.linalg.norm(self.g_pos - np.ravel([self.pose.p.x, self.pose.p.y, self.pose.p.z])) > 0.00001 or (np.linalg.norm(self.g_q - np.ravel([self.pose.r.w, self.pose.r.x, self.pose.r.y, self.pose.r.z]))>0.0)):
-                if(np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(self.g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
-                    self._change_g(pose) # I think its being called just in initiation
+            if(self.vis_ee_target): # only when visualizng goal state (red and green cups)            
+                # verified_pose_goal_gym = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle)) # exactly as in gui
+                goal_handle = self.obj_body_handle
+                current_goal_pose_storm_cs = self.get_body_pose(goal_handle, coordinate_system='storm') # get updated goal pose from environment (translated to  storm coordinate system)
+                curr_goal_pos_storm_cs = np.ravel([current_goal_pose_storm_cs.p.x, current_goal_pose_storm_cs.p.y, current_goal_pose_storm_cs.p.z])
+                curr_goal_rot_storm_cs = np.ravel([current_goal_pose_storm_cs.r.w, current_goal_pose_storm_cs.r.x, current_goal_pose_storm_cs.r.y, current_goal_pose_storm_cs.r.z])
+                pos_diff_norm = np.linalg.norm(self.prev_mpc_goal_pos - curr_goal_pos_storm_cs) 
+                rot_diff_norm =  np.linalg.norm(self.prev_mpc_goal_quat - curr_goal_rot_storm_cs)
+                has_changed = pos_diff_norm > GOAL_POSE_CHANGE_TOLL or rot_diff_norm > GOAL_POSE_CHANGE_TOLL
+                if has_changed:
+                    time.sleep(10) # todo remove debug
+                    self.update_goal_pose_in_mpc(current_goal_pose_storm_cs) # telling mpc that goal pose has changed
 
             self.t_step += self.sim_dt
-            
             # Get current time-step's DOF state (name, position, velocity and acceleration) for each one of the 7 dofs
             current_dofs_state_formatted = self.get_dofs_states_formatted() # from environment
             # print(current_dofs_state_formatted)
@@ -445,23 +452,23 @@ class MpcRobotInteractive:
         # print(self.ee_pose_gym_cs.r)
         # print(self.ee_quat_storm_cs)
     
-    def update_pose(self):
-        """
-        First set self.pose to be like self.goal_pose as it is in GUI coordinates, but then multipling it by self.w_T_r.inverse() 
-        so it will be not in storm coordinates. 
-        """
-        # in gui coordinates
-        self.pose.p.x = self.goal_pose[0]
-        self.pose.p.y = self.goal_pose[1]
-        self.pose.p.z = self.goal_pose[2]
-        self.pose.r.x = self.goal_pose[3]
-        self.pose.r.y = self.goal_pose[4]
-        self.pose.r.z = self.goal_pose[5]
-        self.pose.r.w = self.goal_pose[6]
+    # def update_pose(self):
+    #     """
+    #     First set self.pose to be like self.goal_pose as it is in GUI coordinates, but then multipling it by self.w_T_r.inverse() 
+    #     so it will be not in storm coordinates. 
+    #     """
+    #     # in gui coordinates
+    #     self.pose.p.x = self.goal_pose[0]
+    #     self.pose.p.y = self.goal_pose[1]
+    #     self.pose.p.z = self.goal_pose[2]
+    #     self.pose.r.x = self.goal_pose[3]
+    #     self.pose.r.y = self.goal_pose[4]
+    #     self.pose.r.z = self.goal_pose[5]
+    #     self.pose.r.w = self.goal_pose[6]
 
-        # in storm coordinates
-        self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose) # STORM coordintate system representation of goal pose
-        #self.pose = copy.deepcopy(self.w_T_r * self.pose)
+    #     # in storm coordinates
+    #     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose) # STORM coordintate system representation of goal pose
+    #     #self.pose = copy.deepcopy(self.w_T_r * self.pose)
 
 
     def reset(self):
@@ -472,14 +479,11 @@ class MpcRobotInteractive:
             - goal_pos: numpy array [7], (x,y,z, quaternion) of target
      
         """
-        # print("Resetting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         world_yml = join_path(get_gym_configs_path(), self.world_file)
         world_params, indexes, compressed_world_params = self.select_participating_obstacles(world_yml) # modify dict - randonmly seclecting a world
         
-        # print(f"world_params: {world_params}")
-        # print(f"compressed_world_params: {compressed_world_params}") 
-        
+   
         # refresh observation
         self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
 
@@ -497,7 +501,6 @@ class MpcRobotInteractive:
 
         # Create a torch tensor from the poses
         root_poses[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) # all I items- position and orientation in gui coordinates
-        #saved_root_tensor[2:-2, 0:7] *= 0
         # print(f"DEBUG num of objects in world: {len(world_params['world_model']['coll_objs']['sphere']) + len(world_params['world_model']['coll_objs']['cube'])}")
         
         # Set a new goal pose (position and quaternion)
@@ -508,7 +511,7 @@ class MpcRobotInteractive:
         # gui coordinate system representation of goal pose - multiplying from left by w_T_r   
         self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0] #in GUI coordinates (w_T_r * p+q) 
         
-        self.update_pose() # see docstring
+        # self.update_pose() # see docstring
         root_goal = saved_root_tensor[39, 0:7] # the row of the goal pose (vector in R7) in the "root positions" 
         root_goal[0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
         
@@ -577,11 +580,20 @@ class MpcRobotInteractive:
         
 ###############################################################################################
 #####################h HELPER FUNCTIONS #######################################################
-    def get_pose(self, coordinate_system):
+    
+    def get_body_pose(self, handle, coordinate_system) -> gymapi.Transform:
+        """
+        Getting most updated pose of a body by its handler (for example if you override its pose in gui, that pose is updated immediately at next sim rendering step)
+        """
+        gym_pose = copy.deepcopy(self.world_instance.get_pose(handle)) # gym coordinates first. Exactly as seen in gui (verified)
         if coordinate_system == 'storm':
-            pass
-        else: #gym
-            pass
+            storm_pose = copy.deepcopy(self.w_T_r.inverse() * gym_pose) 
+            return storm_pose # translate to storm coordinates
+        elif coordinate_system == 'gym':
+            return gym_pose
+        else:
+            raise BadArgumentUsage("should pass storm or gym") 
+                
     def mpc_planning(self,t_step, current_dofs_states_formatted, control_dt, WAIT):
         """
         A WRAPPER: Made this to improve code explainability without changing original function name.        
