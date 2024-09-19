@@ -240,7 +240,6 @@ def mpc_robot_interactive(args, gym_instance):
             if(vis_ee_target):
                 pose = copy.deepcopy(world_instance.get_pose(obj_body_handle))
                 pose = copy.deepcopy(w_T_r.inverse() * pose)
-
                 if(np.linalg.norm(g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (np.linalg.norm(g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z]))>0.0)):
                     g_pos[0] = pose.p.x
                     g_pos[1] = pose.p.y
@@ -252,6 +251,7 @@ def mpc_robot_interactive(args, gym_instance):
 
                     mpc_control.update_params(goal_ee_pos=g_pos,
                                               goal_ee_quat=g_q)
+              
             t_step += sim_dt
             
             current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
@@ -272,7 +272,7 @@ def mpc_robot_interactive(args, gym_instance):
             ee_error = mpc_control.get_current_error(filtered_state_mpc)
              
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
-            print(pose_state)
+            # print(pose_state)
             # get current pose:
             e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
             e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())

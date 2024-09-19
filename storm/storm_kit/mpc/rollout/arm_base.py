@@ -308,6 +308,15 @@ class ArmBase(RolloutBase):
         return self.rollout_fn(start_state, act_seq)
     
     def get_ee_pose(self, current_state):
+        """
+        Given current state of dofs of actor (for example franka), calculacting the end effector's current pose (current ee state). 
+        
+        Args:
+            current_state: current dofs state
+
+        Returns:
+             current ee state (pose) in storm coordinate system
+        """
         current_state = current_state.to(**self.tensor_args)
          
         

@@ -86,7 +86,6 @@ class BaseTask():
 
     def get_command(self, t_step, curr_state, control_dt, WAIT=False):
         """
-        
         predict forward from previous action and previous state:
         
         """
