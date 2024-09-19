@@ -298,8 +298,7 @@ class MpcRobotInteractive:
         self.tray_color = gymapi.Vec3(0.0, 0.8, 0.0)
         self.gym.set_rigid_body_color(self.env_ptr, self.ee_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color)
         
-        # goal position and quaternion
-        self.prev_mpc_goal_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy()) # goal position
+        # goal position and quaternionעtion
         self.prev_mpc_goal_quat = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy()) # goal quaternion (rotation)
         self.object_pose.p = gymapi.Vec3(self.prev_mpc_goal_pos[0], self.prev_mpc_goal_pos[1], self.prev_mpc_goal_pos[2])  # goal position
         self.object_pose.r = gymapi.Quat(self.prev_mpc_goal_quat[1], self.prev_mpc_goal_quat[2], self.prev_mpc_goal_quat[3], self.prev_mpc_goal_quat[0])  # goal quaternion (rotation)
@@ -383,11 +382,10 @@ class MpcRobotInteractive:
                 if has_changed:
                     time.sleep(10) # todo remove debug
                     self.update_goal_pose_in_mpc(current_goal_pose_storm_cs) # telling mpc that goal pose has changed
-
             self.t_step += self.sim_dt
+            
             # Get current time-step's DOF state (name, position, velocity and acceleration) for each one of the 7 dofs
-            current_dofs_state_formatted = self.get_dofs_states_formatted() # from environment
-            # print(current_dofs_state_formatted)
+            current_dofs_state_formatted = self.get_dofs_states_formatted() # updated dofs from environment. with dof names
             
             # MPC Rollouts: Plan next command* with mpc (returning not the command itself to the controller but the desired state of the dofs on the next time step)
             desired_dofs_state = self.mpc_planning(self.t_step, current_dofs_state_formatted, control_dt=self.sim_dt, WAIT=True)
@@ -395,10 +393,7 @@ class MpcRobotInteractive:
             current_dofs_state_tensor = torch.as_tensor(np.hstack((current_dofs_state_formatted_ref['position'], current_dofs_state_formatted_ref['velocity'], current_dofs_state_formatted_ref['acceleration'])),**self.tensor_args).unsqueeze(0)
             desired_dofs_position = copy.deepcopy(desired_dofs_state['position']) # sesired dof position for each dof (7x1 vector)
             
-            # print(current_dofs_state_formatted_ref)
-            # print(current_dofs_state_formatted_ref == current_dofs_state_formatted)
-            # qd_des = copy.deepcopy(next_dofs_controller_command['velocity']) #* 0.5
-            # qdd_des = copy.deepcopy(next_dofs_controller_command['acceleration'])
+          
             # ee_error = self.mpc_control.get_current_error(current_dofs_state_formatted)
 
             # Calculate current end effector pose from the 7 current dofs states
@@ -421,7 +416,6 @@ class MpcRobotInteractive:
             self.robot_sim.command_robot_position(desired_dofs_position, self.env_ptr, self.robot_ptr) # control dofs           
             new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
 
-            # update simulation            
             self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(new_dofs_state)
             # print(self.ee_pose_storm_cs)
             # print(self.ee_pose_gym_cs.p, self.ee_pose_gym_cs.r)
