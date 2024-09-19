@@ -16,8 +16,8 @@ default_settings = {
         },
     'gui': 
         {
-        'show_goal_pose': True,  
-        'show_trajectory_lines': True
+        'render_ee_icons': True,
+        'render_trajectory_lines': True
         }
 }
 

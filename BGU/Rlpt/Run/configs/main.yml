@@ -5,5 +5,5 @@ cost_sniffer:
   save_costs: true
 
 gui:
-  show_goal_pose: true
-  show_trajectory_lines: true
+  render_ee_icons: true
+  render_trajectory_lines: true
