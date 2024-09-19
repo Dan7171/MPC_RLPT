@@ -207,7 +207,7 @@ class MpcRobotInteractive:
         self.robot_camera_pose = np.array([1.6,-1.5, 1.8,0.707,0.0,0.0,0.707])
         self.q = as_float_array(from_euler_angles(-0.5 * 90.0 * 0.01745, 50.0 * 0.01745, 90 * 0.01745))
         self.robot_camera_pose[3:] = np.array([self.q[1], self.q[2], self.q[3], self.q[0]])
-        self.robot_sim.spawn_camera(self.env_ptr, 60, 640, 480, self.robot_camera_pose)
+        self.robot_sim.spawn_camera(self.env_ptr, 60, 640, 480, self.robot_camera_pose) 
 
         # get pose
  
@@ -339,12 +339,13 @@ class MpcRobotInteractive:
         self.mpc_control.update_params(goal_ee_pos=self.g_pos,
                                     goal_ee_quat=self.g_q)
         
-    def step(self, cost_params, mpc_params, i):
+    def step(self, cost_params, mpc_params, step_num: int):
         """
         Update arm parameters. cost_params are the parameters for the mpc cost function. mpc_params are the horizon and number of particles of the mpc.
         Input
             - cost_params: dict {cost_name: weight}
             - mpc_params: dict {horizon: num, num_particles: num}
+            - step_num: the time step within the episode
         Output
             - observation: 2 numpy arrays [object dimensions and positions], [q_pos, ee_pos, ee_quat, g_pos, g_quat]
             - reward: float reward function for RL
@@ -353,38 +354,36 @@ class MpcRobotInteractive:
         """
 
         try:
-            ####################################################
-            # Update Cost and MPC variables dynamically ########
-            #print(f"Updating cost_params: {cost_params}")
-            self.mpc_control.update_costs(cost_params)
-            if i == 0:
-                #print(f"Updating MPC parameters: {mpc_params}")
-                self.mpc_control.update_mpc_params(mpc_params)
-            ####################################################
-            ####################################################
-
-            self.gym_instance.step() # Dan: elias said its something of the simulation and not related to mpc
-
+            
+            
+            # Update Cost and MPC variables dynamically (Elias)
+            self.mpc_control.update_costs(cost_params) 
+            if step_num == 0: # technical issue - loading to gpu takes time. So we do it only at the beginning for now.
+                self.mpc_control.update_mpc_params(mpc_params) 
+            
+            
+            self.gym_instance.step() # Advancing the simulation by one time step
+            
             if(self.vis_ee_target): 
                 # Actions to do only in case you display red cup in gui (not effecting navigation algorithm)
-                
                 if self.pose == None: 
                     self.pose = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle))
                     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose)
                 self.update_pose()
                 if(np.linalg.norm(self.g_pos - np.ravel([self.pose.p.x, self.pose.p.y, self.pose.p.z])) > 0.00001 or (np.linalg.norm(self.g_q - np.ravel([self.pose.r.w, self.pose.r.x, self.pose.r.y, self.pose.r.z]))>0.0)):
                     self._change_g() # I think its being called just in initiation
-                    
-                    
-                    
+
             self.t_step += self.sim_dt
             
-            current_robot_state = copy.deepcopy(self.robot_sim.get_state(self.env_ptr, self.robot_ptr))
-
+            # Reading DOF state
+            # current_robot_state = self.get_dofs_states_formatted() # retrieve the state of each degree of freedom from the environment (see isaacgym.gymapi.DofState in gym docs). 
+            current_dofs_states_formatted = self.get_dofs_states_formatted()
             
-            command = self.mpc_control.get_command(self.t_step, current_robot_state, control_dt=self.sim_dt, WAIT=True)
-
-            filtered_state_mpc = current_robot_state #mpc_control.current_state
+            # mpc will now perform planning based on the current state of robot it read from simulator, 
+            # and return the next action (command) to make in controller.
+            command = self.mpc_control.get_command(self.t_step, current_dofs_states_formatted, control_dt=self.sim_dt, WAIT=True) # next command to send to controller
+            
+            filtered_state_mpc = current_dofs_states_formatted #mpc_control.current_state
             curr_state = np.hstack((filtered_state_mpc['position'], filtered_state_mpc['velocity'], filtered_state_mpc['acceleration']))
 
             curr_state_tensor = torch.as_tensor(curr_state, **self.tensor_args).unsqueeze(0)
@@ -550,6 +549,11 @@ class MpcRobotInteractive:
         for ts in range(EPISODE_MAX_TS):
             print(f"episode: {ep}, ts: {ts} ")
             arm_configuration, goal_pose, end_effector_pos, end_effector_quat, keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
+            print("poses")
+            print(goal_pose, end_effector_pos)
+            # print("poses")
+            # print(goal_pose, end_effector_pos)
+            
             if keyboard_interupt:
                 print('keyboard interupt from user. Exit program')
                 exit()
@@ -571,6 +575,13 @@ class MpcRobotInteractive:
         
 ###############################################################################################
 #####################h HELPER FUNCTIONS #######################################################
+    def get_dofs_states_formatted(self):
+        """
+        Made this wrapper to improve code explainability without changing original function name
+        """
+        return copy.deepcopy(self.robot_sim.get_state(self.env_ptr, self.robot_ptr)) # calling to the original function 
+    
+    
     def extract_poses(self, dictionary):
         poses = []
         for obj_type, obj_data in dictionary.items():
@@ -621,31 +632,6 @@ class MpcRobotInteractive:
             transformed_tensor.append(transformed_row)
 
         return torch.tensor(transformed_tensor)
-
-    # def transform_inverse_tensor(self, tensor, w_T_r):
-    #     """
-    #     UPDATE: This function is not realy by use!!!
-        
-    #     Difference from transform_tensor: This function uses the inverse of the transformation w_T_r.
-    #     It essentially converts poses back from the transformed frame to the original frame.
-    #     Purpose: Used when you need to reverse a transformation. 
-    #     For example, if you previously transformed a pose from the robot frame to the world frame, this function will convert it back to the robot frame.
-    #     """
-    #     transformed_tensor = []
-
-    #     for row in tensor:
-    #         pose = gymapi.Transform()
-    #         pose.p = gymapi.Vec3(row[0], row[1], row[2])
-    #         pose.r = gymapi.Quat(row[3], row[4], row[5], row[6])
-            
-    #         table_pose =   w_T_r.inverse() * pose
-
-    #         transformed_row = [table_pose.p.x, table_pose.p.y, table_pose.p.z,
-    #                         table_pose.r.x, table_pose.r.y, table_pose.r.z, table_pose.r.w]
-            
-    #         transformed_tensor.append(transformed_row)
-
-    #     return torch.tensor(transformed_tensor)
 
     def convert_to_transform(self, pose):
         pose_t = gymapi.Transform()
@@ -817,7 +803,7 @@ class MpcRobotInteractive:
 
 # some variables for loop
 EPISODES = 10 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 100 # maximal number of time steps in a single episode 
+EPISODE_MAX_TS = 300 # maximal number of time steps in a single episode 
 cost_params = {
             "manipulability": 500, # 30 
             "stop_cost": 50, 
@@ -839,7 +825,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn')
     parser.add_argument('--cuda', action='store_true', default=True, help='use cuda')
-    parser.add_argument('--headless', action='store_true', default=False, help='headless gym')
+    parser.add_argument('--headless', action='store_true', default=False, help='headless gym') # False means use viewer (gui)
     parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
     args = parser.parse_args()
     sim_params = load_yaml(join_path(get_gym_configs_path(),'physx.yml')) # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
@@ -866,7 +852,7 @@ if __name__ == '__main__':
         ########## All episodes #############     
         for ep in range(EPISODES):
             tstg, tt =  Mpc.episode(EPISODE_MAX_TS, cost_params, mpc_params) # tstg = time-steps to goal, tt = total time 
-
+            
             Mpc.reset() # reset the mpc world
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])

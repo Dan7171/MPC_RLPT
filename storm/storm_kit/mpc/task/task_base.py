@@ -85,9 +85,11 @@ class BaseTask():
 
 
     def get_command(self, t_step, curr_state, control_dt, WAIT=False):
-        # predict forward from previous action and previous state:
-        #self.state_filter.predict_internal_state(self.prev_qdd_des)
-
+        """
+        
+        predict forward from previous action and previous state:
+        
+        """
         if(self.state_filter.cmd_joint_state is None):
             curr_state['velocity'] *= 0.0
         filt_state = self.state_filter.filter_joint_state(curr_state)

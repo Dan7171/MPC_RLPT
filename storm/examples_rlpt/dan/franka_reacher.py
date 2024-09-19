@@ -108,7 +108,7 @@ def mpc_robot_interactive(args, gym_instance):
     robot_camera_pose[3:] = np.array([q[1], q[2], q[3], q[0]])
 
     
-    robot_sim.spawn_camera(env_ptr, 60, 640, 480, robot_camera_pose)
+    robot_sim.spawn_camera(env_ptr, 60, 640, 480, robot_camera_pose) #
 
     # get pose
     w_T_r = copy.deepcopy(robot_sim.spawn_robot_pose)

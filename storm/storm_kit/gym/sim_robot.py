@@ -167,7 +167,36 @@ class RobotSim():
 
         return robot_handle
     def get_state(self, env_handle, robot_handle):
-        robot_state = self.gym.get_actor_dof_states(env_handle, robot_handle, gymapi.STATE_ALL)
+        
+        """
+        Retrieves and formats the current state of the robot's degrees of freedom (dofs) in the simulation.
+        See class isaacgym.gymapi.DofState
+
+        This method performs the following operations:
+        1. Obtains the degrees of freedom (DOF) states of the robot using the environment and robot handles provided.
+        - Uses `gymapi.STATE_ALL` to fetch all available states (position and velocity) for the robot's DOFs.
+        2. Reformats the robot's state to match a ROS-like `JointState` message structure:
+        - Initializes a dictionary with keys: `name`, `position`, `velocity`, and `acceleration`.
+        - Populates `position` and `velocity` with the robot's current DOF states.
+        - Computes `acceleration` as a zero array, assuming acceleration is not provided by the simulation.
+        3. Flattens the lists for `position`, `velocity`, and `acceleration` into numpy arrays for easier processing.
+
+        Args:
+            env_handle: Handle to the simulation environment containing the robot.
+            robot_handle: Handle to the specific robot whose state is being queried.
+
+        Returns:
+            dict: A dictionary representing the robot's joint state with the following keys:
+                - 'name': List of joint names.
+                - 'position': Numpy array of joint positions.
+                - 'velocity': Numpy array of joint velocities.
+                - 'acceleration': Numpy array of joint accelerations (set to zero).
+
+        Note:
+            - The acceleration is set to zero as the simulation does not provide this information directly.
+        """
+        robot_state = self.gym.get_actor_dof_states(env_handle, robot_handle, gymapi.STATE_ALL) # Gets state for the actor’s degrees of freedom. see isaacgym.gymapi.DofState
+         
         
         # reformat state to be similar ros jointstate:
         joint_state = {'name':self.joint_names, 'position':[], 'velocity':[], 'acceleration':[]}
@@ -288,6 +317,7 @@ class RobotSim():
         world_camera_pose = self.spawn_robot_pose * robot_camera_pose
         
         #print('Spawn camera pose:',world_camera_pose.p)
+        # specifies the position and pose of the camera in environemnt local coordinates (from gym docs)
         self.gym.set_camera_transform(
             camera_handle,
             env_ptr,

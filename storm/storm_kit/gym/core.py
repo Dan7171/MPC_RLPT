@@ -97,18 +97,31 @@ class Gym(object):
 
         self.dt = sim_engine_params.dt
     def step(self):
-        
+        """
+        Advances the simulation by one time step, updates the viewer (if not in headless mode), 
+        and synchronizes the simulation with real-time.
+
+        This method performs the following operations:
+        1. Steps through the physics simulation regardless of real-time constraints.
+        2. Fetches simulation results to update the host-side buffers with the latest data from the device.
+        3. If not running in headless mode (if using GUI):
+            - Updates the graphics in the simulator to reflect the latest state.
+            - Renders the viewer to display the current simulation state.
+        4. Synchronizes the simulation's frame time with real-time to ensure the simulation speed matches real-world conditions.
+
+        Returns:
+            bool: Always returns `True` indicating the step was completed successfully.
+    """
         ## step through the physics regardless, only apply torque when sim time matches the real time
-        self.gym.simulate(self.sim)
-        self.gym.fetch_results(self.sim, True)
-
-        #if self.mode == 'human':
+        self.gym.simulate(self.sim) # Steps the simulation by one time-step of dt, in seconds, divided in n substeps
+        self.gym.fetch_results(self.sim, True) # Populates Host buffers for the simulation from Device values
+        
         # update the viewer
-        if(not self.headless):
-            self.gym.step_graphics(self.sim)
-            self.gym.draw_viewer(self.viewer, self.sim, False)
-
-        self.gym.sync_frame_time(self.sim)
+        if(not self.headless): # if using GUI
+            self.gym.step_graphics(self.sim) # Update graphics of the simulator. Updates the simulation’s graphics. If one is displaying the simulation through a viewer, this method should be called in advance to obtain the latest graphics state.
+            self.gym.draw_viewer(self.viewer, self.sim, False) # Renders the viewer
+            
+        self.gym.sync_frame_time(self.sim) # Throttles simulation speed to real time.
         return True
     
     def _create_envs(self, num_envs, spacing=1.0, num_per_row=1):
