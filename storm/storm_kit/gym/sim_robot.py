@@ -215,6 +215,21 @@ class RobotSim():
         self.gym.apply_actor_dof_efforts(env_handle, robot_handle, np.float32(tau))
         
     def command_robot_position(self, q_des, env_handle, robot_handle):
+        """ 
+        This method is getting a desired position for each dof in actor (robot) and modifies the position to be *exactly* the desired one.
+          
+        See "set_actor_dof_position_targets" in docs:
+        "
+        Sets target position for the actor’s degrees of freedom. 
+        if the joint is prismatic, the target is in meters. if the joint is revolute, the target is in radians."
+
+        Args:
+            q_des (_type_): an array of position targets - a vector of floats (one flaot = a position of a dof) of the target (desired) position of dofs for the next time step).
+            Length of (q_des) as the number of dofs to modify in this action.
+            
+            env_handle (_type_):  Environment Handle
+            robot_handle (_type_): Actor Handle
+        """
         self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(q_des))
 
 
