@@ -242,9 +242,9 @@ class Controller(ABC):
             self.reset_distribution()
             
 
-        with torch.cuda.amp.autocast(enabled=True):
-            with torch.no_grad():
-                for _ in range(n_iters):
+        with torch.cuda.amp.autocast(enabled=True): # something about mixed precision (16 with 32 bits togeteher. for optimization)
+            with torch.no_grad(): # This context manager disables gradient computation, meaning no memory is allocated for gradients and no backpropagation will occur. This is useful for inference (prediction) or evaluation when you don't need to update the model weights.
+                for _ in range(n_iters): # in paper that is "K" (optimization steps)
                     # generate random simulated trajectories
                     trajectory = self.generate_rollouts(state) #Dan: 1. nxk7 actions seqs, nxkx1 costs,nxkx3 end effector positions (x,y,z), rollout time. Dan this starts the rollout of mpc
                     # update distribution parameters

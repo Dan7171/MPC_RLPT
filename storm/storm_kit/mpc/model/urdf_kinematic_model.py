@@ -302,17 +302,14 @@ class URDFKinematicModel(DynamicsModelBase):
                 state_dict[joint.name].append(q[:,i].item())
         self.urdfpy_robot.animate(cfg_trajectory=state_dict,use_collision=True) 
     
-    def update_mpc_params(self, mpc_params): #Added
+    def update_mpc_params(self, mpc_params): 
         """
-        Input: horizon, paticles
-        Output: Update self.horizon, self.batch_size and all their dependencies
+        Input: mpc hyper params (H- horizon, N- paticles, K- num of optimization steps before updating policy))
+        Update self.horizon, self.batch_size and all their dependencies
         """
-        #print(f"previous horizon: {self.horizon} !!!!!!!!!!!!!!!")
-        self.horizon = mpc_params["horizon"] * self.dt
-        #print(f"new horizon: {self.horizon} !!!!!!!!!!!!!!!")
-        self.batch_size = mpc_params["particles"]
+        self.horizon = mpc_params["horizon"] * self.dt # paper's H
+        self.batch_size = mpc_params["particles"] # paper's N
         self.num_traj_points = int(round(self.horizon / self.dt))
-        #print("Update horizon and particles")
 
         self.state_seq = torch.zeros(self.batch_size, self.num_traj_points, self.d_state, device=self.device, dtype=self.float_dtype)
         self.ee_pos_seq = torch.zeros(self.batch_size, self.num_traj_points, 3, device=self.device, dtype=self.float_dtype)

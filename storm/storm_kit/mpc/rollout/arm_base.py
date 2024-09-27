@@ -329,7 +329,7 @@ class ArmBase(RolloutBase):
         self.stop_cost.update_weight(new_weights["stop_cost"])
         self.stop_cost_acc.update_weight(new_weights["stop_cost_acc"])
         
-        if self.prev_ts_cost_weights is not None:    
+        if self.prev_ts_cost_weights is not None:   # when == 0 , cost term is not used at all 
             if self.prev_ts_cost_weights["smooth"] > 0.0:
                 self.smooth_cost.update_weight(self.prev_ts_cost_weights["smooth"])
             if self.prev_ts_cost_weights["state_bound"] > 0.0:
