@@ -25,8 +25,9 @@ Based on Elias's franka_reacher_for_comparison.py
 """
 
 import copy
-from typing import Tuple
+from typing import Tuple, Union
 from click import BadArgumentUsage
+from cv2 import norm
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
@@ -60,11 +61,16 @@ from storm_kit.util_file import get_mpc_configs_path as mpc_configs_path
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
 from storm_kit.mpc.task.reacher_task import ReacherTask
 from BGU.Rlpt.Run.configs.default_main import load_config_with_defaults
-np.set_printoptions(precision=2)
 from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 from BGU.Rlpt.DebugTools.globs import GLobalVars
-BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
+import matplotlib.pyplot as plt
 
+np.set_printoptions(precision=2)
+BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
+GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
+RED = gymapi.Vec3(0.8, 0.1, 0.1)
+EPISODES = 10 # How many simulations / episodes to run in total
+EPISODE_MAX_TS = 400 # maximal number of time steps in a single episode 
 
 
 # >>> Dan 
@@ -98,11 +104,81 @@ q_list = [[0.4146387727380216, -0.38294995859790976, 0.6123508556397315, 0.55357
           [0.6850944927269871, 0.05900626976761275, 0.6943807034646858, 0.21213023079974228],
           [-0.5731224864529111, -0.28861682231262575, -0.38016811946702006, -0.6661104610656589]]
 
+# General helper functions
+def make_plot(x:Union[None,tuple]=None, ys:list=[]):
+    # figure: The top level container for all the plot elements.
+    # Axes: An Axes object encapsulates all the elements of an individual (sub-)plot in a figure.
+    # pyplot: matplotlib.pyplot is a state-based interface to matplotlib. It provides an implicit, MATLAB-like, way of plotting. It also opens figures on your screen, and acts as the figure GUI manager.
+    y_labels = [''] * len(ys)
+    
+    if x is not None and x[1] is not None: # x label passed
+        plt.xlabel(x[1])
+        
+    for i,y in enumerate(ys):
+        y_values = y[0]
+        y_label = y[1]
+        
+        if x is None or x[0] is None: # did not pass x values  
+            plt.plot(y_values)
+        else: # passed x values
+            plt.plot(x[1], y_values)
+    
+        y_labels[i] = y_label 
+    plt.legend(y_labels, loc="lower right")        
+    plt.show()
+        
+    
 
-GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
+# Functions for converting gym objects to numpy vectors
+def pose_as_ndarray(pose:gymapi.Transform) -> np.ndarray:
+        """Converting a pose from a Transform object to a np.array in length 7 (indices 0-2 = position, 3-6 = rotation) """
+        # get pos and rot as ndarray
+        pos_np = pos_as_ndarray(pose.p)
+        rot_np = rot_as_ndarray(pose.r)
+        
+        # concatenate to one vector in length 7
+        return np.concatenate([pos_np, rot_np]) 
 
+def pos_as_ndarray(pos:gymapi.Vec3) -> np.ndarray:
+    
+    """
+    cast pos from gymapi.Vec3 to an ndarray in length 3 (np array - vector)
+    """
+    
+    return np.array([pos.x, pos.y, pos.z])
+    
+def rot_as_ndarray(rot:gymapi.Quat) -> np.ndarray:
+    
+    """
+    cast rot from gymapi.Quat to an ndarray in length 4 (np array - vector)
+    """
+    
+    return np.array([rot.x, rot.y, rot.z, rot.w])
+
+# Error measurment functions:
+def pose_error(curr_pose:gymapi.Transform, goal_pose:gymapi.Transform)-> np.float64:
+    """
+    return l2 norm between current and desired poses (each pose is both positon and rotation)  
+    """
+    return np.linalg.norm(pose_as_ndarray(curr_pose) - pose_as_ndarray(goal_pose))  
+
+
+def pos_error(curr_pos:gymapi.Vec3, goal_pos:gymapi.Vec3)-> np.float64:
+    """
+    return l2 norm between current and desired positions (position is only the spacial location in environment ("x,y,z" coordinates))
+    """
+    return np.linalg.norm(pos_as_ndarray(curr_pos) - pos_as_ndarray(goal_pos)) 
+    
+def rot_error(curr_rot:gymapi.Quat, goal_rot:gymapi.Quat)-> np.float64:
+    """
+    return l2 norm between current and desired rotations (each rotation is the quaternion - a 4 length vector)  
+    """
+    
+    return np.linalg.norm(rot_as_ndarray(curr_rot) - rot_as_ndarray(goal_rot)) 
+
+ 
 def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
-    """_summary_
+    """
     Drawing the green (good) & red (bed) trajectories in gui, at every real-world time step
     """
     # >>>>> Dan - removing the red and green colors from screen. Comment out to see what happens >>>>>>>>>>
@@ -122,7 +198,7 @@ def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
         color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
         gym_instance.draw_lines(pts, color=color)
     
-
+# GPU usage profiling functions
 def start_mem_profiling():
     """
     start profiling gpu memory consumption.
@@ -268,7 +344,6 @@ class MpcRobotInteractive:
         self.mpc_control.update_params(goal_state=self.x_des)
 
         self.x,self.y,self.z = 0.0, 0.0, 0.0
-        self.tray_color = gymapi.Vec3(0.8, 0.1, 0.1)
         self.asset_options = gymapi.AssetOptions()
         self.asset_options.armature = 0.001
         self.asset_options.fix_base_link = True
@@ -285,18 +360,17 @@ class MpcRobotInteractive:
         # Visualizing end effector target settings 
         if(self.vis_ee_target):
             # spawn the end effector traget (goal) location (as a rigid body)
-            self.target_object = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_target_object') # I assume they refer here to red cup - here they spawn it to environment of gym
+            self.target_object = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=RED, name='ee_target_object') # I assume they refer here to red cup - here they spawn it to environment of gym
             self.obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 0) # ?
             self.obj_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 6) # I assume they refer here to the "objective body" (a rigid body represents the end effector target pose (red cup))"
-            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color) # I think this row is redundant
-            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color) # giving the red cup its red color. without this row it would be gray
+            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, RED) # giving the red cup its red color. without this row it would be gray
 
         # set assets path (paths?)
         self.obj_asset_file = "urdf/mug/mug.urdf"
         self.obj_asset_root = get_assets_path()
 
         # spawn the end effector to env
-        self.ee_handle = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_current_as_mug') # end effector handle in gym env
+        self.ee_handle = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=RED, name='ee_current_as_mug') # end effector handle in gym env
         self.ee_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.ee_handle, 0)
         self.gym.set_rigid_body_color(self.env_ptr, self.ee_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, GREEN)
         
@@ -383,7 +457,7 @@ class MpcRobotInteractive:
                 rot_diff_norm =  np.linalg.norm(self.prev_mpc_goal_quat - curr_goal_rot_storm_cs)
                 has_changed = pos_diff_norm > GOAL_POSE_CHANGE_TOLL or rot_diff_norm > GOAL_POSE_CHANGE_TOLL
                 if has_changed:
-                    time.sleep(10) # todo remove debug
+                    # time.sleep(200) # todo remove debug
                     self.update_goal_pose_in_mpc(current_goal_pose_storm_cs) # telling mpc that goal pose has changed
             self.t_step += self.sim_dt
             
@@ -441,32 +515,7 @@ class MpcRobotInteractive:
         
         return e_pos, e_quat
     
-        # self.ee_pose_storm_cs = copy.deepcopy(e_pos) # RL
-        # self.ee_quat_storm_cs = copy.deepcopy(e_quat) # RL
-        
-        # print(self.ee_pose_gym_cs.p)
-        # print(self.ee_pose_storm_cs)
-        # print(self.ee_pose_gym_cs.r)
-        # print(self.ee_quat_storm_cs)
     
-    # def update_pose(self):
-    #     """
-    #     First set self.pose to be like self.goal_pose as it is in GUI coordinates, but then multipling it by self.w_T_r.inverse() 
-    #     so it will be not in storm coordinates. 
-    #     """
-    #     # in gui coordinates
-    #     self.pose.p.x = self.goal_pose[0]
-    #     self.pose.p.y = self.goal_pose[1]
-    #     self.pose.p.z = self.goal_pose[2]
-    #     self.pose.r.x = self.goal_pose[3]
-    #     self.pose.r.y = self.goal_pose[4]
-    #     self.pose.r.z = self.goal_pose[5]
-    #     self.pose.r.w = self.goal_pose[6]
-
-    #     # in storm coordinates
-    #     self.pose = copy.deepcopy(self.w_T_r.inverse() * self.pose) # STORM coordintate system representation of goal pose
-    #     #self.pose = copy.deepcopy(self.w_T_r * self.pose)
-
 
     def reset(self):
         """
@@ -531,13 +580,12 @@ class MpcRobotInteractive:
         # TLDR2: to storm - we pass *only participating* obstacles
         self.mpc_control.update_world_params(compressed_world_params)
 
-    def episode(self, max_ts, cost_params, mpc_params, tuning=False) -> Tuple[int, float]:
+    def episode(self, cost_params, mpc_params, tuning=False) -> Tuple[int, float]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
         The control during the episode (a control loop) is done by the STORM mppi controller. 
         
-        max_ts: maximal time step of the episode (maximal duration in unit of steps). The episode will not continue after that timestep (even if robot was not reaching the goal)
         cost_params: initial parameters for the cost function
         mpc_params: initial parameters for the cost function
         tuning: TODO: serving the rlpt. if True, the cost and mpc params will be re-selected throughout the episode frequently (probably on every time step). 
@@ -548,17 +596,37 @@ class MpcRobotInteractive:
             p[1](float) is the total run time of episde in seconds
         """
         cost_params = copy.deepcopy(cost_params) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
-
+        
+        # document all errors along the episode 
+        pos_errors = np.zeros(EPISODE_MAX_TS)
+        rot_errors = np.zeros(EPISODE_MAX_TS)
+        
+        
         # -- start episode control loop --
         ep_start_time = time.time()
         for ts in range(EPISODE_MAX_TS):
             print(f"episode: {ep}, ts: {ts} ")
             keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
 
-            
             if keyboard_interupt:
                 print('keyboard interupt from user. Exit program')
                 exit()
+            
+            # Error calculations:
+            
+            # get poses as gym transform objects
+            curr_ee_pose = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
+            goal_ee_pose = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+            
+            ee_pos_error = pos_error(curr_ee_pose.p, goal_ee_pose.p) # end effector position error
+            ee_rot_error = rot_error(curr_ee_pose.r,goal_ee_pose.r)  # end effector rotation error
+            
+            # ee_pose_error = pose_error(curr_ee_pose,goal_ee_pose)  # end effector "pose" (both position and rotation) error
+            # print(ee_pos_error, ee_rot_error)
+            
+            pos_errors[ts] = ee_pos_error
+            rot_errors[ts] = ee_rot_error
+            
             # TODO 1.  here to check goal state and then do reset if reached !!! Dan 12.9.24
             # TODO 2. something like: goal_test =  isclose(goal state position, ene effector position) and isclose(goal state orientation, ene effector orientation)
             # TODO 3:  if goal_test(): return True    
@@ -570,9 +638,11 @@ class MpcRobotInteractive:
         
         time_steps_to_goal = ts if goal_test else -1
         total_time = time.time() - ep_start_time 
-
+        make_plot(x=(None, "time step"), ys=[(pos_errors,"pos_errors"), (rot_errors, "rot_errors")])
         return time_steps_to_goal, total_time
-        
+    
+    
+
         
         
 ###############################################################################################
@@ -822,9 +892,6 @@ class MpcRobotInteractive:
 ###############################################################################################
 ###############################################################################################
 
-# some variables for loop
-EPISODES = 10 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 700 # maximal number of time steps in a single episode 
 cost_params = {
             "manipulability": 500, # 30 
             "stop_cost": 50, 
