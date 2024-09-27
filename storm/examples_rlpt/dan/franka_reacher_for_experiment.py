@@ -69,9 +69,10 @@ np.set_printoptions(precision=2)
 BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
-EPISODES = 10 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 400 # maximal number of time steps in a single episode 
-
+EPISODES = 4 # How many simulations / episodes to run in total
+EPISODE_MAX_TS = 100 # maximal number of time steps in a single episode 
+FIGURE_COLUMNS = 3
+    
 
 # >>> Dan 
 # told by elias:
@@ -579,7 +580,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps
         
-    def episode(self, cost_weights, mpc_params, tuning=False, make_error_plot=True) -> Tuple[int, float, float, float]:
+    def episode(self, cost_weights, mpc_params, tuning=False) -> Tuple[int, float, np.ndarray, np.ndarray]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -590,9 +591,10 @@ class MpcRobotInteractive:
         tuning: TODO: serving the rlpt. if True, the cost and mpc params will be re-selected throughout the episode frequently (probably on every time step). 
         
         Return:
-        a tuple "p" where:
-            p[0](int) is the number of time-steps took took to reach goal position & orientation. -1 if failed to reach  
-            p[1](float) is the total run time of episde in seconds
+        a tuple t
+            t[0](int) is the number of time-steps took took to reach goal position & orientation. -1 if failed to reach  
+            t[1](float) is the total run time of episde in seconds
+            
         """
         cost_weights = copy.deepcopy(cost_weights) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
         
@@ -625,14 +627,12 @@ class MpcRobotInteractive:
                 break
             
         # -- end of episode --
-        if make_error_plot:
-            make_plot(x=(None, "time step"), ys=[(pos_errors,"position error"), (rot_errors, "rotation error")])
- 
+       
         if reached_goal:
             time_to_goal = time.time() - ep_start_time
-            return ts, time_to_goal, ee_rot_error, ee_pos_error
+            return ts, time_to_goal, pos_errors, rot_errors
         else:
-            return -1, -1, ee_rot_error, ee_pos_error
+            return -1, -1,  pos_errors, rot_errors
         
         
     
@@ -910,7 +910,7 @@ cost_weights = { # TODO - replace with reading from storm/content/configs/mpc/fr
 mpc_params = {
     "horizon" : 30 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
     "particles" : 500, # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-    "K": 1 # Num of optimization steps - TODO (from paper) https://docs.google.com/document/d/1BNhvwpZp4Zq1Noj_A6z84WRbsSv_NkFmr0AgDwroyQI/edit#bookmark=id.ltisat9yika1
+    "n_iters": 1 # Num of optimization steps - TODO (from paper) https://docs.google.com/document/d/1BNhvwpZp4Zq1Noj_A6z84WRbsSv_NkFmr0AgDwroyQI/edit#bookmark=id.ltisat9yika1
     } 
 
 if __name__ == '__main__':
@@ -941,14 +941,31 @@ if __name__ == '__main__':
         start_mem_profiling()
         
     ##### main loop of episodes execution: #######
-    try:    
-        for ep in range(EPISODES):
-            steps_to_goal, time_to_goal, ee_pos_error, ee_rot_error =  Mpc.episode(cost_weights, mpc_params) 
+    
+    # prepare subplots
+    figure_rows = math.ceil(EPISODES / FIGURE_COLUMNS)
+    fig, axs = plt.subplots(figure_rows, FIGURE_COLUMNS, sharex=True)
+    try:
+        for ep in range(EPISODES):    
+            # run episode
+            steps_to_goal, time_to_goal, pos_errors, rot_errors =  Mpc.episode(cost_weights, mpc_params) 
+            
+            # make figures
+            row = ep // FIGURE_COLUMNS
+            col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS
+            curr_axs = axs[col] if figure_rows == 1 else axs[row, col] 
+            curr_axs.plot(pos_errors)
+            curr_axs.plot(rot_errors)
+            curr_axs.set_title(f'episode {ep} (row = {row}, col = {col})')
+            curr_axs.legend(["position error", "rotation error"], loc="upper right")        
+            
+            ##########    
             Mpc.reset() # reset the mpc world
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])
             
-    
+        plt.show()
+        
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])

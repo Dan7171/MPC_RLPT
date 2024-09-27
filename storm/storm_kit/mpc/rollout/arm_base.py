@@ -321,15 +321,14 @@ class ArmBase(RolloutBase):
     #def update_costs(self, manipulability, stop_cost, stop_cost_acc, smooth, state_bound, ee_vel, robot_self_collision, primitive_collision, voxel_collision):
     def update_costs(self, new_weights):
         """
-        Setting new cost weights to the cost terms.
-        
+        Setting new cost weights to the cost terms
         """
         self.null_cost.update_weight(new_weights["null_space"])
         self.manipulability_cost.update_weight(new_weights["manipulability"])
         self.stop_cost.update_weight(new_weights["stop_cost"])
         self.stop_cost_acc.update_weight(new_weights["stop_cost_acc"])
         
-        if self.prev_ts_cost_weights is not None:   # when == 0 , cost term is not used at all 
+        if self.prev_ts_cost_weights is not None:  # when they are 0 , cost term is not used at all 
             if self.prev_ts_cost_weights["smooth"] > 0.0:
                 self.smooth_cost.update_weight(self.prev_ts_cost_weights["smooth"])
             if self.prev_ts_cost_weights["state_bound"] > 0.0:
