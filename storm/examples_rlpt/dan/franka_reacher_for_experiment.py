@@ -98,6 +98,9 @@ q_list = [[0.4146387727380216, -0.38294995859790976, 0.6123508556397315, 0.55357
           [0.6850944927269871, 0.05900626976761275, 0.6943807034646858, 0.21213023079974228],
           [-0.5731224864529111, -0.28861682231262575, -0.38016811946702006, -0.6661104610656589]]
 
+
+GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
+
 def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
     """_summary_
     Drawing the green (good) & red (bed) trajectories in gui, at every real-world time step
@@ -264,7 +267,6 @@ class MpcRobotInteractive:
         self.x_des = self.x_des_list[0]
         self.mpc_control.update_params(goal_state=self.x_des)
 
-        # spawn object:
         self.x,self.y,self.z = 0.0, 0.0, 0.0
         self.tray_color = gymapi.Vec3(0.8, 0.1, 0.1)
         self.asset_options = gymapi.AssetOptions()
@@ -282,21 +284,21 @@ class MpcRobotInteractive:
         
         # Visualizing end effector target settings 
         if(self.vis_ee_target):
-            self.target_object = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_target_object')
-            self.obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 0)
-            self.obj_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 6)
-            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color)
-            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color)
+            # spawn the end effector traget (goal) location (as a rigid body)
+            self.target_object = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_target_object') # I assume they refer here to red cup - here they spawn it to environment of gym
+            self.obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 0) # ?
+            self.obj_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.target_object, 6) # I assume they refer here to the "objective body" (a rigid body represents the end effector target pose (red cup))"
+            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color) # I think this row is redundant
+            self.gym.set_rigid_body_color(self.env_ptr, self.target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color) # giving the red cup its red color. without this row it would be gray
 
-        # ?
+        # set assets path (paths?)
         self.obj_asset_file = "urdf/mug/mug.urdf"
         self.obj_asset_root = get_assets_path()
 
-        # ?
-        self.ee_handle = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_current_as_mug')
+        # spawn the end effector to env
+        self.ee_handle = self.world_instance.spawn_object(self.obj_asset_file, self.obj_asset_root, self.object_pose, color=self.tray_color, name='ee_current_as_mug') # end effector handle in gym env
         self.ee_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, self.ee_handle, 0)
-        self.tray_color = gymapi.Vec3(0.0, 0.8, 0.0)
-        self.gym.set_rigid_body_color(self.env_ptr, self.ee_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, self.tray_color)
+        self.gym.set_rigid_body_color(self.env_ptr, self.ee_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, GREEN)
         
         # goal position and quaternion
         self.prev_mpc_goal_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy()) # goal position
