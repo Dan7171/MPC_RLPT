@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from hmac import new
 import torch
 import torch.autograd.profiler as profiler
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
@@ -56,8 +57,8 @@ class ArmReacher(ArmBase):
                                   tensor_args=self.tensor_args)
         
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True, return_dist=False):
-        """_summary_
-            Dan: I believe this functioncalculates the total cost of both task and non-task terms
+        """Calculate costs
+        
         Args:
             state_dict (_type_): _description_
             action_batch (_type_): _description_
@@ -68,20 +69,11 @@ class ArmReacher(ArmBase):
         Returns:
             _type_: _description_
         """
-        # >>>>> Dan: Getting the costs of all non-task realated terms from ArmBase.cost_fn() >>>>>
-        # logger.debug('----------------------cost function start----------------------')
-        # logger.debug(f'Real World? {is_real_world()}') # Alternating first time True, next time False
+        
         cost = None
-        # logger.debug(f'calculating costs in ArmBase...')
-        # C
         ArmBase_cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)            
         new_cost = ArmBase_cost 
         cost = copy.deepcopy(ArmBase_cost) # Dan: If real world: 1x1 shape tenzor [[[cost of step]]], If not real world: a tenzor in dim n_particles rows x horizon columns. Whe M[i][j] is the cost of jth step at the ith particle       
-        # logger.debug(f'calculating costs in ArmBase finished!')
-        # logger.debug(f'ArmBase costs (all)=\n{new_cost}')
-        
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
         state_batch = state_dict['state_seq']
         goal_ee_pos = self.goal_ee_pos # Dan - end effector target position
@@ -89,70 +81,31 @@ class ArmReacher(ArmBase):
         retract_state = self.retract_state #  Dan - we need this?
         goal_state = self.goal_state 
         
-        ###>>>>>>>>>>>> Dan - all of the next costs are somehow reletated to goal state: >>>>>>>>>>>>>>>> 
-        ### >>>> cost term 1 - goal >>>>>> 
-        # logger.debug(f'calculating goal cost...')
-        # C
+        # Goal cost
         new_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch, goal_ee_pos, goal_ee_rot)
         cost += new_cost        
-        # logger.debug(f'goal cost = \n{new_cost}')
-        # logger.debug(f'Changed total cost? {bool((new_cost != 0).any())}')
-        
-        ### >>>> cost term 2 -joint l2 >>>>>> 
-        # joint l2 cost
+  
+        # Joint l2 cost (Dist cost)
         if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
-            # logger.debug(f'joint_l2 weight  = {self.exp_params['cost']['joint_l2']['weight']}')
-            # logger.debug('joint_l2 weight > 0 and goal_state is not None => cost += new_cost')
             disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
-            # C
             new_cost = self.dist_cost.forward(disp_vec, is_joint_l2=True)
             cost += new_cost
-            # logger.debug(f'joint_l2 cost = \n{new_cost}')
-            # logger.debug(f'Changed total cost? {bool((new_cost != 0).any())}')
             
-        ans = None # Dan
+        ans = None 
         if(return_dist):
-            # return cost, rot_err_norm, goal_dist
             ans = cost, rot_err_norm, goal_dist
-        
         else:
-            logger.debug('not (joint_l2 weight > 0 and goal_state is not None)')            
+            # Zero acc (acceleration) cost
             if self.exp_params['cost']['zero_acc']['weight'] > 0:
-                # logger.debug('zero_acc weight > 0 => cost += new_cost')
-                ### >>>> cost term 3 - zero_acc >>>>>> 
-                # C
                 new_cost = self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist) 
                 cost += new_cost
-                # logger.debug(f'zero_acc_cost = \n{new_cost}')
-                # logger.debug(f'Changed total cost? {bool((new_cost != 0).any())}')
-            
+            # Zero vel (velocity) cost
             if self.exp_params['cost']['zero_vel']['weight'] > 0:
-                ### >>>> cost term 4 - zero_vel >>>>>> 
-                # logger.debug('zero_vel weight > 0 => cost += new_cost')
-                # C
                 new_cost = self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist,is_zero_vel=True)
                 cost += new_cost
-                # logger.debug(f'zero_vel_cost = \n{new_cost}')
-                # logger.debug(f'Changed total cost? {bool((new_cost != 0).any())}')
             
             ans = cost
-            # return cost
-        
-        # ArmReacher_cost = cost - ArmBase_cost
-        # if is_real_world():
-        #     cost_float = tensor_to_float(cost)
-        #     RealWorldState.cur_step_cost = cost_float
-        #     RealWorldState.total_cost += cost_float
-        #     logger.info(f'Real world time: {RealWorldState.real_world_time}\n\
-        #         total weighted ArmBase cost: {tensor_to_float(ArmBase_cost)}\n\
-        #         total weighted ArmReacher cost: {tensor_to_float(ArmReacher_cost)}\n\
-        #         total (ArmBase + ArmReacher): {cost_float}')
-        #     # logger.debug(f'All costs at current real world time: {RealWorldState.real_world_time}:\n{RealWorldState.cost}\n')
-        
-        logger.debug(f'---------------all cost calculations finisied -----------------\n\
-            Final costs:\n\
-                {ans}')
-
+         
         sniffer = GLobalVars.cost_sniffer
         if sniffer is not None:
             sniffer.finish()
@@ -190,6 +143,16 @@ class ArmReacher(ArmBase):
         
         return True
     
-    def update_goal_cost(self, params):
-        self.goal_cost_params = [params["orientation"], params["position"]]
-        self.goal_cost.update_weight(self.goal_cost_params)
+    def update_costs(self, new_weights):
+        """
+        Setting new cost weights.  
+        Driven and inspired by the super class update_costs 
+        """    
+        super().update_costs(new_weights)
+        self.dist_cost.update_weight(new_weights["joint_l2"])
+        self.goal_cost.update_weight(new_weights["goal_pose"])
+        self.zero_acc_cost.update_weight(new_weights["zero_acc"])
+        self.zero_vel_cost.update_weight(new_weights["zero_vel"])
+        
+        
+    

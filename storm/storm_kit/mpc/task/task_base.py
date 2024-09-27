@@ -86,7 +86,8 @@ class BaseTask():
 
     def get_command(self, t_step, curr_state, control_dt, WAIT=False):
         """
-        predict forward from previous action and previous state:
+        predict forward from previous action and previous state.
+        Running the rollouts
         
         """
         if(self.state_filter.cmd_joint_state is None):

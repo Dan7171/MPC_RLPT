@@ -40,6 +40,7 @@ class ZeroCost(nn.Module):
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
         self.hinge_val = hinge_val
         self.max_vel = max_vel
+    
     def forward(self, vels, goal_dist,is_zero_vel=False):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))
@@ -63,3 +64,6 @@ class ZeroCost(nn.Module):
             sniffer.set(cost_term_name, CostTerm(w1, t1))
 
         return cost.to(inp_device)
+
+    def update_weight(self,new_weight):
+        self.weight = torch.as_tensor(new_weight, device=self.device, dtype=self.float_dtype)

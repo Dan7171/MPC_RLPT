@@ -90,6 +90,8 @@ class ArmReacher(ArmBase):
     def update_params(self, retract_state=None, goal_state=None, goal_ee_pos=None, goal_ee_rot=None, goal_ee_quat=None):
         """
         Update params for the cost terms and dynamics model.
+        
+        # tensor shapes:
         goal_state: n_dofs
         goal_ee_pos: 3
         goal_ee_rot: 3,3

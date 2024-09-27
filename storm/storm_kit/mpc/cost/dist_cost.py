@@ -74,3 +74,5 @@ class DistCost(nn.Module):
         return cost.to(inp_device)
 
 
+    def update_weight(self, new_weight):
+        self.weight = torch.as_tensor(new_weight, device=self.device, dtype= self.float_dtype)

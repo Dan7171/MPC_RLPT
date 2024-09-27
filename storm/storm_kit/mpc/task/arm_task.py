@@ -43,7 +43,7 @@ class ArmTask(BaseTask):
         self.init_aux()
         
     def get_rollout_fn(self, **kwargs):
-        rollout_fn = ArmBase(**kwargs)
+        rollout_fn = ArmBase(**kwargs) # TODO I think this is running the rollouts but to ensure
         return rollout_fn
 
     def init_mppi(self, task_file, robot_file, collision_file):

@@ -128,14 +128,14 @@ class PoseCost(nn.Module):
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = w1 * t1 + w2 * t2         
         
-        print()
         sniffer = GLobalVars.cost_sniffer
         if sniffer is not None:
-            sniffer.set( 'goal_orientation', CostTerm(w1, t1))
-            sniffer.set( 'goal_position', CostTerm(w2, t2))
+            sniffer.set('goal_orientation', CostTerm(w1, t1))
+            sniffer.set('goal_position', CostTerm(w2, t2))
         return cost.to(inp_device), rot_err_norm, goal_dist
     
-    def update_weight(self, weight):
-        self.weight = weight
+    def update_weight(self, new_weights):
+        """set position and orientation weights """
+        self.weight = new_weights
 
 

@@ -1,6 +1,6 @@
 
 cost_sniffer:
-  include: false
+  include: true
   gui: true
   save_costs: true
 

@@ -124,7 +124,7 @@ def make_plot(x:Union[None,tuple]=None, ys:list=[]):
             plt.plot(x[1], y_values)
     
         y_labels[i] = y_label 
-    plt.legend(y_labels, loc="lower right")        
+    plt.legend(y_labels, loc="upper right")        
     plt.show()
         
     
@@ -244,11 +244,12 @@ class MpcRobotInteractive:
         # self.arm_configuration = None
         self.objects_configuration = None
 
-        # File variables
         self.vis_ee_target = self.gui_settings['render_ee_icons']   # Display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui.
-        self.robot_file = self.args.robot + '.yml'
-        self.task_file = self.args.robot + '_reacher.yml'
-        self.world_file = 'collision_primitives_3d_origina2.yml'
+        
+        # config files 
+        self.robot_file = self.args.robot + '.yml' # collision spheres settings of the robot for each link (center, radius)
+        self.task_file = self.args.robot + '_reacher.yml' # task settings:  robot urdf, cost params, mpc (mppi) params and more 
+        self.world_file = 'collision_primitives_3d_origina2.yml' # world settings: assets in the world (except the franka)
 
         # Simulator variables
         # self.pose = None # Goal pose in simulation
@@ -422,12 +423,12 @@ class MpcRobotInteractive:
         self.mpc_control.update_params(goal_ee_pos=self.prev_mpc_goal_pos,
                                     goal_ee_quat=self.prev_mpc_goal_quat)
         
-    def step(self, cost_params, mpc_params, step_num: int):
+    def step(self, cost_weights, mpc_params, step_num: int):
         """
-        Update arm parameters. cost_params are the parameters for the mpc cost function.
+        Update arm parameters. cost_weights are the parameters for the mpc cost function.
         mpc_params are the horizon and number of particles of the mpc.
         Input
-            - cost_params: dict {cost_name: weight}
+            - cost_weights: dict {cost_name: weight}
             - mpc_params: dict {horizon: num, num_particles: num}
             - step_num: the time step within the episode
         Output
@@ -437,72 +438,67 @@ class MpcRobotInteractive:
         
         """
         GOAL_POSE_CHANGE_TOLL = 0.0001 # TOLERANCE
+                    
+        # Update Cost and MPC variables dynamically (RLPT Part)
+        self.mpc_control.update_costs(cost_weights) 
+        if step_num == 0: # technical issue - loading to gpu takes time. So we do it only at the beginning for now.
+            self.mpc_control.update_mpc_params(mpc_params) 
         
-        try:
-            
-            # Update Cost and MPC variables dynamically (RLPT Part)
-            self.mpc_control.update_costs(cost_params) 
-            if step_num == 0: # technical issue - loading to gpu takes time. So we do it only at the beginning for now.
-                self.mpc_control.update_mpc_params(mpc_params) 
-            
-            self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
+        self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
-            if(self.vis_ee_target): # only when visualizng goal state (red and green cups)            
-                # verified_pose_goal_gym = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle)) # exactly as in gui
-                goal_handle = self.obj_body_handle
-                current_goal_pose_storm_cs = self.get_body_pose(goal_handle, coordinate_system='storm') # get updated goal pose from environment (translated to  storm coordinate system)
-                curr_goal_pos_storm_cs = np.ravel([current_goal_pose_storm_cs.p.x, current_goal_pose_storm_cs.p.y, current_goal_pose_storm_cs.p.z])
-                curr_goal_rot_storm_cs = np.ravel([current_goal_pose_storm_cs.r.w, current_goal_pose_storm_cs.r.x, current_goal_pose_storm_cs.r.y, current_goal_pose_storm_cs.r.z])
-                pos_diff_norm = np.linalg.norm(self.prev_mpc_goal_pos - curr_goal_pos_storm_cs) 
-                rot_diff_norm =  np.linalg.norm(self.prev_mpc_goal_quat - curr_goal_rot_storm_cs)
-                has_changed = pos_diff_norm > GOAL_POSE_CHANGE_TOLL or rot_diff_norm > GOAL_POSE_CHANGE_TOLL
-                if has_changed:
-                    # time.sleep(200) # todo remove debug
-                    self.update_goal_pose_in_mpc(current_goal_pose_storm_cs) # telling mpc that goal pose has changed
-            self.t_step += self.sim_dt
-            
-            # Get current time-step's DOF state (name, position, velocity and acceleration) for each one of the 7 dofs
-            current_dofs_state_formatted = self.get_dofs_states_formatted() # updated dofs from environment. with dof names
-            
-            # MPC Rollouts: Plan next command* with mpc (returning not the command itself to the controller but the desired state of the dofs on the next time step)
-            desired_dofs_state = self.mpc_planning(self.t_step, current_dofs_state_formatted, control_dt=self.sim_dt, WAIT=True)
-            current_dofs_state_formatted_ref = current_dofs_state_formatted # not sure why we need a reference 
-            current_dofs_state_tensor = torch.as_tensor(np.hstack((current_dofs_state_formatted_ref['position'], current_dofs_state_formatted_ref['velocity'], current_dofs_state_formatted_ref['acceleration'])),**self.tensor_args).unsqueeze(0)
-            desired_dofs_position = copy.deepcopy(desired_dofs_state['position']) # sesired dof position for each dof (7x1 vector)
-            
-          
-            # ee_error = self.mpc_control.get_current_error(current_dofs_state_formatted)
-
-            # Calculate current end effector pose from the 7 current dofs states
-            current_ee_pose_storm_cs = self.mpc_control.controller.rollout_fn.get_ee_pose(current_dofs_state_tensor) # see updated docs
-            current_ee_pos_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_pos_seq'].cpu().numpy()) # end effector position in current state
-            current_ee_quat_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_quat_seq'].cpu().numpy()) # end effector quaternion in current state
-            
-            # convert from storm coordinate system to gym coordinate system
-            self.ee_pose_gym_cs.p = copy.deepcopy(gymapi.Vec3(current_ee_pos_storm_cs[0], current_ee_pos_storm_cs[1], current_ee_pos_storm_cs[2]))
-            self.ee_pose_gym_cs.r = gymapi.Quat(current_ee_quat_storm_cs[1], current_ee_quat_storm_cs[2], current_ee_quat_storm_cs[3], current_ee_quat_storm_cs[0])
-            self.ee_pose_gym_cs = copy.deepcopy(self.w_T_r) * copy.deepcopy(self.ee_pose_gym_cs) 
-            
-            # Update gym when using gui settings
-            if(self.vis_ee_target): # Sets Transform (pose - position and quaternion) for a Rigid Body (the ee) at the environment.
-                self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose_gym_cs))
-            if self.gui_settings['render_trajectory_lines']:
-                gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
-            
-            # Controller step: send command to "controller" (to the simulator) to update the position of each dof to the desired ones (In RL terms, we could think of this like "action" here (At) is just telling the controller the next state (st+1) you want).  
-            self.robot_sim.command_robot_position(desired_dofs_position, self.env_ptr, self.robot_ptr) # control dofs           
-            new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
-
-            self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(new_dofs_state)
-            # print(self.ee_pose_storm_cs)
-            # print(self.ee_pose_gym_cs.p, self.ee_pose_gym_cs.r)
-            # print(self.goal_pose)
-            # print(self.pose.p, self.pose.r )
-            return False
+        if(self.vis_ee_target): # only when visualizng goal state (red and green cups)            
+            # verified_pose_goal_gym = copy.deepcopy(self.world_instance.get_pose(self.obj_body_handle)) # exactly as in gui
+            goal_handle = self.obj_body_handle
+            current_goal_pose_storm_cs = self.get_body_pose(goal_handle, coordinate_system='storm') # get updated goal pose from environment (translated to  storm coordinate system)
+            curr_goal_pos_storm_cs = np.ravel([current_goal_pose_storm_cs.p.x, current_goal_pose_storm_cs.p.y, current_goal_pose_storm_cs.p.z])
+            curr_goal_rot_storm_cs = np.ravel([current_goal_pose_storm_cs.r.w, current_goal_pose_storm_cs.r.x, current_goal_pose_storm_cs.r.y, current_goal_pose_storm_cs.r.z])
+            pos_diff_norm = np.linalg.norm(self.prev_mpc_goal_pos - curr_goal_pos_storm_cs) 
+            rot_diff_norm =  np.linalg.norm(self.prev_mpc_goal_quat - curr_goal_rot_storm_cs)
+            has_changed = pos_diff_norm > GOAL_POSE_CHANGE_TOLL or rot_diff_norm > GOAL_POSE_CHANGE_TOLL
+            if has_changed:
+                # time.sleep(200) # todo remove debug
+                self.update_goal_pose_in_mpc(current_goal_pose_storm_cs) # telling mpc that goal pose has changed
+        self.t_step += self.sim_dt
         
-        except KeyboardInterrupt:
-                return  True
+        # Get current time-step's DOF state (name, position, velocity and acceleration) for each one of the 7 dofs
+        current_dofs_state_formatted = self.get_dofs_states_formatted() # updated dofs from environment. with dof names
+        
+        # MPC Rollouts: Plan next command* with mpc (returning not the command itself to the controller but the desired state of the dofs on the next time step)
+        desired_dofs_state = self.mpc_planning(self.t_step, current_dofs_state_formatted, control_dt=self.sim_dt, WAIT=True)
+        current_dofs_state_formatted_ref = current_dofs_state_formatted # not sure why we need a reference 
+        current_dofs_state_tensor = torch.as_tensor(np.hstack((current_dofs_state_formatted_ref['position'], current_dofs_state_formatted_ref['velocity'], current_dofs_state_formatted_ref['acceleration'])),**self.tensor_args).unsqueeze(0)
+        desired_dofs_position = copy.deepcopy(desired_dofs_state['position']) # sesired dof position for each dof (7x1 vector)
+        
+        # calculate costs in of state in simulator (at the "real world" not rollout costs)
+        _ = self.mpc_control.get_current_error(current_dofs_state_formatted) # ee error as storm defined it. Unused at the moment, I believe thats what running the cost function at the real world (TODO Verify it)
 
+        # Calculate current end effector pose from the 7 current dofs states
+        current_ee_pose_storm_cs = self.mpc_control.controller.rollout_fn.get_ee_pose(current_dofs_state_tensor) # see updated docs
+        current_ee_pos_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_pos_seq'].cpu().numpy()) # end effector position in current state
+        current_ee_quat_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_quat_seq'].cpu().numpy()) # end effector quaternion in current state
+        
+        # convert from storm coordinate system to gym coordinate system
+        self.ee_pose_gym_cs.p = copy.deepcopy(gymapi.Vec3(current_ee_pos_storm_cs[0], current_ee_pos_storm_cs[1], current_ee_pos_storm_cs[2]))
+        self.ee_pose_gym_cs.r = gymapi.Quat(current_ee_quat_storm_cs[1], current_ee_quat_storm_cs[2], current_ee_quat_storm_cs[3], current_ee_quat_storm_cs[0])
+        self.ee_pose_gym_cs = copy.deepcopy(self.w_T_r) * copy.deepcopy(self.ee_pose_gym_cs) 
+        
+        # Update gym when using gui settings
+        if(self.vis_ee_target): # Sets Transform (pose - position and quaternion) for a Rigid Body (the ee) at the environment.
+            self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose_gym_cs))
+        if self.gui_settings['render_trajectory_lines']:
+            gui_draw_lines(gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
+        
+        # Send the command (the desired doffs position) to "controller" (to the simulator with the environment) to update the position of each dof to the desired ones (In RL terms, we could think of this like "action" here (At) is just telling the controller the next state (st+1) you want).  
+        self.robot_sim.command_robot_position(desired_dofs_position, self.env_ptr, self.robot_ptr) # control dofs           
+        
+        # Don't miss (even if its commented out):
+
+        # # Get the new position of the end effector in storm's cs:         
+        # new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
+        # self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(new_dofs_state) # end effector position in storm cs
+    
+    
+    
     def get_ee_pose_at_storm_cs_from_dofs_state(self, dofs_state):
         
         curr_state = np.hstack((dofs_state['position'], dofs_state['velocity'], dofs_state['acceleration']))
@@ -579,14 +575,17 @@ class MpcRobotInteractive:
         # TO STORM: Update world_params (compressed only - meaning just a subset of the obstacles that actually participate in simulation (and not hidden)) 
         # TLDR2: to storm - we pass *only participating* obstacles
         self.mpc_control.update_world_params(compressed_world_params)
-
-    def episode(self, cost_params, mpc_params, tuning=False) -> Tuple[int, float]:
+        
+    def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
+        return pos_error < eps and rot_error < eps
+        
+    def episode(self, cost_weights, mpc_params, tuning=False, make_error_plot=True) -> Tuple[int, float, float, float]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
         The control during the episode (a control loop) is done by the STORM mppi controller. 
         
-        cost_params: initial parameters for the cost function
+        cost_weights: initial parameters for the cost function
         mpc_params: initial parameters for the cost function
         tuning: TODO: serving the rlpt. if True, the cost and mpc params will be re-selected throughout the episode frequently (probably on every time step). 
         
@@ -595,52 +594,47 @@ class MpcRobotInteractive:
             p[0](int) is the number of time-steps took took to reach goal position & orientation. -1 if failed to reach  
             p[1](float) is the total run time of episde in seconds
         """
-        cost_params = copy.deepcopy(cost_params) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
+        cost_weights = copy.deepcopy(cost_weights) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
         
         # document all errors along the episode 
         pos_errors = np.zeros(EPISODE_MAX_TS)
         rot_errors = np.zeros(EPISODE_MAX_TS)
         
-        
         # -- start episode control loop --
         ep_start_time = time.time()
         for ts in range(EPISODE_MAX_TS):
-            print(f"episode: {ep}, ts: {ts} ")
-            keyboard_interupt = Mpc.step(cost_params, mpc_params, ts)
-
-            if keyboard_interupt:
-                print('keyboard interupt from user. Exit program')
-                exit()
             
-            # Error calculations:
+            # Planning current step with rollouts and executing it in environment 
+            print(f"episode: {ep} time step: {ts} ")
+            Mpc.step(cost_weights, mpc_params, ts) 
             
-            # get poses as gym transform objects
-            curr_ee_pose = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-            goal_ee_pose = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+            # calculate orientation and position errors and perform convergence to goal state:
             
-            ee_pos_error = pos_error(curr_ee_pose.p, goal_ee_pose.p) # end effector position error
-            ee_rot_error = rot_error(curr_ee_pose.r,goal_ee_pose.r)  # end effector rotation error
+            curr_ee_pose: gymapi.Transform = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
+            goal_ee_pose: gymapi.Transform = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+            ee_pos_error: np.float64 = pos_error(curr_ee_pose.p, goal_ee_pose.p) # end effector position error
+            ee_rot_error: np.float64 = rot_error(curr_ee_pose.r,goal_ee_pose.r)  # end effector rotation error   
             
-            # ee_pose_error = pose_error(curr_ee_pose,goal_ee_pose)  # end effector "pose" (both position and rotation) error
-            # print(ee_pos_error, ee_rot_error)
-            
-            pos_errors[ts] = ee_pos_error
+            # save of the whole episode 
+            pos_errors[ts] = ee_pos_error 
             rot_errors[ts] = ee_rot_error
             
-            # TODO 1.  here to check goal state and then do reset if reached !!! Dan 12.9.24
-            # TODO 2. something like: goal_test =  isclose(goal state position, ene effector position) and isclose(goal state orientation, ene effector orientation)
-            # TODO 3:  if goal_test(): return True    
-            # print(goal_pose, end_effector_pos, ee_quat_storm_cs) # self.mpc_control.get_current_error(filtered_state_mpc))
-            goal_test = False # to remove
-            if goal_test: 
+            # goal test
+            reached_goal = self.goal_test(ee_pos_error, ee_rot_error) 
+            if reached_goal: 
                 break
-        # -- end of episode -- 
+            
+        # -- end of episode --
+        if make_error_plot:
+            make_plot(x=(None, "time step"), ys=[(pos_errors,"position error"), (rot_errors, "rotation error")])
+ 
+        if reached_goal:
+            time_to_goal = time.time() - ep_start_time
+            return ts, time_to_goal, ee_rot_error, ee_pos_error
+        else:
+            return -1, -1, ee_rot_error, ee_pos_error
         
-        time_steps_to_goal = ts if goal_test else -1
-        total_time = time.time() - ep_start_time 
-        make_plot(x=(None, "time step"), ys=[(pos_errors,"pos_errors"), (rot_errors, "rot_errors")])
-        return time_steps_to_goal, total_time
-    
+        
     
 
         
@@ -892,21 +886,32 @@ class MpcRobotInteractive:
 ###############################################################################################
 ###############################################################################################
 
-cost_params = {
-            "manipulability": 500, # 30 
-            "stop_cost": 50, 
-            "stop_cost_acc": 0.0, 
-            "smooth": 0.0, 
-            "state_bound": 1000.0, 
-            "ee_vel": 0.0, 
-            "robot_self_collision" : 5000, 
-            "primitive_collision" : 5000, 
-            "voxel_collision" : 0
-            }
+cost_weights = { # TODO - replace with reading from storm/content/configs/mpc/franka_reacher.yml
+    
+    # ArmReacher costs        
+    "goal_pose": [15.0, 1000.0], # orientation, position
+    "zero_vel": 0.0, 
+    "zero_acc": 0.0,
+    "joint_l2": 0.0,
+    
+    # ArmBase costs
+    "robot_self_collision" : 5000, 
+    "primitive_collision" : 5000,
+    "voxel_collision" : 0,
+    "null_space": 1.0,
+    "manipulability": 30, 
+    "ee_vel": 0.0, 
+    "stop_cost": 100, 
+    "stop_cost_acc": 0.0, 
+    "smooth": 1.0, 
+    "state_bound": 1000.0 
+}
+
 mpc_params = {
     "horizon" : 30 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
-    "particles" : 500 # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-    } #dan
+    "particles" : 500, # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+    "K": 1 # Num of optimization steps - TODO (from paper) https://docs.google.com/document/d/1BNhvwpZp4Zq1Noj_A6z84WRbsSv_NkFmr0AgDwroyQI/edit#bookmark=id.ltisat9yika1
+    } 
 
 if __name__ == '__main__':
     
@@ -937,9 +942,8 @@ if __name__ == '__main__':
         
     ##### main loop of episodes execution: #######
     try:    
-        ########## All episodes #############     
         for ep in range(EPISODES):
-            tstg, tt =  Mpc.episode(EPISODE_MAX_TS, cost_params, mpc_params) # tstg = time-steps to goal, tt = total time 
+            steps_to_goal, time_to_goal, ee_pos_error, ee_rot_error =  Mpc.episode(cost_weights, mpc_params) 
             Mpc.reset() # reset the mpc world
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])

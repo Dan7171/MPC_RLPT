@@ -79,3 +79,6 @@ class ProjectedDistCost(DistCost):
 
         null_disp = torch.matmul(null_proj, disp_vec.unsqueeze(-1)).squeeze(-1)
         return null_disp
+
+    def update_weight(self, new_weight):
+        self.weight = torch.as_tensor(new_weight, device=self.device, dtype=self.float_dtype)
