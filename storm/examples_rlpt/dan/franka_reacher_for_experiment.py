@@ -60,9 +60,11 @@ from storm_kit.gym.helpers import load_struct_from_dict
 from storm_kit.util_file import get_mpc_configs_path as mpc_configs_path
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
 from storm_kit.mpc.task.reacher_task import ReacherTask
-from BGU.Rlpt.Run.configs.default_main import load_config_with_defaults
 from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 from BGU.Rlpt.DebugTools.globs import GLobalVars
+from BGU.Rlpt.configs.default_main import load_config_with_defaults
+
+from BGU.Rlpt.reward.point_cloud_utils import generate_rotated_box_point_cloud,generate_sphere_point_cloud, generate_robot_point_cloud
 import matplotlib.pyplot as plt
 
 np.set_printoptions(precision=2)
@@ -106,6 +108,43 @@ q_list = [[0.4146387727380216, -0.38294995859790976, 0.6123508556397315, 0.55357
           [-0.5731224864529111, -0.28861682231262575, -0.38016811946702006, -0.6661104610656589]]
 
 # General helper functions
+
+def get_all_actor_handles(gym, env):
+    
+    num_actors = gym.actor_count(env)
+    handles = [-1] * num_actors
+    for i in range(num_actors):
+        handles[i] = gym.get_actor_handle(env, i)
+    return handles
+    
+def get_actor_name(gym, env, actor_handle):
+    return gym.get_actor_name(env, actor_handle)
+
+# Function to generate a point cloud from robot link locations
+def get_robot_point_cloud(gym, env):
+    FRANKA_ACTOR_IDX = 0
+    franka_handle = gym.get_actor_handle(env, FRANKA_ACTOR_IDX)
+    
+    num_dof = gym.get_actor_dof_count(env, franka_handle)  # Number of degrees of freedom
+
+    point_cloud = []
+
+    # Loop through each joint or link of the robot (could also be objects in the scene)
+    for i in range(num_dof):
+        link_state = gym.get_actor_rigid_body_states(env, franka_handle, gymapi.STATE_POS)[i]
+        pos = link_state['pose']['p']  # This is a gymapi.Vec3 (position)
+        point_cloud.append([pos.x, pos.y, pos.z])
+
+    return np.array(point_cloud)  # Convert list of points to NumPy array (3D point cloud)
+
+# def get_rigid_bodies_point_clouds(gym, env):
+#     if 
+#     all_actor_handles = get_all_actor_handles(gym, env)
+#     for handle in all_actor_handles:
+#         actor_name = get_actor_name(gym, env, handle)
+#         if    
+
+
 def make_plot(x:Union[None,tuple]=None, ys:list=[]):
     # figure: The top level container for all the plot elements.
     # Axes: An Axes object encapsulates all the elements of an individual (sub-)plot in a figure.
@@ -608,7 +647,7 @@ class MpcRobotInteractive:
             
             # Planning current step with rollouts and executing it in environment 
             print(f"episode: {ep} time step: {ts} ")
-            Mpc.step(cost_weights, mpc_params, ts) 
+            mpc.step(cost_weights, mpc_params, ts) 
             
             # calculate orientation and position errors and perform convergence to goal state:
             
@@ -934,7 +973,8 @@ if __name__ == '__main__':
     gym_instance = Gym(**sim_params) # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
     
     # instantiate the object which is controlling the simulation loop
-    Mpc = MpcRobotInteractive(args, gym_instance, bgu_cfg) 
+    mpc = MpcRobotInteractive(args, gym_instance, bgu_cfg) 
+    
     
     # if profiling memory usage, start profiling 
     if profile_memory:    
@@ -948,7 +988,7 @@ if __name__ == '__main__':
     try:
         for ep in range(EPISODES):    
             # run episode
-            steps_to_goal, time_to_goal, pos_errors, rot_errors =  Mpc.episode(cost_weights, mpc_params) 
+            steps_to_goal, time_to_goal, pos_errors, rot_errors =  mpc.episode(cost_weights, mpc_params) 
             # make figures
             if EPISODES > 1:    
                 row = ep // FIGURE_COLUMNS # episode row in  plot
@@ -966,7 +1006,7 @@ if __name__ == '__main__':
                 
                 
             ##########    
-            Mpc.reset() # reset the mpc world
+            mpc.reset() # reset the mpc world
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])
             

@@ -1,0 +1,9 @@
+
+cost_sniffer:
+  include: true
+  gui: true
+  save_costs: true
+
+gui:
+  render_ee_icons: true
+  render_trajectory_lines: true
