@@ -7,3 +7,6 @@ cost_sniffer:
 gui:
   render_ee_icons: true
   render_trajectory_lines: true
+
+episode_plots:
+  show: true

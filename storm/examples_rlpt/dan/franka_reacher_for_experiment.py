@@ -25,6 +25,7 @@ Based on Elias's franka_reacher_for_comparison.py
 """
 
 import copy
+from re import I
 from typing import Tuple, Union
 from click import BadArgumentUsage
 from cv2 import norm
@@ -35,6 +36,8 @@ from isaacgym import gymtorch
 from matplotlib.transforms import Transform
 from sympy import Integer
 import torch
+
+from BGU.Rlpt.reward import point_cloud_utils
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
 torch.backends.cudnn.benchmark = False
@@ -63,8 +66,7 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
-
-from BGU.Rlpt.reward.point_cloud_utils import generate_rotated_box_point_cloud,generate_sphere_point_cloud, generate_robot_point_cloud
+import BGU.Rlpt.reward.point_cloud_utils 
 import matplotlib.pyplot as plt
 
 np.set_printoptions(precision=2)
@@ -72,7 +74,7 @@ BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
 EPISODES = 1 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 1500 # maximal number of time steps in a single episode 
+EPISODE_MAX_TS = 200 # maximal number of time steps in a single episode 
 FIGURE_COLUMNS = 1
     
 
@@ -119,30 +121,6 @@ def get_all_actor_handles(gym, env):
     
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
-
-# Function to generate a point cloud from robot link locations
-def get_robot_point_cloud(gym, env):
-    FRANKA_ACTOR_IDX = 0
-    franka_handle = gym.get_actor_handle(env, FRANKA_ACTOR_IDX)
-    
-    num_dof = gym.get_actor_dof_count(env, franka_handle)  # Number of degrees of freedom
-
-    point_cloud = []
-
-    # Loop through each joint or link of the robot (could also be objects in the scene)
-    for i in range(num_dof):
-        link_state = gym.get_actor_rigid_body_states(env, franka_handle, gymapi.STATE_POS)[i]
-        pos = link_state['pose']['p']  # This is a gymapi.Vec3 (position)
-        point_cloud.append([pos.x, pos.y, pos.z])
-
-    return np.array(point_cloud)  # Convert list of points to NumPy array (3D point cloud)
-
-# def get_rigid_bodies_point_clouds(gym, env):
-#     if 
-#     all_actor_handles = get_all_actor_handles(gym, env)
-#     for handle in all_actor_handles:
-#         actor_name = get_actor_name(gym, env, handle)
-#         if    
 
 
 def make_plot(x:Union[None,tuple]=None, ys:list=[]):
@@ -650,11 +628,14 @@ class MpcRobotInteractive:
             mpc.step(cost_weights, mpc_params, ts) 
             
             # calculate orientation and position errors and perform convergence to goal state:
-            
             curr_ee_pose: gymapi.Transform = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
             goal_ee_pose: gymapi.Transform = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
             ee_pos_error: np.float64 = pos_error(curr_ee_pose.p, goal_ee_pose.p) # end effector position error
             ee_rot_error: np.float64 = rot_error(curr_ee_pose.r,goal_ee_pose.r)  # end effector rotation error   
+            
+            # calculate min distance from robot point cloud to obstacles point clouds
+            
+            # robot_pt = point_cloud_utils.generate_robot_point_cloud(mpc.env_ptr, mpc.gym)
             
             # save of the whole episode 
             pos_errors[ts] = ee_pos_error 
@@ -985,32 +966,37 @@ if __name__ == '__main__':
     # prepare subplots
     figure_rows = math.ceil(EPISODES / FIGURE_COLUMNS)
     fig, axs = plt.subplots(figure_rows, FIGURE_COLUMNS, sharex=True)
+    show_episode_plots = bgu_cfg['episode_plots']['show'] 
     try:
         for ep in range(EPISODES):    
             # run episode
             steps_to_goal, time_to_goal, pos_errors, rot_errors =  mpc.episode(cost_weights, mpc_params) 
-            # make figures
-            if EPISODES > 1:    
-                row = ep // FIGURE_COLUMNS # episode row in  plot
-                col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS # episode column in  plot
-                curr_axs = axs[col] if figure_rows == 1 else axs[row, col] # if there is only one row, no row spcificying is needed (something technical of matplotlib)
-                curr_axs.plot(pos_errors) # add pos errors to plot
-                curr_axs.plot(rot_errors) # add rot errors to plot
-                curr_axs.set_title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
-                curr_axs.legend(["position error", "rotation error"], loc="upper right")        
-            else:
-                plt.plot(pos_errors)
-                plt.plot(rot_errors)
-                plt.title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
-                plt.legend(["position error", "rotation error"], loc="upper right")
+            
+            if show_episode_plots: # make figures
+
                 
+                if EPISODES > 1:    
+                    row = ep // FIGURE_COLUMNS # episode row in  plot
+                    col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS # episode column in  plot
+                    curr_axs = axs[col] if figure_rows == 1 else axs[row, col] # if there is only one row, no row spcificying is needed (something technical of matplotlib)
+                    curr_axs.plot(pos_errors) # add pos errors to plot
+                    curr_axs.plot(rot_errors) # add rot errors to plot
+                    curr_axs.set_title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
+                    curr_axs.legend(["position error", "rotation error"], loc="upper right")        
+                else:
+                    plt.plot(pos_errors)
+                    plt.plot(rot_errors)
+                    plt.title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
+                    plt.legend(["position error", "rotation error"], loc="upper right")
+                    
                 
             ##########    
             mpc.reset() # reset the mpc world
         if profile_memory:
             finish_mem_profiling(bgu_cfg['profile_memory']['pickle_path'])
-            
-        plt.show()
+        
+        if show_episode_plots:    
+            plt.show()
         
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:

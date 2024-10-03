@@ -18,7 +18,10 @@ default_settings = {
         {
         'render_ee_icons': True,
         'render_trajectory_lines': True
-        }
+        },
+    'episode_plots': {
+        'show': False
+    }
 }
 
 # Load YAML file
