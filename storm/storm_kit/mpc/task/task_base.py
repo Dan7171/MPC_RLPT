@@ -131,7 +131,7 @@ class BaseTask():
 
         state_tensor = torch.tensor(state_tensor)
         return state_tensor
-    def get_current_error(self, curr_state) -> list:
+    def get_current_error(self, curr_state, no_coll) -> list:
         """
         explained by example:
         
@@ -146,7 +146,7 @@ class BaseTask():
         [1782.576171875, 2.5937154293060303, 1.7414523363113403] # probably some value for each of the 3 (position, velocity, acceleration)
         """
         state_tensor = self._state_to_tensor(curr_state).to(**self.controller.tensor_args).unsqueeze(0) # parsing the dict to a tensor and sending it to de
-        ee_error,_ = self.controller.rollout_fn.current_cost(state_tensor)
+        ee_error,_ = self.controller.rollout_fn.current_cost(state_tensor, no_coll) # cost of real state (not mpc rollouts)
         ee_error = [x.detach().cpu().item() for x in ee_error]
         return ee_error
 

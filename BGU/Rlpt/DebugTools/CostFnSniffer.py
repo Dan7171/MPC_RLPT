@@ -113,7 +113,9 @@ class CostFnSniffer:
         is_real = is_real_world()
         costs = self._current_ts_costs_real if is_real else self._current_ts_costs_mpc
         costs[ct_name] = ct
-        
+    
+    def get_current_costs(self):
+        return self._current_ts_costs_real if is_real_world() else self._current_ts_costs_mpc
                 
     def _flush_to_storage(self, buff, real_world):
         pickle_file = self.all_costs_file
@@ -158,7 +160,7 @@ class CostFnSniffer:
                 else:
                     self.costs_buff_mpc = buff
                 buff.append(copy.deepcopy(costs))
- 
+    
     
         
     def _cost_terms_reading_loop(self, real_world: bool,full_horizon=False):  # thread target

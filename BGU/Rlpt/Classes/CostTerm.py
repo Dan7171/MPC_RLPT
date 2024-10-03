@@ -52,7 +52,7 @@ class CostTerm:
         self.weight = weight  
         self.term = term 
         self.cost: torch.Tensor = weight * term # the final cost 
-    
+
     # def __add__(self, other: 'CostTerm'): # overide +
     #     return self.cost + other.cost
     
@@ -66,6 +66,9 @@ class CostTerm:
                 tensor_sum += ct.cost
         return tensor_sum
     
+    def __repr__(self) -> str:
+        return f'weight: = {self.weight}, unweighted term: {self.term}, weighted term: {self.cost}'
+     
     def _get_tensor_mean(self, t:torch.Tensor, type=None):
         
         m:torch.Tensor = torch.mean(t)

@@ -239,11 +239,12 @@ class SimpleReacher(object):
         return self.rollout_fn(start_state, act_seq)
     
     def current_cost(self, current_state):
+
         current_state = current_state.to(**self.tensor_args).unsqueeze(0)
         
         curr_batch_size = 1
         num_traj_points = 1
         state_dict = {'state_seq': current_state}
-
         cost = self.cost_fn(state_dict, None,no_coll=False, horizon_cost=False, return_dist=True)
         return cost, state_dict
+

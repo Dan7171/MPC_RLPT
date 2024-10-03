@@ -315,7 +315,7 @@ class ArmBase(RolloutBase):
                       'prev_state_seq':current_state}
         
         cost = self.cost_fn(state_dict, None,no_coll=no_coll, horizon_cost=False, return_dist=True)
-
+        
         return cost, state_dict
     
     #def update_costs(self, manipulability, stop_cost, stop_cost_acc, smooth, state_bound, ee_vel, robot_self_collision, primitive_collision, voxel_collision):
