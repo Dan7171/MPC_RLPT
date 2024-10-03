@@ -69,9 +69,9 @@ np.set_printoptions(precision=2)
 BGU_CFG_PATH = 'BGU/Rlpt/Run/configs/main.yml'
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
-EPISODES = 4 # How many simulations / episodes to run in total
-EPISODE_MAX_TS = 100 # maximal number of time steps in a single episode 
-FIGURE_COLUMNS = 3
+EPISODES = 1 # How many simulations / episodes to run in total
+EPISODE_MAX_TS = 1500 # maximal number of time steps in a single episode 
+FIGURE_COLUMNS = 1
     
 
 # >>> Dan 
@@ -949,16 +949,22 @@ if __name__ == '__main__':
         for ep in range(EPISODES):    
             # run episode
             steps_to_goal, time_to_goal, pos_errors, rot_errors =  Mpc.episode(cost_weights, mpc_params) 
-            
             # make figures
-            row = ep // FIGURE_COLUMNS
-            col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS
-            curr_axs = axs[col] if figure_rows == 1 else axs[row, col] 
-            curr_axs.plot(pos_errors)
-            curr_axs.plot(rot_errors)
-            curr_axs.set_title(f'episode {ep} (row = {row}, col = {col})')
-            curr_axs.legend(["position error", "rotation error"], loc="upper right")        
-            
+            if EPISODES > 1:    
+                row = ep // FIGURE_COLUMNS # episode row in  plot
+                col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS # episode column in  plot
+                curr_axs = axs[col] if figure_rows == 1 else axs[row, col] # if there is only one row, no row spcificying is needed (something technical of matplotlib)
+                curr_axs.plot(pos_errors) # add pos errors to plot
+                curr_axs.plot(rot_errors) # add rot errors to plot
+                curr_axs.set_title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
+                curr_axs.legend(["position error", "rotation error"], loc="upper right")        
+            else:
+                plt.plot(pos_errors)
+                plt.plot(rot_errors)
+                plt.title(f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}')
+                plt.legend(["position error", "rotation error"], loc="upper right")
+                
+                
             ##########    
             Mpc.reset() # reset the mpc world
         if profile_memory:
