@@ -76,7 +76,7 @@ class Gui:
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
 
 class CostFnSniffer:
-    def __init__(self, gui=False, save_costs=False, buff_n=1000):
+    def __init__(self, gui=False, save_costs=False, buffer_n=1000):
         
         self._current_ts_costs_real = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
         self._current_ts_costs_mpc = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
@@ -87,7 +87,7 @@ class CostFnSniffer:
         if self.save_costs:    
             self.costs_buff_real = []  # buffer to store real costs which were calculated during the simulation before flushing them to storage  
             self.costs_buff_mpc = []   # buffer to store mpc costs which were calculated during the simulation before flushing them to storage
-            self.buff_n = buff_n # the max num of items on each buffer. The larger n is, the less "flush to storage" calls (but longer writing to storage on each time).
+            self.buffer_n = buffer_n # the max num of items on each buffer. The larger n is, the less "flush to storage" calls (but longer writing to storage on each time).
             self.all_costs_file = os.path.join(os.getcwd(), 'costs.pickle') 
             
      
@@ -151,7 +151,7 @@ class CostFnSniffer:
             costs = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
             # lock = lock1 if real_world else lock2
             
-            if len(buff) == self.buff_n:
+            if len(buff) == self.buffer_n:
                 # with lock:    
                 self._flush_to_storage(buff, real_world)
                 buff = []
@@ -164,7 +164,7 @@ class CostFnSniffer:
     
         
     def _cost_terms_reading_loop(self, real_world: bool,full_horizon=False):  # thread target
-        update_rate = 0.1
+        update_rate = 0.1 # how often rendering you
         time.sleep(update_rate)
         while True:
             # all_costs =  self.costs_buff_real if real_world else self.costs_buff_mpc

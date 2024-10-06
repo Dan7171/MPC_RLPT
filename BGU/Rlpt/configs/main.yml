@@ -1,7 +1,7 @@
 
 cost_sniffer:
-  gui: true
-  save_costs: true
+  gui: false
+  save_costs: false
 
 gui:
   render_ee_icons: true
