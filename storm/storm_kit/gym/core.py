@@ -202,11 +202,29 @@ class World(object):
 
         if('cube' in world_params['world_model']['coll_objs']):
             cube = world_params['world_model']['coll_objs']['cube']
-            for obj in cube.keys():
+            for obj in cube.keys(): # obj name
                 dims = cube[obj]['dims']
                 pose = cube[obj]['pose']
-                self.add_table(dims, pose, color=color)
-            
+                # self.add_table(dims, pose, color=color)
+                self.add_cube(obj, dims, pose, color)
+
+    def add_cube(self, cube_name, dims, cube_pose, color=[1.0,0.0,0.0]):
+        dims = gymapi.Vec3(dims[0], dims[1], dims[2])
+
+        asset_options = gymapi.AssetOptions()
+        asset_options.armature = 0.001
+        asset_options.fix_base_link = True
+        asset_options.thickness = 0.002
+        obj_color = gymapi.Vec3(color[0], color[1], color[2])
+        pose = gymapi.Transform()
+        pose.p = gymapi.Vec3(cube_pose[0], cube_pose[1], cube_pose[2])
+        pose.r = gymapi.Quat(cube_pose[3], cube_pose[4], cube_pose[5], cube_pose[6])
+        asset = self.gym.create_box(self.sim, dims.x,dims.y, dims.z, asset_options)
+
+        cube_pose = self.robot_pose * pose
+        cube_handle = self.gym.create_actor(self.env_ptr, asset, cube_pose, cube_name, 2, 2, self.ENV_SEG_LABEL)
+        self.gym.set_rigid_body_color(self.env_ptr, cube_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)
+        self.table_handles.append(cube_handle)
 
     
     def add_table(self, table_dims, table_pose, color=[1.0,0.0,0.0]):
@@ -225,8 +243,7 @@ class World(object):
                                           asset_options)
 
         table_pose = self.robot_pose * pose
-        table_handle = self.gym.create_actor(self.env_ptr, table_asset, table_pose,'table',
-                                             2,2,self.ENV_SEG_LABEL)
+        table_handle = self.gym.create_actor(self.env_ptr, table_asset, table_pose,'table', 2,2,self.ENV_SEG_LABEL)
         self.gym.set_rigid_body_color(self.env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)
         self.table_handles.append(table_handle)
 

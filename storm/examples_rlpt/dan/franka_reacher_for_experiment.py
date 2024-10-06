@@ -25,10 +25,12 @@ Based on Elias's franka_reacher_for_comparison.py
 """
 
 import copy
+from os import name
 from re import I, match
 from select import select
-from typing import Iterable, Tuple, Union
+from typing import Iterable, List, Tuple, Union
 from click import BadArgumentUsage
+from colorlog import root
 from cv2 import norm
 from isaacgym import gymapi
 from isaacgym import gymutil
@@ -470,36 +472,104 @@ class MpcRobotInteractive:
         
         return e_pos, e_quat 
     
-    def reset_env(self, cost_weights, mpc_params,env_file, new_goal_storm=[0,0,0,0,0,0,1]):
+    # def reset_env(self, cost_weights, mpc_params,env_file, new_goal_storm=[0,0,0,0,0,0,1]):
         
         
-        env_cfg_path =  join_path(get_gym_configs_path(), env_file)
-        world_params, indexes, compressed_world_params = self.choose_sim_objects(env_cfg_path) # modify dict - randonmly seclecting a world
-        # num_points = 37 # more generally: len(root_poses) - 1 
-        # update poses in gym
-        self.gym.refresh_actor_root_state_tensor(self.sim) 
-        new_poses_coll_objs_gym = self.extract_poses(world_params['world_model']['coll_objs'])
-        coll_objs_num = len(new_poses_coll_objs_gym) - 1
+    #     env_cfg_path =  join_path(get_gym_configs_path(), env_file)
+    #     world_params, indexes, compressed_world_params = self.choose_sim_objects(env_cfg_path) # modify dict - randonmly seclecting a world
+    #     # num_points = 37 # more generally: len(root_poses) - 1 
+    #     # update poses in gym
+    #     self.gym.refresh_actor_root_state_tensor(self.sim) 
+    #     new_poses_coll_objs_gym = self.extract_poses(world_params['world_model']['coll_objs'])
+    #     coll_objs_num = len(new_poses_coll_objs_gym) - 1
         
-        current_poses_gym = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)) 
-        new_poses_gym = current_poses_gym.clone() 
-        current_poses_coll_objs_gym = new_poses_gym[1:-2, 0:7]          
-        current_poses_coll_objs_gym[:, 0:7] = self.transform_tensor(torch.tensor(new_poses_coll_objs_gym), self.w_T_r)
-        new_goal_gym =  self.transform_tensor(torch.tensor(new_goal_storm).unsqueeze(0), self.w_T_r).tolist()[0] 
-        goal_handle = len(current_poses_gym) - 1
-        collision_objs_num = len(current_poses_gym) - 4
-        new_poses_gym[goal_handle, 0:7][0:7] = torch.tensor(new_goal_gym) # set "root goal" to be as self.goal_pose    
-        int_linspace = np.linspace(1, collision_objs_num, num=coll_objs_num, dtype=int) # array([1,2,..,37])
-        actor_indices = torch.tensor(np.append(int_linspace, goal_handle), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
-        self.goal_pose = new_goal_gym 
-        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(new_poses_gym), gymtorch.unwrap_tensor(actor_indices), coll_objs_num) # read the docs
+    #     current_poses_gym = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)) 
+    #     new_poses_gym = current_poses_gym.clone() 
+    #     current_poses_coll_objs_gym = new_poses_gym[1:-2, 0:7]          
+    #     current_poses_coll_objs_gym[:, 0:7] = self.transform_tensor(torch.tensor(new_poses_coll_objs_gym), self.w_T_r)
+    #     new_goal_gym =  self.transform_tensor(torch.tensor(new_goal_storm).unsqueeze(0), self.w_T_r).tolist()[0] 
+    #     goal_handle = len(current_poses_gym) - 1
+    #     collision_objs_num = len(current_poses_gym) - 4
+    #     new_poses_gym[goal_handle, 0:7][0:7] = torch.tensor(new_goal_gym) # set "root goal" to be as self.goal_pose    
+    #     int_linspace = np.linspace(1, collision_objs_num, num=coll_objs_num, dtype=int) # array([1,2,..,37])
+    #     actor_indices = torch.tensor(np.append(int_linspace, goal_handle), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
+    #     self.goal_pose = new_goal_gym 
+    #     self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(new_poses_gym), gymtorch.unwrap_tensor(actor_indices), coll_objs_num) # read the docs
         
-        # update poses in storm
-        self.mpc_control.update_world_params(compressed_world_params)
-        self.mpc_control.update_costs(cost_weights)
-        self.mpc_control.update_mpc_params(mpc_params) 
+    #     # update poses in storm
+    #     self.mpc_control.update_world_params(compressed_world_params)
+    #     self.mpc_control.update_costs(cost_weights)
+    #     self.mpc_control.update_mpc_params(mpc_params) 
     
-     
+    
+    def reset_deterministic_new(self, selected_object_names: List[str]=['cube1','sphere2'] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
+        
+        def storm_pose_to_gym_pose(storm_pose):
+            return self.transform_tensor(torch.tensor(storm_pose), self.w_T_r)
+        
+        cast_out_pose_storm = [-10] * 7 # this is were we cast-out objects which we did not select by name
+        cast_out_pose_gym = storm_pose_to_gym_pose(cast_out_pose_storm)
+        
+        n_actors = self.gym.actor_count(self.env_ptr)
+        actor_handle_to_name = [-1] * n_actors # at index i, the actor name, and i is the actor name
+        actor_name_to_handle = {} # reverse map
+        actor_handles = range(self.gym.actor_count(self.env_ptr))
+        for actor_handle in actor_handles:
+            actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
+            actor_handle_to_name[actor_handle] = actor_name
+            actor_name_to_handle[actor_name] = actor_handle 
+            
+        # robot_idx = 0
+        # ee_target_object_idx = -2
+        # ee_current_as_mug_idx = -1
+        
+        # select objects to include by name
+        self.env_yml_relative_path = 'rlpt/experiments/experiment1/env2_10spheres_27cubes.yml' # poses at storm coord-sys representation 
+        world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path) 
+        env_template = load_yaml(world_yml)
+        all_collision_objs = env_template['world_model']['coll_objs']
+        selected_coll_objects = {'sphere': {},'cube': {}}
+        for obj_type in all_collision_objs: # sphere, cube
+            for obj_name in all_collision_objs[obj_type]: # cube%x%, sphere%y%
+                if obj_name in selected_object_names:
+                    selected_coll_objects[obj_type][obj_name] = all_collision_objs[obj_type][obj_name] 
+        
+        selected_coll_objs_poses = self.extract_poses(selected_coll_objects) 
+        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
+        root_state_gym_current = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()     
+        
+        # new_coll_objs_poses = root_state_gym_current[1:-2, 0:7].copy()
+        
+                
+        # collision objects to cast out to an agreed location
+        for actor_name in actor_name_to_handle:
+            if actor_name not in selected_object_names and actor_name not in ['robot', 'ee_target_object','ee_current_as_mug']:
+                actor_handle = actor_name_to_handle[actor_name]
+                root_state_gym_current[actor_handle, 0:7] = cast_out_pose_gym
+        
+        # collission objects to include
+        for actor_name in selected_coll_objects:
+            actor_handle = actor_name_to_handle[actor_name] # object idx out of all actors
+            root_state_gym_current[actor_handle, 0:7] = storm_pose_to_gym_pose(selected_coll_objs_poses[actor_name]) 
+        
+        # goal state new location
+        goal_pose_gym = self.transform_tensor(torch.tensor(goal_pose_storm).unsqueeze(0), self.w_T_r).tolist()[0] # storm -> gym
+        self.goal_pose = goal_pose_gym
+        root_state_gym_current[actor_name_to_handle['ee_target_object'], 0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+        
+        # root_state_gym_current_coll_poses = root_state_gym_current[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7) 
+        # root_state_gym_current_coll_poses[:, 0:7] = self.transform_tensor(torch.tensor(selected_coll_objs_poses), self.w_T_r) # storm -> gym coordinate system. all I items- position and orientation in gui coordinates
+        root_state_gym_current[1:-2, 0:7] = self.transform_tensor(torch.tensor(selected_coll_objs_poses), self.w_T_r) # storm -> gym coordinate system.
+        self.goal_pose = self.transform_tensor(torch.tensor(goal_pose_storm).unsqueeze(0), self.w_T_r).tolist()[0] # storm -> gym coordinates (w_T_r * p+q) 
+        goal_pose_root_state_idx = -1 # TODO maybe error
+        root_state_gym_current[goal_pose_root_state_idx, 0:7][0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+        
+        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(root_state_gym_current)) # read the docs
+
+        
+                    
+        
+    
     def reset_deterministic(self,indexes_cubes, indexes_spheres, goal_pose_storm):
         """
         Change location of objects in environment and target goal
@@ -699,14 +769,17 @@ class MpcRobotInteractive:
         """
         return copy.deepcopy(self.robot_sim.get_state(self.env_ptr, self.robot_ptr)) # calling to the original function 
     def extract_poses(self, dictionary):
-        poses = []
+        # poses = []
+        poses = {}
         for obj_type, obj_data in dictionary.items():
             if isinstance(obj_data, dict):
                 for obj_name, obj_info in obj_data.items():
                     if 'pose' in obj_info:
-                        poses.append(obj_info['pose'])
+                        # poses.append(obj_info['pose'])
+                        poses[obj_name] = obj_info['pose'] 
                     if 'position' in obj_info:
-                        poses.append(obj_info['position'] + [0.0, 0.0, 0.0, 1])
+                        poses[obj_name] = obj_info['position'] + [0.0, 0.0, 0.0, 1]
+                        # poses.append(obj_info['position'] + [0.0, 0.0, 0.0, 1])
         return poses
     def transform_tensor(self, tensor, w_T_r):
         """
@@ -832,7 +905,9 @@ class MpcRobotInteractive:
             quat = self.generate_random_quaternion()
             return position + quat
         else:
-            return position        
+            return position
+        
+                
     def select_participating_obstacles(self, world_yml, indexes_cubes=[], indexes_spheres=[], render_poses=True):
         """
         # Formerly called "modify_dict" but changed to this name for more clarity.
@@ -845,8 +920,11 @@ class MpcRobotInteractive:
         
         MIN_SPHERE_INDEX = 0 # inclusive
         MAX_SPHERE_INDEX = 9 # inclusive
-        MIN_CUBE_INDEX = 11 # inclusive
+        # MIN_CUBE_INDEX = 11 # inclusive
+        MIN_CUBE_INDEX = 10 # inclusive
         MAX_CUBE_INDEX = 34 # inclusive 
+        # MIN_CUBE_INDEX = 0
+         #MAX_CUBE_INDEX = 25
         is_sampling_cubes, is_sampling_spheres = indexes_cubes == [], indexes_spheres == []
          
         if not is_sampling_cubes: # selelecting cube indices manually
@@ -907,63 +985,63 @@ class MpcRobotInteractive:
             dims_pose['pose'] = world_params['world_model']['coll_objs']['cube']['cube28']['pose']
             compressed_world_params['world_model']['coll_objs']['cube']['cube28'] = dims_pose
 
-
+        
         return world_params, indexes, compressed_world_params # return: all optional obstacles objects
     
-    def choose_sim_objects(self, world_yml, object_indexes=None):
-        """
-        object_indexes - the indexes of objects to select. None means all
-        """
+    # def choose_sim_objects(self, world_yml, object_indexes=None):
+    #     """
+    #     object_indexes - the indexes of objects to select. None means all
+    #     """
         
         
-        indexes = object_indexes
+    #     indexes = object_indexes
         
-        # Read the dictionary with all optional obstacles
-        world_params = self.open_yaml(world_yml) # = {'world_model': {'coll_objs': {'sphere': {all spheres..},'cube': {all cubes..}}}}
-        selected_objects = self.get_objects_by_indexes(world_params, indexes)
+    #     # Read the dictionary with all optional obstacles
+    #     world_params = self.open_yaml(world_yml) # = {'world_model': {'coll_objs': {'sphere': {all spheres..},'cube': {all cubes..}}}}
+    #     selected_objects = self.get_objects_by_indexes(world_params, indexes)
         
-        # Then we randomly change the pose (position and orientation) of each selected obstacle
-        compressed_world_params = {'world_model': {'coll_objs': {'sphere': {},'cube': {}}}}
-        sphere_index = 1
-        cube_index = 1
-        for i in range(len(selected_objects)):
-            obj = selected_objects[i]
-            name = obj[0]
-            base_name = self.get_base_name(name)
-            # new_pos = self.randomize_pos(obj, base_name) 
-            if base_name == 'sphere':
-                # Modify dict
-                # world_params['world_model']['coll_objs'][base_name][name]['position'] = new_pos
-                # Add to compressed dict
-                radius_position = {}
-                radius_position['radius'] = world_params['world_model']['coll_objs'][base_name][name]['radius']
-                radius_position['position'] = world_params['world_model']['coll_objs'][base_name][name]['position']
-                compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(sphere_index)] = radius_position
-                sphere_index += 1
-            elif base_name == 'cube':
-                #print("Cube added !!!")
-                # Modify dict
-                # world_params['world_model']['coll_objs'][base_name][name]['pose'] = new_pos
-                # Add to compressed dict
-                dims_pose = {}
-                dims_pose['dims'] = world_params['world_model']['coll_objs'][base_name][name]['dims']
-                dims_pose['pose'] = world_params['world_model']['coll_objs'][base_name][name]['pose']
-                compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(cube_index)] = dims_pose
-                cube_index += 1
+    #     # Then we randomly change the pose (position and orientation) of each selected obstacle
+    #     compressed_world_params = {'world_model': {'coll_objs': {'sphere': {},'cube': {}}}}
+    #     sphere_index = 1
+    #     cube_index = 1
+    #     for i in range(len(selected_objects)):
+    #         obj = selected_objects[i]
+    #         name = obj[0]
+    #         base_name = self.get_base_name(name)
+    #         # new_pos = self.randomize_pos(obj, base_name) 
+    #         if base_name == 'sphere':
+    #             # Modify dict
+    #             # world_params['world_model']['coll_objs'][base_name][name]['position'] = new_pos
+    #             # Add to compressed dict
+    #             radius_position = {}
+    #             radius_position['radius'] = world_params['world_model']['coll_objs'][base_name][name]['radius']
+    #             radius_position['position'] = world_params['world_model']['coll_objs'][base_name][name]['position']
+    #             compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(sphere_index)] = radius_position
+    #             sphere_index += 1
+    #         elif base_name == 'cube':
+    #             #print("Cube added !!!")
+    #             # Modify dict
+    #             # world_params['world_model']['coll_objs'][base_name][name]['pose'] = new_pos
+    #             # Add to compressed dict
+    #             dims_pose = {}
+    #             dims_pose['dims'] = world_params['world_model']['coll_objs'][base_name][name]['dims']
+    #             dims_pose['pose'] = world_params['world_model']['coll_objs'][base_name][name]['pose']
+    #             compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(cube_index)] = dims_pose
+    #             cube_index += 1
 
-            dims_pose = {}
-            s = None
-            if 'cube28' in world_params['world_model']['coll_objs']['cube']:
-                s = 'cube28'
-            elif 'special_cube' in world_params['world_model']['coll_objs']['cube']: 
-                s = 'special_cube' 
-            if s is not None:
-                dims_pose['dims'] = world_params['world_model']['coll_objs']['cube'][s]['dims']
-                dims_pose['pose'] = world_params['world_model']['coll_objs']['cube'][s]['pose']
-                compressed_world_params['world_model']['coll_objs']['cube'][s] = dims_pose
+    #         dims_pose = {}
+    #         s = None
+    #         if 'cube28' in world_params['world_model']['coll_objs']['cube']:
+    #             s = 'cube28'
+    #         elif 'special_cube' in world_params['world_model']['coll_objs']['cube']: 
+    #             s = 'special_cube' 
+    #         if s is not None:
+    #             dims_pose['dims'] = world_params['world_model']['coll_objs']['cube'][s]['dims']
+    #             dims_pose['pose'] = world_params['world_model']['coll_objs']['cube'][s]['pose']
+    #             compressed_world_params['world_model']['coll_objs']['cube'][s] = dims_pose
 
 
-        return world_params, indexes, compressed_world_params # return: all optional obstacles objects
+    #     return world_params, indexes, compressed_world_params # return: all optional obstacles objects
 
 
 def main_experiment():
@@ -974,23 +1052,25 @@ def main_experiment():
     # FIGURE_COLUMNS = 1 
     
     def parse_env(env_id):
+        
         if env_id == 0:
-            goal_pose_storm = [0.5, 0.5, 1, 0, 0, 0, 1]
-            indexes_cubes = [11]
-            indexes_spheres = [1, 2, 3]
+            goal_pose_storm = [0, 0, 0.51, 0, 0, 0, 1]
+            indexes_cubes = [10]
+            indexes_spheres = [1]
                 
         elif env_id == 1:
-                goal_pose_storm = [1,-0.5, 1, 0, 0, 0, 1]
-                indexes_cubes = [11]
-                indexes_spheres = [1, 2, 3]
+                goal_pose_storm = [0.4,-0.5, 0.3, 0, 0, 0, 1]
+                indexes_cubes = [10]
+                indexes_spheres = [0]
             
         elif env_id == 2:
-                goal_pose_storm = [-1,-0.5, 1, 0, 0, 0, 1]
-                indexes_cubes = [11, 12, 13]
-                indexes_spheres = [1, 2, 3]
+                goal_pose_storm = [-0.2,-0.5, 0.3, 0, 0, 0, 1]
+                indexes_cubes = [10]
+                indexes_spheres = [0]
+                
         return goal_pose_storm, indexes_spheres, indexes_cubes
-    episode_settings_space = {
-        
+    
+    episode_settings_space = {    
         'episode_max_ts': [30],
         'env_id': [0,1,2]
         }
@@ -1022,9 +1102,9 @@ def main_experiment():
         }
     
     all_combos = get_combinations({
-        'episode_settings': get_combinations(episode_settings_space),
         'cost_weights': get_combinations(cost_weights_space),
-        'mpc_params': get_combinations(mpc_params_space)
+        'mpc_params': get_combinations(mpc_params_space),
+        'episode_settings': get_combinations(episode_settings_space)
         })
     
     
@@ -1081,8 +1161,8 @@ def main_experiment():
             cost_weights: dict = combo['cost_weights'] 
             # TODO: debug here... something is wrong with target location loading
             # mpc.reset()
-            mpc.reset_deterministic(indexes_cubes, indexes_spheres, goal_pose_storm)
-            # mpc.reset_env(cost_weights, mpc_params,env_file, new_goal_storm)
+            # mpc.reset_deterministic(indexes_cubes, indexes_spheres, goal_pose_storm)
+            mpc.reset_deterministic_new()
             steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = mpc.episode(cost_weights,mpc_params, episode_max_ts) 
             
         if profile_memory:
