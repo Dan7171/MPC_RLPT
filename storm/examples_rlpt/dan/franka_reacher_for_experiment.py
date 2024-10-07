@@ -1,33 +1,14 @@
-#
-# MIT License
-#
-# Copyright (c) 2020-2021 NVIDIA CORPORATION.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.#
+ 
 """ 
 Based on Elias's franka_reacher_for_comparison.py 
 """
 
 import copy
 from os import name
+import pickle
 from re import I, match
 from select import select
+import shutil
 from typing import Iterable, List, Tuple, Union
 from click import BadArgumentUsage
 from colorlog import root
@@ -38,7 +19,7 @@ from isaacgym import gymtorch
 # from isaacgym.gymapi import Tensor
 from matplotlib.transforms import Transform
 from storm_kit.mpc.cost import cost_base
-from sympy import Integer
+from sympy import Integer, im
 import torch
 from traitlets import default
 
@@ -74,19 +55,12 @@ from BGU.Rlpt.configs.default_main import load_config_with_defaults
 import BGU.Rlpt.reward.point_cloud_utils 
 import matplotlib.pyplot as plt
 from BGU.Rlpt.experiments.experiment_utils import get_combinations
-
+from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
 np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
  
-# # General helper functions
-# def get_all_actor_handles(gym, env):
-    
-#     num_actors = gym.actor_count(env)
-#     handles = [-1] * num_actors
-#     for i in range(num_actors):
-#         handles[i] = gym.get_actor_handle(env, i)
-#     return handles
+ 
 
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
@@ -473,125 +447,80 @@ class MpcRobotInteractive:
         return e_pos, e_quat 
     
     
-    def reset_deterministic_new(self, selected_object_names: List[str]=['cube1','sphere2'] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
+    def reset_environment(self, coll_obs_names: List[str]=[] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
         
         def storm_pose_to_gym_pose(storm_pose):
             return self.transform_tensor(torch.tensor(storm_pose).unsqueeze(0), self.w_T_r)
-        
-        cast_out_pose_storm = [-1] * 7 # this is were we cast-out objects which we did not select by name
+
+         
+        cast_out_pose_storm = [-100] * 7 # Far away and almost invisible location. This is were we cast-out objects which we did not select by name
         cast_out_pose_gym = storm_pose_to_gym_pose(cast_out_pose_storm)
-        
         n_actors = self.gym.get_actor_count(self.env_ptr)
         actor_handle_to_name = [-1] * n_actors # at index i, the actor name, and i is the actor name
         actor_name_to_handle = {} # reverse map
         actor_handles = range(n_actors)
+        
+        # map handles to actors and vise versa
         for actor_handle in actor_handles:
             actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
             actor_handle_to_name[actor_handle] = actor_name
-            actor_name_to_handle[actor_name] = actor_handle 
-                    
+            actor_name_to_handle[actor_name] = actor_handle         
+        if coll_obs_names == []: # if input list is empty, take all objets in file 
+            coll_obs_names = actor_handle_to_name                
+
         # robot_idx = 0
         # ee_target_object_idx = -2
         # ee_current_as_mug_idx = -1
         
-        # select objects to include by name
-        self.env_yml_relative_path = 'rlpt/experiments/experiment1/env2_10spheres_27cubes.yml' # poses at storm coord-sys representation 
+        # select objects to include by their names from input
         world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path) 
         env_template = load_yaml(world_yml)
         all_collision_objs = env_template['world_model']['coll_objs']
-        selected_coll_objects = {'sphere': {},'cube': {}}
-        
+        selected_coll_objects = {'sphere': {},'cube': {}}        
         for obj_type in all_collision_objs: # sphere, cube
             for obj_name in all_collision_objs[obj_type]: # cube%x%, sphere%y%
-                if obj_name in selected_object_names:
+                if obj_name in coll_obs_names:
                     selected_coll_objects[obj_type][obj_name] = all_collision_objs[obj_type][obj_name] 
-                    
         env_selected = copy.deepcopy(env_template)
         env_selected['world_model']['coll_objs'] = selected_coll_objects
-        
         selected_coll_objs_poses = self.extract_poses(selected_coll_objects) 
-        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
-        root_state_gym_current = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()     
         
-        # new_coll_objs_poses = root_state_gym_current[1:-2, 0:7].copy()
-            
-        # collision objects to cast out to an agreed location
+        # update environment with new locations of selected objects
+        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
+        root_state_gym_current = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()         
+        
+        # object type a: collision objects to cast out to an agreed location
         for actor_name in actor_name_to_handle:
-            if actor_name not in selected_object_names and actor_name not in ['robot', 'ee_target_object','ee_current_as_mug']:
+            if actor_name not in coll_obs_names and actor_name not in ['robot', 'ee_target_object','ee_current_as_mug']:
                 actor_handle = actor_name_to_handle[actor_name]
                 root_state_gym_current[actor_handle, 0:7] = cast_out_pose_gym
         
-        # collission objects to include
+        # object type b: collission objects to include
         for actor_type in selected_coll_objects:
             for actor_name in selected_coll_objects[actor_type]:
                 actor_handle = actor_name_to_handle[actor_name] # object idx out of all actors
                 root_state_gym_current[actor_handle, 0:7] = storm_pose_to_gym_pose(selected_coll_objs_poses[actor_name]) 
         
-        # goal state new location
+        # object type c: goal state new location
         goal_pose_gym = storm_pose_to_gym_pose(goal_pose_storm) # storm -> gym
         root_state_gym_current[actor_name_to_handle['ee_target_object'], 0:7] = goal_pose_gym # set "root goal" to be as self.goal_pose
         self.goal_pose = goal_pose_gym.tolist()[0]
         
-        # self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(root_state_gym_current)) # read the docs
+        # update finished. Can set the gym root tensor again to inform gym updates were made
         robot_handle = actor_name_to_handle['robot']
         range_to_robot = range(robot_handle)
         range_to_robot_tensor = torch.tensor(range_to_robot, dtype=torch.int32, device="cpu")
         range_after_robot = range(robot_handle+1, n_actors)
         range_after_robot_tensor = torch.tensor(range_after_robot,dtype=torch.int32, device="cpu")
-        # idx_range = torch.tensor(range(1, n_actors),dtype=torch.int32, device="cpu")
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_state_gym_current), gymtorch.unwrap_tensor(range_to_robot_tensor), len(range_to_robot))
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_state_gym_current), gymtorch.unwrap_tensor(range_after_robot_tensor), len(range_after_robot_tensor))
-        
-        # read the docs
-        # self.gym.set_actor_root_state_tensor(self.sim,  gymtorch.unwrap_tensor(root_state_gym_current))
-        self.mpc_control.update_world_params(env_selected)      
-        
-        
-                    
-        
-    
-    def reset_deterministic(self,indexes_cubes, indexes_spheres, goal_pose_storm):
-        """
-        Change location of objects in environment and target goal
-        Input
-            - objects: dict {object_type: [pos, dimension]}
-            - goal_pos: numpy array [7], (x,y,z, quaternion) of target
-     
-        """
-        # fixed values
-        self.env_yml_relative_path = 'rlpt/experiments/experiment1/env2_10spheres_27cubes.yml' # poses at storm coord-sys representation 
-        num_points = 37  
-        last_idx = 39
-        world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path) 
-        
-        # select deterministically the participating obstacles by given indices. result in storm cs 
-        world_params_storm, indexes, compressed_world_params_storm = self.select_participating_obstacles(world_yml, indexes_cubes, indexes_spheres, False) # modify dict - randonmly seclecting a world        
-        
-        # refresh observation
-        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
-        
-        # make a copy of current poses in gym simulator
-        root_tensor_gym = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()     
-        
-        # get the new locations of obstacles storm coordinate system, convert to gym coordinate system and put the in the poses data structure of gym 
-        new_collison_objects_poses_storm = self.extract_poses(world_params_storm['world_model']['coll_objs']) # dict of I items: spheres and cubes with their attributes (size, loc etc)
-        root_tensor_poses_gym_collision_objects = root_tensor_gym[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7) 
-        root_tensor_poses_gym_collision_objects[:, 0:7] = self.transform_tensor(torch.tensor(new_collison_objects_poses_storm), self.w_T_r) # storm -> gym coordinate system. all I items- position and orientation in gui coordinates
-        
-        # do the same for the goal (convet from storm cs to gym cs and then put in gym state data structure)
-        self.goal_pose = self.transform_tensor(torch.tensor(goal_pose_storm).unsqueeze(0), self.w_T_r).tolist()[0] # storm -> gym coordinates (w_T_r * p+q) 
-        root_tensor_gym[last_idx, 0:7][0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
-        
-        # update gym state
-        int_linspace = np.linspace(1, 37, num=num_points, dtype=int) # array([1,2,..,37])
-        actor_indices = torch.tensor(np.append(int_linspace, last_idx), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
-        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_tensor_gym), gymtorch.unwrap_tensor(actor_indices), 38) # read the docs
 
-        # update storm mpc
-        self.mpc_control.update_world_params(compressed_world_params_storm)      
-    
+        # update storm        
+        self.mpc_control.update_world_params(env_selected)      
+        return env_selected
         
-    def reset(self):
+        
+    def reset(self): # unused, replaces by more general reset_environment which can support any env file with spheres and cubes
         """
         Change location of objects in environment and target goal
         Input
@@ -885,9 +814,7 @@ class MpcRobotInteractive:
             quat = self.generate_random_quaternion()
             return position + quat
         else:
-            return position
-        
-                
+            return position                
     def select_participating_obstacles(self, world_yml, indexes_cubes=[], indexes_spheres=[], render_poses=True):
         """
         # Formerly called "modify_dict" but changed to this name for more clarity.
@@ -968,61 +895,6 @@ class MpcRobotInteractive:
         
         return world_params, indexes, compressed_world_params # return: all optional obstacles objects
     
-    # def choose_sim_objects(self, world_yml, object_indexes=None):
-    #     """
-    #     object_indexes - the indexes of objects to select. None means all
-    #     """
-        
-        
-    #     indexes = object_indexes
-        
-    #     # Read the dictionary with all optional obstacles
-    #     world_params = self.open_yaml(world_yml) # = {'world_model': {'coll_objs': {'sphere': {all spheres..},'cube': {all cubes..}}}}
-    #     selected_objects = self.get_objects_by_indexes(world_params, indexes)
-        
-    #     # Then we randomly change the pose (position and orientation) of each selected obstacle
-    #     compressed_world_params = {'world_model': {'coll_objs': {'sphere': {},'cube': {}}}}
-    #     sphere_index = 1
-    #     cube_index = 1
-    #     for i in range(len(selected_objects)):
-    #         obj = selected_objects[i]
-    #         name = obj[0]
-    #         base_name = self.get_base_name(name)
-    #         # new_pos = self.randomize_pos(obj, base_name) 
-    #         if base_name == 'sphere':
-    #             # Modify dict
-    #             # world_params['world_model']['coll_objs'][base_name][name]['position'] = new_pos
-    #             # Add to compressed dict
-    #             radius_position = {}
-    #             radius_position['radius'] = world_params['world_model']['coll_objs'][base_name][name]['radius']
-    #             radius_position['position'] = world_params['world_model']['coll_objs'][base_name][name]['position']
-    #             compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(sphere_index)] = radius_position
-    #             sphere_index += 1
-    #         elif base_name == 'cube':
-    #             #print("Cube added !!!")
-    #             # Modify dict
-    #             # world_params['world_model']['coll_objs'][base_name][name]['pose'] = new_pos
-    #             # Add to compressed dict
-    #             dims_pose = {}
-    #             dims_pose['dims'] = world_params['world_model']['coll_objs'][base_name][name]['dims']
-    #             dims_pose['pose'] = world_params['world_model']['coll_objs'][base_name][name]['pose']
-    #             compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(cube_index)] = dims_pose
-    #             cube_index += 1
-
-    #         dims_pose = {}
-    #         s = None
-    #         if 'cube28' in world_params['world_model']['coll_objs']['cube']:
-    #             s = 'cube28'
-    #         elif 'special_cube' in world_params['world_model']['coll_objs']['cube']: 
-    #             s = 'special_cube' 
-    #         if s is not None:
-    #             dims_pose['dims'] = world_params['world_model']['coll_objs']['cube'][s]['dims']
-    #             dims_pose['pose'] = world_params['world_model']['coll_objs']['cube'][s]['pose']
-    #             compressed_world_params['world_model']['coll_objs']['cube'][s] = dims_pose
-
-
-    #     return world_params, indexes, compressed_world_params # return: all optional obstacles objects
-
 
 def main_experiment():
     
@@ -1031,54 +903,35 @@ def main_experiment():
     # episode_max_ts = 800 # maximal number of time steps in a single episode 
     # FIGURE_COLUMNS = 1 
     
-    def parse_env(env_id):
-        
-        if env_id == 0:
-            goal_pose_storm = [0, 0, 0.51, 0, 0, 0, 1]
-            indexes_cubes = [10]
-            indexes_spheres = [1]
-                
-        elif env_id == 1:
-                goal_pose_storm = [0.4,-0.5, 0.3, 0, 0, 0, 1]
-                indexes_cubes = [10]
-                indexes_spheres = [0]
-            
-        elif env_id == 2:
-                goal_pose_storm = [-0.2,-0.5, 0.3, 0, 0, 0, 1]
-                indexes_cubes = [10]
-                indexes_spheres = [0]
-                
-        return goal_pose_storm, indexes_spheres, indexes_cubes
-    
     episode_settings_space = {    
-        'episode_max_ts': [30],
-        'env_id': [0,1,2]
+        'episode_max_ts': [300],
+        'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
+        'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
         }
     
-    cost_weights_space = { # TODO - replace with reading from storm/content/configs/mpc/franka_reacher.yml
-        
-        # ArmReacher costs        
-        "goal_pose": [[15.0, 1000.0]], # orientation, position
+    cost_weights_space = { 
+                
+        "goal_pose": [[15.0, 1000.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0],
         
         # ArmBase costs
-        "robot_self_collision" : [5000],  # 5000, 
-        "primitive_collision" :  [5000],# 5000,
+        "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
+        "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
         "voxel_collision" : [0],
         "null_space": [1.0],
-        "manipulability": [30], 
+        "manipulability": [30, 10, 50, 100], 
         "ee_vel": [0.0], 
-        "stop_cost": [100], 
+        "stop_cost": [100, 10, 50, 200], 
         "stop_cost_acc": [0.0], 
-        "smooth": [1.0], 
-        "state_bound": [1000.0] 
+        "smooth": [1.0, 0.1, 5, 10], 
+        "state_bound": [1000.0, 100, 500, 2000] 
     }
     mpc_params_space = {
         "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
-        "particles" : [500],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-        "n_iters": [1] # Num of optimization steps - TODO (from paper)
+        "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+        "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
         }
     
     all_combos = get_combinations({
@@ -1106,7 +959,7 @@ def main_experiment():
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
     if args.env_yml_relative == '':
-        args.env_yml_relative = 'rlpt/experiments/experiment1/env2_10spheres_27cubes.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/env_template.yml'
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
@@ -1118,37 +971,48 @@ def main_experiment():
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
         
     ##### main loop of episodes execution: #######
-    # prepare subplots
-    # figure_rows = math.ceil(EPISODES / FIGURE_COLUMNS)
-    # fig, axs = plt.subplots(figure_rows, FIGURE_COLUMNS, sharex=True)
-    # show_episode_plots = False
     
-    # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. 
-    gym = Gym(**sim_params) # only one initiation
+    gym = Gym(**sim_params) # note - only one initiation is allowed per process
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
+    output_file = f'BGU/Rlpt/experiments/experiments_results/experiment1_{make_date_time_str()}.pl'
+    
     try:
+        
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
-        for ep, combo in enumerate(all_combos):
+            
+        for ep, combo in enumerate(all_combos): # for each episode id with a unique combination of initial parameters
+            # define episode settings
             episode_max_ts: int = combo['episode_settings']['episode_max_ts']
-            # env_file:str = combo['episode_settings']['env_file']
             if ep == 0:
                 mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
-            
-            goal_pose_storm, indexes_spheres, indexes_cubes = parse_env(combo['episode_settings']['env_id'])
+                data = []
+            goal_pose_storm: list = combo['episode_settings']['goal_pose_storm']
+            coll_obs_names: list = combo['episode_settings']['coll_obs_names']
+            episode_environment_model = mpc.reset_environment(coll_obs_names, goal_pose_storm) # reset environment and return its new specifications
+            selected_collision_objs = episode_environment_model['world_model']['coll_objs'] 
             mpc_params: dict = combo['mpc_params']
-            cost_weights: dict = combo['cost_weights'] 
-            # TODO: debug here... something is wrong with target location loading
-            # mpc.reset()
-            # mpc.reset_deterministic(indexes_cubes, indexes_spheres, goal_pose_storm)
-            mpc.reset_deterministic_new()
+            cost_weights: dict = combo['cost_weights']
+            
+            # run episode and collect data  
             steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = mpc.episode(cost_weights,mpc_params, episode_max_ts) 
             
+            # save collected data from episode
+            if ep > 0:
+                with open(output_file, 'rb') as file:
+                    data = pickle.load(file)    
+            episode_data = {
+                'settings': {'goal_pose_storm': goal_pose_storm, ' collision_objs': selected_collision_objs, 'mpc_params': mpc_params, 'cost_weights': cost_weights},
+                'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
+            }
+            data.append(episode_data) # index specifies the episode id
+            with open(output_file, 'wb') as file:
+                pickle.dump(data, file)
+                
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-        # if show_episode_plots:    
-        #     plt.show()
+
         
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:
@@ -1159,107 +1023,4 @@ def main_experiment():
 if __name__ == '__main__':
     
     main_experiment()
-    # GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
-    # RED = gymapi.Vec3(0.8, 0.1, 0.1)
-    # EPISODES = 1 # How many simulations / episodes to run in total
-    # FIGURE_COLUMNS = 1 
-    # episode_max_ts = 800 # maximal number of time steps in a single episode 
-    # cost_weights = { # TODO - replace with reading from storm/content/configs/mpc/franka_reacher.yml
-        
-    #     # ArmReacher costs        
-    #     "goal_pose": [15.0, 1000.0], # orientation, position
-    #     "zero_vel": 0.0, 
-    #     "zero_acc": 0.0,
-    #     "joint_l2": 0.0,
-        
-    #     # ArmBase costs
-    #     "robot_self_collision" : 5000,  # 5000, 
-    #     "primitive_collision" : 5000 , # 5000,
-    #     "voxel_collision" : 0,
-    #     "null_space": 1.0,
-    #     "manipulability": 30, 
-    #     "ee_vel": 0.0, 
-    #     "stop_cost": 100, 
-    #     "stop_cost_acc": 0.0, 
-    #     "smooth": 1.0, 
-    #     "state_bound": 1000.0 
-    # }
-    # mpc_params = {
-    #     "horizon" : 30 , # Dan - From paper:  How deep into the future each rollout (imaginary simulation) sees
-    #     "particles" : 500, # Dan - How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-    #     "n_iters": 1 # Num of optimization steps - TODO (from paper) https://docs.google.com/document/d/1BNhvwpZp4Zq1Noj_A6z84WRbsSv_NkFmr0AgDwroyQI/edit#bookmark=id.ltisat9yika1
-    #     }    
     
-    # # parse arguments to start simulation
-    # parser = argparse.ArgumentParser(description='pass args')
-    # parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
-    # parser.add_argument('--cuda', action='store_true', default=True, help='use cuda') # use cude
-    # parser.add_argument('--headless', action='store_true', default=False, help='headless gym') # False means use viewer (gui)
-    # parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
-    # parser.add_argument('--env_yml_relative', type=str, default='', help='asset specifications of environment. Relative path under storm/content/configs/gym')
-    # parser.add_argument('--physx_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
-    # parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
-    # parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
-    
-    # args = parser.parse_args()
-
-    # # simulation setup
-    # if args.env_yml_relative == '':
-    #     args.env_yml_relative = 'rlpt/experiments/experiment1/env1.yml'
-    # if args.physx_yml_relative == '':
-    #     args.physx_yml_relative = 'rlpt/experiments/experiment1/physx.yml'    
-    # if args.task_yml_relative == '':
-    #     args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
-    
-    # # rlpt setup
-    # rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
-    # sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
-    # GLobalVars.cost_sniffer = CostFnSniffer(*sniffer_params)
-    # profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
-    # if profile_memory: # for debugging gpu if needed   
-    #     start_mem_profiling()      
- 
-    # sim_params = load_yaml(join_path(get_gym_configs_path(),args.physx_yml_relative)) # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
-    # sim_params['headless'] = args.headless # run with no gym gui
-    # gym =   Gym(**sim_params) # http://127.0.0.1:5500/STORM_DOCS/docs/_build/html/storm_kit.gym.html#submodules. The gym object by itself doesn’t do very much. It only serves as a proxy for the Gym API. To create a simulation, you need to call the create_sim method. 
-    # mpc = MpcRobotInteractive(args, gym, rlpt_cfg, args.env_yml_relative, args.task_yml_relative) # not the best naming. TODO: replace name 
-    # ##### main loop of episodes execution: #######
-    # # prepare subplots
-    # figure_rows = math.ceil(EPISODES / FIGURE_COLUMNS)
-    # fig, axs = plt.subplots(figure_rows, FIGURE_COLUMNS, sharex=True)
-    # show_episode_plots = rlpt_cfg['episode_plots']['show'] 
-    # try:
-    #     for ep in range(EPISODES):    
-    #         # run episode
-    #         steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors =  mpc.episode(cost_weights, mpc_params, episode_max_ts) 
-    #         if show_episode_plots: # make figures
-    #             episode_title = f'ep {ep} stg {steps_to_goal} ttg {time_to_goal}'
-    #             if EPISODES > 1:    
-    #                 row = ep // FIGURE_COLUMNS # episode row in  plot
-    #                 col = (ep + FIGURE_COLUMNS) % FIGURE_COLUMNS # episode column in  plot
-    #                 curr_axs = axs[col] if figure_rows == 1 else axs[row, col] # if there is only one row, no row spcificying is needed (something technical of matplotlib)
-    #                 curr_axs.set_title(episode_title)
-    #                 plt_item = curr_axs
-    #             else:
-    #                 plt.title(episode_title)
-    #                 plt_item = plt
-
-    #             plt_item.plot(pos_errors)
-    #             plt_item.plot(rot_errors)
-    #             plt_item.plot(self_col_errors)
-    #             plt_item.plot(obj_col_errors)
-    #             plt_item.legend(["position error", "rotation error", "self collision error", "objects collision error"], loc="upper right")            
-    #         ##########    
-    #         # mpc.reset() # reset the mpc world
-    #         # mpc.reset_env('tmp', 'tmp')
-    #     if profile_memory:
-    #         finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-    #     if show_episode_plots:    
-    #         plt.show()
-        
-    # except torch.cuda.OutOfMemoryError: 
-    #     if profile_memory:
-    #         finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-            
-    
-
