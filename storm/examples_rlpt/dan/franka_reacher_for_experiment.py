@@ -472,53 +472,24 @@ class MpcRobotInteractive:
         
         return e_pos, e_quat 
     
-    # def reset_env(self, cost_weights, mpc_params,env_file, new_goal_storm=[0,0,0,0,0,0,1]):
-        
-        
-    #     env_cfg_path =  join_path(get_gym_configs_path(), env_file)
-    #     world_params, indexes, compressed_world_params = self.choose_sim_objects(env_cfg_path) # modify dict - randonmly seclecting a world
-    #     # num_points = 37 # more generally: len(root_poses) - 1 
-    #     # update poses in gym
-    #     self.gym.refresh_actor_root_state_tensor(self.sim) 
-    #     new_poses_coll_objs_gym = self.extract_poses(world_params['world_model']['coll_objs'])
-    #     coll_objs_num = len(new_poses_coll_objs_gym) - 1
-        
-    #     current_poses_gym = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)) 
-    #     new_poses_gym = current_poses_gym.clone() 
-    #     current_poses_coll_objs_gym = new_poses_gym[1:-2, 0:7]          
-    #     current_poses_coll_objs_gym[:, 0:7] = self.transform_tensor(torch.tensor(new_poses_coll_objs_gym), self.w_T_r)
-    #     new_goal_gym =  self.transform_tensor(torch.tensor(new_goal_storm).unsqueeze(0), self.w_T_r).tolist()[0] 
-    #     goal_handle = len(current_poses_gym) - 1
-    #     collision_objs_num = len(current_poses_gym) - 4
-    #     new_poses_gym[goal_handle, 0:7][0:7] = torch.tensor(new_goal_gym) # set "root goal" to be as self.goal_pose    
-    #     int_linspace = np.linspace(1, collision_objs_num, num=coll_objs_num, dtype=int) # array([1,2,..,37])
-    #     actor_indices = torch.tensor(np.append(int_linspace, goal_handle), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
-    #     self.goal_pose = new_goal_gym 
-    #     self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(new_poses_gym), gymtorch.unwrap_tensor(actor_indices), coll_objs_num) # read the docs
-        
-    #     # update poses in storm
-    #     self.mpc_control.update_world_params(compressed_world_params)
-    #     self.mpc_control.update_costs(cost_weights)
-    #     self.mpc_control.update_mpc_params(mpc_params) 
-    
     
     def reset_deterministic_new(self, selected_object_names: List[str]=['cube1','sphere2'] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
         
         def storm_pose_to_gym_pose(storm_pose):
-            return self.transform_tensor(torch.tensor(storm_pose), self.w_T_r)
+            return self.transform_tensor(torch.tensor(storm_pose).unsqueeze(0), self.w_T_r)
         
-        cast_out_pose_storm = [-10] * 7 # this is were we cast-out objects which we did not select by name
+        cast_out_pose_storm = [-1] * 7 # this is were we cast-out objects which we did not select by name
         cast_out_pose_gym = storm_pose_to_gym_pose(cast_out_pose_storm)
         
-        n_actors = self.gym.actor_count(self.env_ptr)
+        n_actors = self.gym.get_actor_count(self.env_ptr)
         actor_handle_to_name = [-1] * n_actors # at index i, the actor name, and i is the actor name
         actor_name_to_handle = {} # reverse map
-        actor_handles = range(self.gym.actor_count(self.env_ptr))
+        actor_handles = range(n_actors)
         for actor_handle in actor_handles:
             actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
             actor_handle_to_name[actor_handle] = actor_name
             actor_name_to_handle[actor_name] = actor_handle 
-            
+                    
         # robot_idx = 0
         # ee_target_object_idx = -2
         # ee_current_as_mug_idx = -1
@@ -529,18 +500,21 @@ class MpcRobotInteractive:
         env_template = load_yaml(world_yml)
         all_collision_objs = env_template['world_model']['coll_objs']
         selected_coll_objects = {'sphere': {},'cube': {}}
+        
         for obj_type in all_collision_objs: # sphere, cube
             for obj_name in all_collision_objs[obj_type]: # cube%x%, sphere%y%
                 if obj_name in selected_object_names:
                     selected_coll_objects[obj_type][obj_name] = all_collision_objs[obj_type][obj_name] 
+                    
+        env_selected = copy.deepcopy(env_template)
+        env_selected['world_model']['coll_objs'] = selected_coll_objects
         
         selected_coll_objs_poses = self.extract_poses(selected_coll_objects) 
         self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
         root_state_gym_current = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()     
         
         # new_coll_objs_poses = root_state_gym_current[1:-2, 0:7].copy()
-        
-                
+            
         # collision objects to cast out to an agreed location
         for actor_name in actor_name_to_handle:
             if actor_name not in selected_object_names and actor_name not in ['robot', 'ee_target_object','ee_current_as_mug']:
@@ -548,24 +522,30 @@ class MpcRobotInteractive:
                 root_state_gym_current[actor_handle, 0:7] = cast_out_pose_gym
         
         # collission objects to include
-        for actor_name in selected_coll_objects:
-            actor_handle = actor_name_to_handle[actor_name] # object idx out of all actors
-            root_state_gym_current[actor_handle, 0:7] = storm_pose_to_gym_pose(selected_coll_objs_poses[actor_name]) 
+        for actor_type in selected_coll_objects:
+            for actor_name in selected_coll_objects[actor_type]:
+                actor_handle = actor_name_to_handle[actor_name] # object idx out of all actors
+                root_state_gym_current[actor_handle, 0:7] = storm_pose_to_gym_pose(selected_coll_objs_poses[actor_name]) 
         
         # goal state new location
-        goal_pose_gym = self.transform_tensor(torch.tensor(goal_pose_storm).unsqueeze(0), self.w_T_r).tolist()[0] # storm -> gym
-        self.goal_pose = goal_pose_gym
-        root_state_gym_current[actor_name_to_handle['ee_target_object'], 0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+        goal_pose_gym = storm_pose_to_gym_pose(goal_pose_storm) # storm -> gym
+        root_state_gym_current[actor_name_to_handle['ee_target_object'], 0:7] = goal_pose_gym # set "root goal" to be as self.goal_pose
+        self.goal_pose = goal_pose_gym.tolist()[0]
         
-        # root_state_gym_current_coll_poses = root_state_gym_current[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7) 
-        # root_state_gym_current_coll_poses[:, 0:7] = self.transform_tensor(torch.tensor(selected_coll_objs_poses), self.w_T_r) # storm -> gym coordinate system. all I items- position and orientation in gui coordinates
-        root_state_gym_current[1:-2, 0:7] = self.transform_tensor(torch.tensor(selected_coll_objs_poses), self.w_T_r) # storm -> gym coordinate system.
-        self.goal_pose = self.transform_tensor(torch.tensor(goal_pose_storm).unsqueeze(0), self.w_T_r).tolist()[0] # storm -> gym coordinates (w_T_r * p+q) 
-        goal_pose_root_state_idx = -1 # TODO maybe error
-        root_state_gym_current[goal_pose_root_state_idx, 0:7][0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+        # self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(root_state_gym_current)) # read the docs
+        robot_handle = actor_name_to_handle['robot']
+        range_to_robot = range(robot_handle)
+        range_to_robot_tensor = torch.tensor(range_to_robot, dtype=torch.int32, device="cpu")
+        range_after_robot = range(robot_handle+1, n_actors)
+        range_after_robot_tensor = torch.tensor(range_after_robot,dtype=torch.int32, device="cpu")
+        # idx_range = torch.tensor(range(1, n_actors),dtype=torch.int32, device="cpu")
+        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_state_gym_current), gymtorch.unwrap_tensor(range_to_robot_tensor), len(range_to_robot))
+        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_state_gym_current), gymtorch.unwrap_tensor(range_after_robot_tensor), len(range_after_robot_tensor))
         
-        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(root_state_gym_current)) # read the docs
-
+        # read the docs
+        # self.gym.set_actor_root_state_tensor(self.sim,  gymtorch.unwrap_tensor(root_state_gym_current))
+        self.mpc_control.update_world_params(env_selected)      
+        
         
                     
         
