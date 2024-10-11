@@ -839,34 +839,45 @@ def main_experiment():
     # 3(env) x 3(self col) x 3(prim col) x 3 (smooth) x 3 (H) x 3 (particles) x 3 (n_iter) x  3 x 3 300
     # 
     episode_settings_space = {    
-        'episode_max_ts': [300],
-        'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
-        'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
+        'episode_max_ts': [30000],
+        'goal_pose_storm' :[[0.47, 0.47, 0.1, 0, 2.5, 0, 1]], # [[0.47, 0.47, 0.1, 0, 0, 0, 1]]'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
+        'coll_obs_names': [[]] # 'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
+        
         }
     
     cost_weights_space = { 
                 
-        "goal_pose": [[15.0, 1000.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
+        # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
+        "goal_pose":  [[15.0, 100.0]],
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0],
         
         # ArmBase costs
-        "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
-        "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
+        "robot_self_collision": [5000],
+        # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
+        "primitive_collision": [1],
+        # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
         "voxel_collision" : [0],
         "null_space": [1.0],
-        "manipulability": [30, 10, 50, 100], 
+        "manipulability": [30],
+        # "manipulability": [30, 10, 50, 100], 
         "ee_vel": [0.0], 
-        "stop_cost": [100, 10, 50, 200], 
+        # "stop_cost": [100, 10, 50, 200], 
+        "stop_cost": [100],
         "stop_cost_acc": [0.0], 
-        "smooth": [1.0, 0.1, 5, 10], 
-        "state_bound": [1000.0, 100, 500, 2000] 
+        "smooth": [1.0],
+        # "smooth": [1.0, 0.1, 5, 10], 
+        # "state_bound": [1000.0, 100, 500, 2000]
+        "state_bound": [1000.0],
+        # "state_bound": [200.0] # Joint limit avoidance
     }
     mpc_params_space = {
         "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
-        "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-        "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
+        # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+        "particles": [500],
+        # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
+        "n_iters": [1]
         }
     
     all_combos = get_combinations({
@@ -894,7 +905,7 @@ def main_experiment():
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
     if args.env_yml_relative == '':
-        args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
