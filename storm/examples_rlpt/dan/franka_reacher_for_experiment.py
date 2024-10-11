@@ -856,7 +856,7 @@ def main_experiment():
         # ArmBase costs
         "robot_self_collision": [5000],
         # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
-        "primitive_collision": [1],
+        "primitive_collision": [5000],
         # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
         "voxel_collision" : [0],
         "null_space": [1.0],
