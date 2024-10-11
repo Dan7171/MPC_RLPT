@@ -16,13 +16,11 @@ from cv2 import norm
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
-# from isaacgym.gymapi import Tensor
 from matplotlib.transforms import Transform
 from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
 import torch
 from traitlets import default
-
 from BGU.Rlpt.reward import point_cloud_utils
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -61,7 +59,6 @@ GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
  
  
-
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
 def make_plot(x:Union[None,tuple]=None, ys:list=[]):
@@ -446,7 +443,6 @@ class MpcRobotInteractive:
         
         return e_pos, e_quat 
     
-    
     def reset_environment(self, coll_obs_names: List[str]=[] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
         
         def storm_pose_to_gym_pose(storm_pose):
@@ -518,8 +514,7 @@ class MpcRobotInteractive:
         # update storm        
         self.mpc_control.update_world_params(env_selected)      
         return env_selected
-        
-        
+           
     def reset(self): # unused, replaces by more general reset_environment which can support any env file with spheres and cubes
         """
         Change location of objects in environment and target goal
@@ -903,6 +898,8 @@ def main_experiment():
     # episode_max_ts = 800 # maximal number of time steps in a single episode 
     # FIGURE_COLUMNS = 1 
     
+    # 3(env) x 3(self col) x 3(prim col) x 3 (smooth) x 3 (H) x 3 (particles) x 3 (n_iter) x  3 x 3 300
+    # 
     episode_settings_space = {    
         'episode_max_ts': [300],
         'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
@@ -988,6 +985,7 @@ def main_experiment():
             if ep == 0:
                 mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
                 data = []
+                
             goal_pose_storm: list = combo['episode_settings']['goal_pose_storm']
             coll_obs_names: list = combo['episode_settings']['coll_obs_names']
             episode_environment_model = mpc.reset_environment(coll_obs_names, goal_pose_storm) # reset environment and return its new specifications
@@ -996,12 +994,13 @@ def main_experiment():
             cost_weights: dict = combo['cost_weights']
             
             # run episode and collect data  
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = mpc.episode(cost_weights,mpc_params, episode_max_ts) 
+            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = mpc.episode(cost_weights,mpc_params, episode_max_ts,ep_num=ep) 
             
             # save collected data from episode
             if ep > 0:
                 with open(output_file, 'rb') as file:
                     data = pickle.load(file)    
+            
             episode_data = {
                 'settings': {'goal_pose_storm': goal_pose_storm, ' collision_objs': selected_collision_objs, 'mpc_params': mpc_params, 'cost_weights': cost_weights},
                 'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
