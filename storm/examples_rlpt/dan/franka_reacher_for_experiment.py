@@ -515,68 +515,68 @@ class MpcRobotInteractive:
         self.mpc_control.update_world_params(env_selected)      
         return env_selected
            
-    def reset(self): # unused, replaces by more general reset_environment which can support any env file with spheres and cubes
-        """
-        Change location of objects in environment and target goal
-        Input
-            - objects: dict {object_type: [pos, dimension]}
-            - goal_pos: numpy array [7], (x,y,z, quaternion) of target
+    # def reset(self): # unused, replaces by more general reset_environment which can support any env file with spheres and cubes
+    #     """
+    #     Change location of objects in environment and target goal
+    #     Input
+    #         - objects: dict {object_type: [pos, dimension]}
+    #         - goal_pos: numpy array [7], (x,y,z, quaternion) of target
      
-        """
+    #     """
 
-        world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path)
-        world_params, indexes, compressed_world_params = self.select_participating_obstacles(world_yml) # modify dict - randonmly seclecting a world
+    #     world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path)
+    #     world_params, indexes, compressed_world_params = self.select_participating_obstacles(world_yml) # modify dict - randonmly seclecting a world
         
    
-        # refresh observation
-        self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
+    #     # refresh observation
+    #     self.gym.refresh_actor_root_state_tensor(self.sim) # In gym: root state (a vector in R13) is composed from: Position, Orientation, Linear Velocity, Angular Velocity
 
-        # acquire root state tensor descriptor
-        _root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
+    #     # acquire root state tensor descriptor
+    #     _root_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         
-        # wrap it in a PyTorch Tensor
-        root_tensor = gymtorch.wrap_tensor(_root_tensor) # a matrix of shape of Ix13 where I is the num of items in simulator (inc)
+    #     # wrap it in a PyTorch Tensor
+    #     root_tensor = gymtorch.wrap_tensor(_root_tensor) # a matrix of shape of Ix13 where I is the num of items in simulator (inc)
         
-        saved_root_tensor = root_tensor.clone() # save a copy of the original root states 
-        root_poses = saved_root_tensor[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7)
+    #     saved_root_tensor = root_tensor.clone() # save a copy of the original root states 
+    #     root_poses = saved_root_tensor[1:-2, 0:7] # ignore first and two last rows, and take only the poses for each row (pose is a vector in R7)
         
-        # Extract new object poses
-        poses = self.extract_poses(world_params['world_model']['coll_objs']) # dict of I items: spheres and cubes with their attributes (size, loc etc)
+    #     # Extract new object poses
+    #     poses = self.extract_poses(world_params['world_model']['coll_objs']) # dict of I items: spheres and cubes with their attributes (size, loc etc)
 
-        # Create a torch tensor from the poses
-        root_poses[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) # all I items- position and orientation in gui coordinates
-        # print(f"DEBUG num of objects in world: {len(world_params['world_model']['coll_objs']['sphere']) + len(world_params['world_model']['coll_objs']['cube'])}")
+    #     # Create a torch tensor from the poses
+    #     root_poses[:, 0:7] = self.transform_tensor(torch.tensor(poses), self.w_T_r) # all I items- position and orientation in gui coordinates
+    #     # print(f"DEBUG num of objects in world: {len(world_params['world_model']['coll_objs']['sphere']) + len(world_params['world_model']['coll_objs']['cube'])}")
         
-        # Set a new goal pose (position and quaternion)
-        p = self.generate_random_position(3) # [p[0],p[1],p[2]]
-        q = self.generate_random_quaternion() # [q[0],[q[1],q[2],[q[3]]
-        self.goal_pose = p + q #[p[0],p[1],p[2],q[0],[q[1],q[2],[q[3]] - a vector in R7 
+    #     # Set a new goal pose (position and quaternion)
+    #     p = self.generate_random_position(3) # [p[0],p[1],p[2]]
+    #     q = self.generate_random_quaternion() # [q[0],[q[1],q[2],[q[3]]
+    #     self.goal_pose = p + q #[p[0],p[1],p[2],q[0],[q[1],q[2],[q[3]] - a vector in R7 
     
-        # gui coordinate system representation of goal pose - multiplying from left by w_T_r   
-        self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0] #in GUI coordinates (w_T_r * p+q) 
+    #     # gui coordinate system representation of goal pose - multiplying from left by w_T_r   
+    #     self.goal_pose = self.transform_tensor(torch.tensor(p + q).unsqueeze(0), self.w_T_r).tolist()[0] #in GUI coordinates (w_T_r * p+q) 
         
-        # self.update_pose() # see docstring
-        root_goal = saved_root_tensor[39, 0:7] # the row of the goal pose (vector in R7) in the "root positions" 
-        root_goal[0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
+    #     # self.update_pose() # see docstring
+    #     root_goal = saved_root_tensor[39, 0:7] # the row of the goal pose (vector in R7) in the "root positions" 
+    #     root_goal[0:7] = torch.tensor(self.goal_pose) # set "root goal" to be as self.goal_pose
         
 
-        # Update simulation object positions
-        num_points = 37 # more generally: len(root_poses) - 1 
-        int_linspace = np.linspace(1, 37, num=num_points, dtype=int) # array([1,2,..,37])
-        actor_indices = torch.tensor(np.append(int_linspace, 39), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
+    #     # Update simulation object positions
+    #     num_points = 37 # more generally: len(root_poses) - 1 
+    #     int_linspace = np.linspace(1, 37, num=num_points, dtype=int) # array([1,2,..,37])
+    #     actor_indices = torch.tensor(np.append(int_linspace, 39), dtype=torch.int32, device="cpu") # tensor([1,2,...,39])
 
         
-        # Elias: Now we are sending the new created world (not the compressed but the whole world) to the simulator (gym) - compresses means only the objects that participate in simulation (and not hidden)
-        # This is because Elias for some reason did not find a way to hide them also from the gui (simulator)
-        # when we send only the compressed its just to the STORM computational code, not to the simulator
-        # From docs: Sets actor root state buffer to values provided for given actor indices. Full actor root states buffer should be provided for all actors.
+    #     # Elias: Now we are sending the new created world (not the compressed but the whole world) to the simulator (gym) - compresses means only the objects that participate in simulation (and not hidden)
+    #     # This is because Elias for some reason did not find a way to hide them also from the gui (simulator)
+    #     # when we send only the compressed its just to the STORM computational code, not to the simulator
+    #     # From docs: Sets actor root state buffer to values provided for given actor indices. Full actor root states buffer should be provided for all actors.
         
-        # TLDR: to gym- we pass *all* obstacles (participating and not (hidden and not appear in gui)):
-        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38) # read the docs
+    #     # TLDR: to gym- we pass *all* obstacles (participating and not (hidden and not appear in gui)):
+    #     self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(saved_root_tensor), gymtorch.unwrap_tensor(actor_indices), 38) # read the docs
 
-        # TO STORM: Update world_params (compressed only - meaning just a subset of the obstacles that actually participate in simulation (and not hidden)) 
-        # TLDR2: to storm - we pass *only participating* obstacles
-        self.mpc_control.update_world_params(compressed_world_params)      
+    #     # TO STORM: Update world_params (compressed only - meaning just a subset of the obstacles that actually participate in simulation (and not hidden)) 
+    #     # TLDR2: to storm - we pass *only participating* obstacles
+    #     self.mpc_control.update_world_params(compressed_world_params)      
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     def episode(self, cost_weights, mpc_params,episode_max_ts, ep_num=0) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -956,7 +956,7 @@ def main_experiment():
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
     if args.env_yml_relative == '':
-        args.env_yml_relative = 'rlpt/experiments/experiment1/env_template.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only.yml'
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
@@ -1000,7 +1000,6 @@ def main_experiment():
             if ep > 0:
                 with open(output_file, 'rb') as file:
                     data = pickle.load(file)    
-            
             episode_data = {
                 'settings': {'goal_pose_storm': goal_pose_storm, ' collision_objs': selected_collision_objs, 'mpc_params': mpc_params, 'cost_weights': cost_weights},
                 'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
