@@ -106,7 +106,7 @@ class CostFnSniffer:
             
             # Read from costs lists
             threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": True}).start()
-            threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False}).start()
+            threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False, "full_horizon": True}).start()
             
 
     def set(self, ct_name: str, ct: CostTerm):

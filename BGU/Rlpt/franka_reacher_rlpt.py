@@ -829,17 +829,11 @@ class MpcRobotInteractive:
         return world_params, indexes, compressed_world_params # return: all optional obstacles objects
 
 
-def main_experiment():
+def train_loop():
     
     
-    # EPISODES = 1 # How many simulations / episodes to run in total
-    # episode_max_ts = 800 # maximal number of time steps in a single episode 
-    # FIGURE_COLUMNS = 1 
-    
-    # 3(env) x 3(self col) x 3(prim col) x 3 (smooth) x 3 (H) x 3 (particles) x 3 (n_iter) x  3 x 3 300
-    # 
     episode_settings_space = {    
-        'episode_max_ts': [30000],
+        'episode_max_ts': [300],
         'goal_pose_storm' :[[0.47, 0.47, 0.1, 0, 2.5, 0, 1]], # [[0.47, 0.47, 0.1, 0, 0, 0, 1]]'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
         'coll_obs_names': [[]] # 'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
         }
@@ -863,7 +857,8 @@ def main_experiment():
         # "manipulability": [30, 10, 50, 100], 
         "ee_vel": [0.0], 
         # "stop_cost": [100, 10, 50, 200], 
-        "stop_cost": [100],
+        # "stop_cost": [100],
+        "stop_cost": [1],        
         "stop_cost_acc": [0.0], 
         "smooth": [1.0],
         # "smooth": [1.0, 0.1, 5, 10], 
@@ -904,7 +899,8 @@ def main_experiment():
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
     if args.env_yml_relative == '':
-        args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
+        # args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/open_view.yml'
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
@@ -968,5 +964,5 @@ def main_experiment():
     
 if __name__ == '__main__':
     
-    main_experiment()
+    train_loop()
     
