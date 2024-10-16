@@ -1,12 +1,10 @@
-"""
-DQN implementation.
-source: https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html#replay-memory
-"""
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import random
+import numpy as np
 
 class DQN(nn.Module):
 
@@ -15,10 +13,16 @@ class DQN(nn.Module):
         self.layer1 = nn.Linear(n_observations, 128)
         self.layer2 = nn.Linear(128, 128)
         self.layer3 = nn.Linear(128, n_actions)
-
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+ 
     def forward(self, x) -> torch.Tensor:
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
         return self.layer3(x)
+
+def set_seed(env, seed=1):
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.random.manual_seed(seed)
+    env.seed(seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
