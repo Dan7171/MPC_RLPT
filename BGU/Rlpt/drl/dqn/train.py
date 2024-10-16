@@ -16,89 +16,12 @@ from itertools import count
 from dqn import DQN
 from replay_memory import ReplayMemory, Transition
 
-
-
-
 def set_seed(env, seed=1):
     random.seed(seed)
     torch.random.manual_seed(seed)
     # env.seed(seed)
     # env.action_space.seed(seed)
     # env.observation_space.seed(seed)
-
-
-# BATCH_SIZE is the number of transitions sampled from the replay buffer
-# GAMMA is the discount factor as mentioned in the previous section
-# EPS_START is the starting value of epsilon
-# EPS_END is the final value of epsilon
-# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
-# TAU is the update rate of the target network
-# LR is the learning rate of the  optimizer (aka alpha or step size)
-# C is the target network update frequenty (set it to be the Q network's weights every C steps)
-# T = Max step num in episode
-
-BATCH_SIZE = 128
-GAMMA = 0.99
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 1000
-# TAU = 0.005
-LR = 1e-4
-SEED = 42
-C = 100 
-N = 10000
-T = 10000
-set_seed(SEED)
-
-
-# criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
-criterion = nn.MSELoss()
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-plt.ion()
-
-# if GPU is to be used
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else
-    "mps" if torch.backends.mps.is_available() else
-    "cpu"
-)
-if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 1000
-else:
-    num_episodes = 50
-    
-# env = gym.make("CartPole-v1")
-env: gym.Env = gym.make("CartPole-v1",render_mode="human")
-# Get number of actions from gym action space
-n_actions = env.action_space.n
-
-# Initialize replay memory D to capacity N
-memory = ReplayMemory(N, SEED)
-
-# Get the number of state observations
-state, info = env.reset()
-n_observations = len(state)
-
-# Initialize action-value function Q with random weights θ
-policy_net:DQN = DQN(n_observations, n_actions).to(device) # Q
-
-#Initialize target action-value function Q^ with weights θ- ← θ
-target_net:DQN = DQN(n_observations, n_actions).to(device) # Q^
-target_net.load_state_dict(policy_net.state_dict()) # θ- ← θ
-
-
-
-steps_done = 0
-episode_durations = []
-
-def end_of_epiosode_steps():
-    episode_durations.append(t + 1)
-    plot_durations()
 
 def select_action(state):
     """
@@ -142,13 +65,19 @@ def plot_durations(show_result=False):
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
+    
+    is_ipython = 'inline' in matplotlib.get_backend()
     if is_ipython:
         if not show_result:
             display.display(plt.gcf())
             display.clear_output(wait=True)
         else:
             display.display(plt.gcf())
-            
+
+def end_of_epiosode_steps():
+    episode_durations.append(t + 1)
+    plot_durations()
+    
 def optimize_model():
     """
     https://daiwk.github.io/assets/dqn.pdf alg 1
@@ -199,11 +128,71 @@ def optimize_model():
     loss.backward()
     torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 1.0) # 1 is the maximal norm of each grad, like in paper
     optimizer.step()
-    
 
+#########################################################
+#########################################################
+#########################################################
+####################### DQN #############################
+#########################################################
+#########################################################
+#########################################################
+
+# BATCH_SIZE is the number of transitions sampled from the replay buffer
+# GAMMA is the discount factor as mentioned in the previous section
+# EPS_START is the starting value of epsilon
+# EPS_END is the final value of epsilon
+# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
+# TAU is the update rate of the target network
+# LR is the learning rate of the  optimizer (aka alpha or step size)
+# C is the target network update frequenty (set it to be the Q network's weights every C steps)
+# T = Max step num in episode
+
+BATCH_SIZE = 128
+GAMMA = 0.99
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 1000
+# TAU = 0.005
+LR = 1e-4
+SEED = 42
+C = 100 
+N = 10000
+T = 10000
+set_seed(SEED)
+
+# set up matplotlib
+is_ipython = 'inline' in matplotlib.get_backend()
+if is_ipython:
+    from IPython import display
+plt.ion()
+
+device = torch.device("cuda" if torch.cuda.is_available() else  "mps" if torch.backends.mps.is_available() else "cpu")
+if torch.cuda.is_available() or torch.backends.mps.is_available():
+    num_episodes = 1000
+else:
+    num_episodes = 50
+
+env: gym.Env = gym.make("CartPole-v1",render_mode="human") # env = gym.make("CartPole-v1")
+n_actions = env.action_space.n # Get number of actions from gym action space
+state, info = env.reset()
+n_observations = len(state)
+episode_durations = []
+
+####### DQN: https://daiwk.github.io/assets/dqn.pdf ##########
+# criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
+criterion = nn.MSELoss()
+
+memory = ReplayMemory(N, SEED) # Initialize replay memory D to capacity N
+steps_done = 0 # in total, over all episodes    
+# Initialize action-value function Q with random weights θ
+policy_net:DQN = DQN(n_observations, n_actions).to(device) # Q
+#Initialize target action-value function Q^ with weights θ- ← θ
+target_net:DQN = DQN(n_observations, n_actions).to(device) # Q^
+target_net.load_state_dict(policy_net.state_dict()) # θ- ← θ
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True) 
 # optimizer = optim.SGD(policy_net.parameters(), lr=LR) # original paper
-steps_done = 0
+
+
 for i_episode in range(num_episodes): # https://daiwk.github.io/assets/dqn.pdf
     # Initialize the environment and get its state
     o, info = env.reset()
@@ -212,10 +201,8 @@ for i_episode in range(num_episodes): # https://daiwk.github.io/assets/dqn.pdf
     # for t in count(): # iterating time steps of current episode
     for t in range(1, T+1):  
         steps_done += 1
-        
         # select action a_t according to €-greedy policy (With probability € select a random action at)
         a_t = select_action(s_t)  
-        
         # execute action a_t in environment
         o_next, r_t, terminated, truncated, _ = env.step(a_t.item()) # o_t+1, r_t, mdp's terminal state reached, forced to stop (outside of mdp's scope)   
         r_t = torch.tensor([r_t], device=device)
@@ -227,10 +214,8 @@ for i_episode in range(num_episodes): # https://daiwk.github.io/assets/dqn.pdf
         # store transition (st, at, st+1, rt) in replay memory D. To make data to train the Q network 
         memory.push(s_t, a_t, s_next, r_t)   
         
-        optimize_model() # sample a minibatch from replay buffer and make an update step in the Q network
-
-        # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-        if steps_done % C == 0:
+        optimize_model() # sample a random minibatch of transitions (s_j, a_j, s_j+1, r_j) from D, compute errors and make a gradient step.   
+        if steps_done % C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
             target_net.load_state_dict(policy_net.state_dict())
                    
         if done:
