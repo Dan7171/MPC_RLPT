@@ -9,7 +9,7 @@ import pickle
 from re import I, match
 from select import select
 import shutil
-from typing import Iterable, List, Tuple, Union
+from typing import Callable, Iterable, List, Tuple, Union
 from click import BadArgumentUsage
 from colorlog import root
 from cv2 import norm
@@ -17,11 +17,12 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 from matplotlib.transforms import Transform
+from storm_kit import mpc
 from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
 import torch
 from traitlets import default
-from BGU.Rlpt.reward import point_cloud_utils
+from BGU.Rlpt.rlpt_agent import rlptAgent 
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
 torch.backends.cudnn.benchmark = False
@@ -160,6 +161,8 @@ def finish_mem_profiling(output_path):
     
     torch.cuda.memory._dump_snapshot(output_path)    
     print(f"memory usage profile was saved to {output_path}")
+    
+
 class MpcRobotInteractive:
     """
     This class is for controlling the arm base and simulator.
@@ -376,8 +379,10 @@ class MpcRobotInteractive:
                     
         # Update Cost and MPC variables dynamically (RLPT Part)
         self.mpc_control.update_costs(cost_weights) 
-        if step_num == 0: # technical issue - loading to gpu takes time. So we do it only at the beginning for now.
-            self.mpc_control.update_mpc_params(mpc_params) 
+        # if step_num == 0: # technical issue - loading to gpu takes time. So we do it only at the beginning for now.
+        #     self.mpc_control.update_mpc_params(mpc_params) 
+        
+        self.mpc_control.update_mpc_params(mpc_params) 
         
         self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
@@ -517,7 +522,8 @@ class MpcRobotInteractive:
            
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
-    def episode(self, cost_weights, mpc_params,episode_max_ts, ep_num=0) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    
+    def episode(self, rlpt_agent, episode_max_ts, ep_num=0) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -533,58 +539,53 @@ class MpcRobotInteractive:
             t[1](float) is the total run time of episde in seconds
             
         """
-        cost_weights = copy.deepcopy(cost_weights) # to ensure a call by value and not by reference (we don't want to modify the params outside of the function)
         
-        # document all errors along the episode 
+        # empty arrays to log all errors along the episode 
         pos_errors = np.zeros(episode_max_ts)
         rot_errors = np.zeros(episode_max_ts)
         self_collision_errors = np.zeros(episode_max_ts)
         objs_collision_errors = np.zeros(episode_max_ts)
         
-        
+        time_to_goal = -1
+        ts_to_goal = -1
+        reached_goal = False
         # -- start episode control loop --
         ep_start_time = time.time()
-        for ts in range(episode_max_ts):
             
-            # Planning current step with rollouts and executing it in environment 
-            print(f"episode: {ep_num} time step: {ts} ")
-            # mpc.step(cost_weights, mpc_params, ts) 
-            self.step(cost_weights, mpc_params, ts)
-            # calculate orientation and position errors and perform convergence to goal state:
+        for ts in range(episode_max_ts):
+            if ts % 100 == 0:
+                print(f"episode: {ep_num} time step: {ts} ")
+
             curr_ee_pose: gymapi.Transform = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
             goal_ee_pose: gymapi.Transform = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+            # calculate orientation and position errors and perform convergence to goal state:
             ee_pos_error: np.float64 = pos_error(curr_ee_pose.p, goal_ee_pose.p) # end effector position error
             ee_rot_error: np.float64 = rot_error(curr_ee_pose.r,goal_ee_pose.r)  # end effector rotation error   
-            
             # taking storm's undweighted collision cost terms as a measure for the how approximate the robot is to obstacles or to collide with itslef  
             # these cost terms are using robot-links point clouds and environment objects point clouds to punish robot for being too close to the links 
             # note: unlike whats written in paper, the result is not 0 or 1. But its   
             cost_terms_current_step:dict = GLobalVars.cost_sniffer.get_current_costs() # current real world costs
             unweighted_cost_self_coll:np.float32 = np.ravel(cost_terms_current_step['self_collision'].term.cpu().numpy())[0] # robot with itself collision cost (unweighted)
             unweighted_cost_primitive_coll: np.float32 = np.ravel(cost_terms_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
-            # robot_pt = point_cloud_utils.generate_robot_point_cloud(mpc.env_ptr, mpc.gym)
-    
             # save errors of the whole episode 
             pos_errors[ts] = ee_pos_error 
             rot_errors[ts] = ee_rot_error
             self_collision_errors[ts] = unweighted_cost_self_coll
             objs_collision_errors[ts] = unweighted_cost_primitive_coll
-            
-            
-            # goal test
-            reached_goal = self.goal_test(ee_pos_error, ee_rot_error) 
-            if reached_goal: 
+            if reached_goal:
+                time_to_goal = time.time() - ep_start_time        
+                ts_to_goal = ts
                 break
-            # storm_costs:dict = GLobalVars.cost_sniffer.get_current_costs()
-            # for name, vals in storm_costs.items():
-            #     print(name, vals)
-        # -- end of episode --
-       
-        if reached_goal:
-            time_to_goal = time.time() - ep_start_time
-            return ts, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors
-        else:
-            return -1, -1,  pos_errors, rot_errors, self_collision_errors, objs_collision_errors    
+            
+            # Make next step:
+            st = rlpt_agent.encode_state(self.gym.get_actor_rigid_body_states()) # converting the state to a form that agent would feel comfortable with
+            at = rlpt_agent.select_action(st) 
+            cost_weights, mpc_weights = at['cost_weights'], at['mpc_params']
+            self.step(cost_weights, mpc_weights, ts) # moving to next time step t+1
+
+        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors
+        
+                
     # helper functions:    
     def get_body_pose(self, handle, coordinate_system) -> gymapi.Transform:
         """
@@ -829,58 +830,20 @@ class MpcRobotInteractive:
         return world_params, indexes, compressed_world_params # return: all optional obstacles objects
 
 
-def train_loop():
-    
+
+def get_random_world():
     
     episode_settings_space = {    
-        'episode_max_ts': [300],
         'goal_pose_storm' :[[0.47, 0.47, 0.1, 0, 2.5, 0, 1]], # [[0.47, 0.47, 0.1, 0, 0, 0, 1]]'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
         'coll_obs_names': [[]] # 'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
-        }
+    }    
+    all_combos = list(get_combinations(episode_settings_space))
     
-    cost_weights_space = { 
-                
-        # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
-        "goal_pose":  [[15.0, 100.0]],
-        "zero_vel": [0.0], 
-        "zero_acc": [0.0],
-        "joint_l2": [0.0],
-        
-        # ArmBase costs
-        "robot_self_collision": [5000],
-        # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
-        "primitive_collision": [5000],
-        # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
-        "voxel_collision" : [0],
-        "null_space": [1.0],
-        "manipulability": [30],
-        # "manipulability": [30, 10, 50, 100], 
-        "ee_vel": [0.0], 
-        # "stop_cost": [100, 10, 50, 200], 
-        # "stop_cost": [100],
-        "stop_cost": [1],        
-        "stop_cost_acc": [0.0], 
-        "smooth": [1.0],
-        # "smooth": [1.0, 0.1, 5, 10], 
-        # "state_bound": [1000.0, 100, 500, 2000]
-        "state_bound": [1000.0],
-        # "state_bound": [200.0] # Joint limit avoidance
-    }
-    mpc_params_space = {
-        "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
-        # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-        "particles": [500],
-        # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
-        "n_iters": [1]
-        }
+    while 1:
+        yield random.choice(all_combos)
     
-    all_combos = get_combinations({
-        'cost_weights': get_combinations(cost_weights_space),
-        'mpc_params': get_combinations(mpc_params_space),
-        'episode_settings': get_combinations(episode_settings_space)
-        })
+def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     
-     
     
     # parse arguments to start simulation
     parser = argparse.ArgumentParser(description='pass args')
@@ -923,22 +886,65 @@ def train_loop():
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
             
-        for ep, combo in enumerate(all_combos): # for each episode id with a unique combination of initial parameters
+        for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
             # define episode settings
-            episode_max_ts: int = combo['episode_settings']['episode_max_ts']
+            # episode_max_ts: int = episode_max_ts combo['episode_settings']['episode_max_ts']
+            
             if ep == 0:
                 mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
                 data = []
                 
-            goal_pose_storm: list = combo['episode_settings']['goal_pose_storm']
-            coll_obs_names: list = combo['episode_settings']['coll_obs_names']
+                # Init rlpt agent
+                cost_weights_space = { 
+                            
+                    # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
+                    "goal_pose":  [[15.0, 100.0]],
+                    "zero_vel": [0.0], 
+                    "zero_acc": [0.0],
+                    "joint_l2": [0.0],
+                    
+                    # ArmBase costs
+                    "robot_self_collision": [5000],
+                    # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
+                    "primitive_collision": [5000],
+                    # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
+                    "voxel_collision" : [0],
+                    "null_space": [1.0],
+                    "manipulability": [30],
+                    # "manipulability": [30, 10, 50, 100], 
+                    "ee_vel": [0.0], 
+                    # "stop_cost": [100, 10, 50, 200], 
+                    # "stop_cost": [100],
+                    "stop_cost": [1],        
+                    "stop_cost_acc": [0.0], 
+                    "smooth": [1.0],
+                    # "smooth": [1.0, 0.1, 5, 10], 
+                    # "state_bound": [1000.0, 100, 500, 2000]
+                    "state_bound": [1000.0],
+                    # "state_bound": [200.0] # Joint limit avoidance
+                }
+                mpc_params_space = {
+                    "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
+                    # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+                    "particles": [500],
+                    # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
+                    "n_iters": [1]
+                    } 
+                rlpt_action_space = get_combinations({
+                    'cost_weights': get_combinations(cost_weights_space),
+                    'mpc_params': get_combinations(mpc_params_space),
+                    # 'episode_settings': get_combinations(episode_settings_space)
+                })
+                state_dim_flatten = len(mpc.gym.get_actor_rigid_body_states().flatten())
+                rlpt_agent = rlptAgent(rlpt_action_space, state_dim_flatten)
+                
+                
+            goal_pose_storm, coll_obs_names = select_world_callback()
             episode_environment_model = mpc.reset_environment(coll_obs_names, goal_pose_storm) # reset environment and return its new specifications
             selected_collision_objs = episode_environment_model['world_model']['coll_objs'] 
-            mpc_params: dict = combo['mpc_params']
-            cost_weights: dict = combo['cost_weights']
-            
             # run episode and collect data  
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = mpc.episode(cost_weights,mpc_params, episode_max_ts,ep_num=ep) 
+            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = \
+                mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep) 
             
             # save collected data from episode
             if ep > 0:
@@ -963,6 +969,5 @@ def train_loop():
     
     
 if __name__ == '__main__':
-    
-    train_loop()
+    train_loop(100, 500, get_random_world)
     
