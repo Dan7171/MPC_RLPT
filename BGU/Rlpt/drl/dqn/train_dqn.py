@@ -1,7 +1,13 @@
 """
+Deep Q learning with experience replay, seperate target network, and gradient clipping.
+Train DDQN if using flag ddqn=True else trains DQN.
+
 See: 
+https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 https://filebox.ece.vt.edu/~f15ece6504/slides/L26_RL.pdf
+https://youtu.be/UoPei5o4fps?si=BQdBcYCl60NGhGtJ
 https://arxiv.org/pdf/1312.5602
+
 """
 from graphviz import render
 import gymnasium as gym
@@ -15,7 +21,7 @@ import torch.nn as nn
 from itertools import count
 from dqn import DQN
 from replay_memory import ReplayMemory, Transition
-
+from art import text2art 
 def set_seed(env, seed=1):
     random.seed(seed)
     torch.random.manual_seed(seed)
@@ -40,12 +46,10 @@ def select_action(state):
             # t.max(1) will return the largest column value of each row.
             # second column on max result is index of where max element was
             # found, so we pick action with the larger expected reward.
-            return policy_net(state).max(1).indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
+            return current(state).max(1).indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
     
     else: # random a (each action has a fair chance to be selected)
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long) # picking a random action
-
-
 
 def plot_durations(show_result=False):
     plt.figure(1)
@@ -78,9 +82,10 @@ def end_of_epiosode_steps():
     episode_durations.append(t + 1)
     plot_durations()
     
-def optimize_model():
+def optimize_model(ddqn=False):
     """
     https://daiwk.github.io/assets/dqn.pdf alg 1
+    or with the modification to ddqn:  https://arxiv.org/pdf/1509.06461
     
     This is the optimization step of the model.
     The optimization step is the heart of the algorithm and its geniousity.
@@ -90,52 +95,45 @@ def optimize_model():
     if len(memory) < BATCH_SIZE:
         return # optimization starts only if we accumulated at leaset BATCH_SIZE samples into the memory
     
-    # A. SAMPLE a MINIBATCH (a random portion of the "train set")
+    # sample minibatch
     transitions = memory.sample(BATCH_SIZE) 
-    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-    # detailed explanation). This converts batch-array of Transitions
-    # to Transition of batch-arrays.
     batch = Transition(*zip(*transitions))
-
-    # Compute a mask of non-final states and concatenate the batch elements
-    # (a final state would've been the one after which simulation ended)
-    state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action)
-    reward_batch = torch.cat(batch.reward)
+    states, actions, rewards = torch.cat(batch.state), torch.cat(batch.action), torch.cat(batch.reward)
     
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool) # a vector in length = batch size. True where sj+1 is not final
+    non_final_next_states = torch.cat([s for s in batch.next_state if s is not None]) # a vector in length <= batch size. Only the non final states sj+1 from batch.         
+    
+    # zero gradient
     optimizer.zero_grad()
-     
-    # Pass batch previous states through the Q network. 
-    # For each transition j in batch: (1<=j<=batch size): given pair s_j, a_j in batch, compute Q(s_j, a_j) using the Q network
-    policy_net_q_batch: torch.Tensor = policy_net(state_batch).gather(1, action_batch) # https://pytorch.org/docs/stable/generated/torch.Tensor.gather.html#torch.Tensor.gather
     
-    # Pass batch next states through the Q^ network.
-    # For same batch, for each j compute the jth target (y_j) in batch using the  "targets network" (Q^) which has older fixed parameters θ−. 
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool)
-    non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
-    target_net_next_states_q_for_all_actions = target_net(non_final_next_states)
-    target_net_next_states_q_for_greedy_action = target_net_next_states_q_for_all_actions.max(1).values
-    
-    next_q_for_greedy_a_with_targets_net = torch.zeros(BATCH_SIZE, device=device) 
-    with torch.no_grad():
-        next_q_for_greedy_a_with_targets_net[non_final_mask] = target_net_next_states_q_for_greedy_action #  max a’Q^(s_j+1_, a’, θ−) (For each j, calculates the next state (s_j+1) Q^ (q of targtes) w.r to greedy action)
+    # Q(s, a, θ) (computing Q with updated (online) Q network, where a is the action which was taken in batch)
+    q_values: torch.Tensor = current(states).gather(1, actions) # https://pytorch.org/docs/stable/generated/torch.Tensor.gather.html#torch.Tensor.gather
+    with torch.no_grad():        
+        if not ddqn: # standard dqn
+            # Q(s',a',θ−) (computing Q with target(older)-network where s' is the next states observed in batch.)
+            next_states_qs = target(non_final_next_states) 
+            qs_for_target = next_states_qs.max(1).values # saving only the Qs of the maximizing actions
+
+        else: # ddqn
+            best_a = torch.argmax(current(non_final_next_states), dim=1, keepdim=False).unsqueeze(0).T # a' = argmax(Q(s', a')) from the Q-network. Action selected using Q (online network) 
+            qs_for_target = target(non_final_next_states).gather(1, best_a) # Q_target values  using the best actions (using the offline "target" network)
+            qs_for_target = qs_for_target.squeeze(1) # reshaping
+        # Now take those Qs of non final states and set them in the batch vector including final and non final stats (we determine the final states Q values to 0)
+        qs_for_target_with_final_states = torch.zeros(BATCH_SIZE, device=device)  # a vector in length = batch size
+        # setting a value only at the non-final states. For the final states it reamins 0.
+        qs_for_target_with_final_states[non_final_mask] = qs_for_target # If s' is not final: max a’Q^(s', a’, θ−). Else if its final: If final: set 0
+            
     # y = the targets vector = (y_1,...,y_batchsize)
-    y = reward_batch +  GAMMA * next_q_for_greedy_a_with_targets_net   # y_j = r_j + γ * max a’Q^(s_j+1_, a’, θ−)
-    y = y.unsqueeze(1)
+    y = rewards +  GAMMA * qs_for_target_with_final_states # targtes. expected q values given. our "labeled" data     
     
     # loss calculation and greadient step
-    loss = criterion(input=policy_net_q_batch, target=y)
+    loss = criterion(input=q_values, target=y.unsqueeze(1))
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 1.0) # 1 is the maximal norm of each grad, like in paper
+    torch.nn.utils.clip_grad_norm_(current.parameters(), 1.0) # 1 is the maximal norm of each grad, like in paper
     optimizer.step()
 
-#########################################################
-#########################################################
-#########################################################
-####################### DQN #############################
-#########################################################
-#########################################################
-#########################################################
+
+
 
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
 # GAMMA is the discount factor as mentioned in the previous section
@@ -147,12 +145,16 @@ def optimize_model():
 # C is the target network update frequenty (set it to be the Q network's weights every C steps)
 # T = Max step num in episode
 
+# user argumaents:
+# >>>>>
+ddqn = True # changing the y values compuation to convert the algorithm from dqn to ddqn. See https://arxiv.org/pdf/1509.06461
+# <<<<<<
+print(text2art(f"{'DDQN' if ddqn else 'DQN'}"))
 BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 1000
-# TAU = 0.005
 LR = 1e-4
 SEED = 42
 C = 100 
@@ -179,25 +181,25 @@ n_observations = len(state)
 episode_durations = []
 
 ####### DQN: https://daiwk.github.io/assets/dqn.pdf ##########
+
 # criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
 criterion = nn.MSELoss()
-
 memory = ReplayMemory(N, SEED) # Initialize replay memory D to capacity N
 steps_done = 0 # in total, over all episodes    
 # Initialize action-value function Q with random weights θ
-policy_net:DQN = DQN(n_observations, n_actions).to(device) # Q
+current:DQN = DQN(n_observations, n_actions).to(device) # Q
 #Initialize target action-value function Q^ with weights θ- ← θ
-target_net:DQN = DQN(n_observations, n_actions).to(device) # Q^
-target_net.load_state_dict(policy_net.state_dict()) # θ- ← θ
-optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True) 
-# optimizer = optim.SGD(policy_net.parameters(), lr=LR) # original paper
+target:DQN = DQN(n_observations, n_actions).to(device) # Q^
+target.load_state_dict(current.state_dict()) # θ- ← θ
+optimizer = optim.AdamW(current.parameters(), lr=LR, amsgrad=True) 
+# optimizer = optim.SGD(current.parameters(), lr=LR) # original paper
 
 
 for i_episode in range(num_episodes): # https://daiwk.github.io/assets/dqn.pdf
     # Initialize the environment and get its state
     o, info = env.reset()
     s_t = torch.tensor(o, dtype=torch.float32, device=device).unsqueeze(0)
-    
+    # print(f'episde: {i_episode}')
     # for t in count(): # iterating time steps of current episode
     for t in range(1, T+1):  
         steps_done += 1
@@ -214,9 +216,9 @@ for i_episode in range(num_episodes): # https://daiwk.github.io/assets/dqn.pdf
         # store transition (st, at, st+1, rt) in replay memory D. To make data to train the Q network 
         memory.push(s_t, a_t, s_next, r_t)   
         
-        optimize_model() # sample a random minibatch of transitions (s_j, a_j, s_j+1, r_j) from D, compute errors and make a gradient step.   
+        optimize_model(ddqn) # sample a random minibatch of transitions (s_j, a_j, s_j+1, r_j) from D, compute errors and make a gradient step.   
         if steps_done % C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-            target_net.load_state_dict(policy_net.state_dict())
+            target.load_state_dict(current.state_dict())
                    
         if done:
             end_of_epiosode_steps()
