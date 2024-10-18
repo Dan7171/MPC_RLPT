@@ -880,12 +880,12 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
     output_file = f'BGU/Rlpt/experiments/experiments_results/experiment1_{make_date_time_str()}.pl'
-    
+    worlds_generator = select_world_callback()
     try:
         
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
-            
+        
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
             # define episode settings
             # episode_max_ts: int = episode_max_ts combo['episode_settings']['episode_max_ts']
@@ -935,11 +935,12 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
                     'mpc_params': get_combinations(mpc_params_space),
                     # 'episode_settings': get_combinations(episode_settings_space)
                 })
-                state_dim_flatten = len(mpc.gym.get_actor_rigid_body_states().flatten())
+                state_dim_flatten = len(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr).flatten())
                 rlpt_agent = rlptAgent(rlpt_action_space, state_dim_flatten)
                 
-                
-            goal_pose_storm, coll_obs_names = select_world_callback()
+            
+            curr_world = next(worlds_generator)
+            coll_obs_names, goal_pose_storm = curr_world['coll_obs_names'], curr_world['goal_pose_storm']
             episode_environment_model = mpc.reset_environment(coll_obs_names, goal_pose_storm) # reset environment and return its new specifications
             selected_collision_objs = episode_environment_model['world_model']['coll_objs'] 
             # run episode and collect data  

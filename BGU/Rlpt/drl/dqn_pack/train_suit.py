@@ -19,8 +19,9 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from itertools import count
-from dqn import DQN
-from replay_memory import ReplayMemory, Transition
+from BGU.Rlpt.drl.dqn_pack.replay_memory import ReplayMemory, Transition
+from BGU.Rlpt.drl.dqn_pack.dqn import DQN
+
 from art import text2art 
 
 

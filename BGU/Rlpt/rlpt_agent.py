@@ -1,5 +1,5 @@
 import torch
-from BGU.Rlpt.drl.dqn.train_suit import trainSuit
+from BGU.Rlpt.drl.dqn_pack.train_suit import trainSuit
 
 class rlptAgent:
     def __init__(self, state_dim_flatten, action_space):
