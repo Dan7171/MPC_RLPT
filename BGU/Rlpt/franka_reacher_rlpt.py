@@ -9,7 +9,7 @@ import pickle
 from re import I, match
 from select import select
 import shutil
-from typing import Callable, Iterable, List, Tuple, Union
+from typing import Callable, Collection, Iterable, List, Tuple, Union
 from click import BadArgumentUsage
 from colorlog import root
 from cv2 import norm
@@ -161,6 +161,14 @@ def finish_mem_profiling(output_path):
     
     torch.cuda.memory._dump_snapshot(output_path)    
     print(f"memory usage profile was saved to {output_path}")
+    
+
+# GENERAL HELPER FUNCS
+def reverse_map(map:dict):    
+    ans = {}
+    for k,v in map.items():
+        ans[v] = k
+    return ans
     
 
 class MpcRobotInteractive:
@@ -343,6 +351,23 @@ class MpcRobotInteractive:
 
         self.prev_mpc_goal_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
         self.prev_mpc_goal_quat = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
+        
+        self.name_to_handle = {} # actor names in current environment -> actor handles
+        self.handle_to_name = {} # actor handles in current environment -> actor names 
+        
+        self.world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path) 
+        self.env_template = load_yaml(self.world_yml)
+        self.all_collision_objs = self.env_template['world_model']['coll_objs'] # in file
+        self.non_coll_objs_actor_names = {'robot','ee_target_object', 'ee_current_as_mug'} # in file
+        self.all_collision_objs_names = self.get_all_coll_obs_actor_names() # in file
+        
+        
+    def set_name_to_handle(self, item):
+        self.name_to_handle = item
+        
+    def set_handle_to_name(self, item):
+        self.handle_to_name = item
+        
     def update_goal_pose_in_mpc(self, new_goal_pose):
         """
         Informing the mpc about a change in the goal pose at the environment.
@@ -448,7 +473,50 @@ class MpcRobotInteractive:
         
         return e_pos, e_quat 
     
-    def reset_environment(self, coll_obs_names: List[str]=[] , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
+    def get_actor_names_indexed_at_actor_handle_from_env(self):
+        """
+        returns all actors in environments, indexed by handle.
+        return an array "a" where for each handle i, a[i] is the actor belongs to that handle.
+         
+        """
+        n_actors = self.gym.get_actor_count(self.env_ptr)
+        actor_handles = range(n_actors)
+        env_actors = [''] * len(actor_handles)
+        for actor_handle in actor_handles:
+            actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
+            # actor_handle_to_name[actor_handle] = actor_name
+            env_actors[actor_handle] = actor_name
+        return env_actors
+    
+    def get_actor_group_from_env(self, group_name):
+        assert group_name in ['cube', 'sphere', 'robot','ee_current_as_mug',  'ee_target_object']
+        all_env_actors = self.get_actor_names_indexed_at_actor_handle_from_env()
+        
+        ans = []
+        for actor_handle, actor_name in enumerate(all_env_actors):
+            if actor_name.startswith(group_name):
+                
+                ans.append((actor_handle, actor_name))
+        return ans
+    
+    def get_actor_name_to_actor_handle_map(self) -> dict:
+        
+        n_actors = self.gym.get_actor_count(self.env_ptr)
+        actor_name_to_handle = {} # reverse map
+        actor_handles = range(n_actors)
+        
+        # map handles to actors and vise versa
+        for actor_handle in actor_handles:
+            actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
+            # actor_handle_to_name[actor_handle] = actor_name
+            actor_name_to_handle[actor_name] = actor_handle         
+        
+        return actor_name_to_handle                
+    
+    def get_actor_handle_to_actor_name_map(self) -> dict:
+        return reverse_map(self.get_actor_name_to_actor_handle_map())
+        
+    def reset_environment(self, selected_modified_objs:dict , goal_pose_storm: List[float]=[0,0,0,0,0,0,1]):
         
         def storm_pose_to_gym_pose(storm_pose):
             return self.transform_tensor(torch.tensor(storm_pose).unsqueeze(0), self.w_T_r)
@@ -466,24 +534,28 @@ class MpcRobotInteractive:
             actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
             actor_handle_to_name[actor_handle] = actor_name
             actor_name_to_handle[actor_name] = actor_handle         
-        if coll_obs_names == []: # if input list is empty, take all objets in file 
-            coll_obs_names = actor_handle_to_name                
+        
+        # if coll_obs_names == []: # if input list is empty, take all objets in file 
+        #     coll_obs_names = actor_handle_to_name                
 
         # robot_idx = 0
         # ee_target_object_idx = -2
         # ee_current_as_mug_idx = -1
         
         # select objects to include by their names from input
-        world_yml = join_path(get_gym_configs_path(), self.env_yml_relative_path) 
-        env_template = load_yaml(world_yml)
-        all_collision_objs = env_template['world_model']['coll_objs']
+        env_template = self.env_template
+        all_collision_objs = self.all_collision_objs
         selected_coll_objects = {'sphere': {},'cube': {}}        
         for obj_type in all_collision_objs: # sphere, cube
             for obj_name in all_collision_objs[obj_type]: # cube%x%, sphere%y%
-                if obj_name in coll_obs_names:
-                    selected_coll_objects[obj_type][obj_name] = all_collision_objs[obj_type][obj_name] 
+                if obj_name in selected_modified_objs.keys():
+                    selected_coll_objects[obj_type][obj_name] = selected_modified_objs[obj_name] 
+                # if obj_name in coll_obs_names:
+                #     selected_coll_objects[obj_type][obj_name] = all_collision_objs[obj_type][obj_name] 
+        
         env_selected = copy.deepcopy(env_template)
         env_selected['world_model']['coll_objs'] = selected_coll_objects
+        
         selected_coll_objs_poses = self.extract_poses(selected_coll_objects) 
         
         # update environment with new locations of selected objects
@@ -517,7 +589,9 @@ class MpcRobotInteractive:
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(root_state_gym_current), gymtorch.unwrap_tensor(range_after_robot_tensor), len(range_after_robot_tensor))
 
         # update storm        
-        self.mpc_control.update_world_params(env_selected)      
+        self.mpc_control.update_world_params(env_selected)  
+        
+            
         return env_selected
            
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
@@ -534,11 +608,12 @@ class MpcRobotInteractive:
         tuning: TODO: serving the rlpt. if True, the cost and mpc params will be re-selected throughout the episode frequently (probably on every time step). 
         
         Return:
-        a tuple t
-            t[0](int) is the number of time-steps took took to reach goal position & orientation. -1 if failed to reach  
-            t[1](float) is the total run time of episde in seconds
-            
+        a tuple 
         """
+        
+        robot_handle = self.name_to_handle['robot'] # actor handle in current env
+        goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
+        
         
         # empty arrays to log all errors along the episode 
         pos_errors = np.zeros(episode_max_ts)
@@ -551,7 +626,7 @@ class MpcRobotInteractive:
         reached_goal = False
         # -- start episode control loop --
         ep_start_time = time.time()
-            
+
         for ts in range(episode_max_ts):
             if ts % 100 == 0:
                 print(f"episode: {ep_num} time step: {ts} ")
@@ -577,15 +652,37 @@ class MpcRobotInteractive:
                 ts_to_goal = ts
                 break
             
-            # Make next step:
-            st = rlpt_agent.encode_state(self.gym.get_actor_rigid_body_states()) # converting the state to a form that agent would feel comfortable with
+            # Make step t:
+            # robot_base =  
+            robot_dofs_state = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
+            
+            # moving parts
+            robot_dof_positions: np.ndarray = robot_dofs_state['pos'] 
+            robot_dof_orientations: np.ndarray =  robot_dofs_state['vel']
+            goal_pose: np.ndarray = goal_ee_pose
+            
+            st = rlpt_agent.compose_state_vector(robot_dof_positions,robot_dof_orientations, goal_ee_pose) # converting the state to a form that agent would feel comfortable with
             at = rlpt_agent.select_action(st) 
             cost_weights, mpc_weights = at['cost_weights'], at['mpc_params']
             self.step(cost_weights, mpc_weights, ts) # moving to next time step t+1
 
         return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors
         
+    def get_all_coll_obs_actor_names(self): # all including non participating
+        all_names = self.get_actor_name_to_actor_handle_map().keys()
+        non_col_objs = self.non_coll_objs_actor_names
+        ans = set()
+        for name in all_names:
+            if name not in non_col_objs:
+                if name in ans:
+                    raise BadArgumentUsage("user has to pass different collision obsjet names")  
+                ans.add(name)
+        return list(ans)
                 
+    
+            
+    
+            
     # helper functions:    
     def get_body_pose(self, handle, coordinate_system) -> gymapi.Transform:
         """
@@ -831,16 +928,76 @@ class MpcRobotInteractive:
 
 
 
-def get_random_world():
+def make_random_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict):
+    """
+
     
-    episode_settings_space = {    
-        'goal_pose_storm' :[[0.47, 0.47, 0.1, 0, 2.5, 0, 1]], # [[0.47, 0.47, 0.1, 0, 0, 0, 1]]'goal_pose_storm': [[0, 0, 0.51, 0, 0, 0, 1],[0.4,-0.5, 0.3, 0, 0, 0, 1],[-0.2,-0.5, 0.3, 0, 0, 0, 1]],
-        'coll_obs_names': [[]] # 'coll_obs_names': [[], ['sphere1','sphere2']] # [] means all
-    }    
-    all_combos = list(get_combinations(episode_settings_space))
+    """
     
-    while 1:
-        yield random.choice(all_combos)
+    def modify_coll_obj_inplace_rec(collision_obj):
+        eps = 1e-4
+        for i, item in enumerate(collision_obj): 
+            if isinstance(item, Iterable):
+                modify_coll_obj_inplace_rec(item)
+            else:
+                sd = np.mean(np.abs(collision_obj))
+                if sd == 0:
+                    sd = eps
+                noise = np.random.normal(0,sd,1)[0]
+                collision_obj[i] = collision_obj + noise
+    
+    def is_sphere(obj):
+        return 'radius' in obj
+    def is_cube(obj):
+        return 'dims' in obj
+    
+    very_large = 100 # in meters            
+    far_away_position = [very_large] * 3
+    default_orient = [0] * 4
+    far_away_pose = far_away_position + default_orient
+    very_small = 1e-4 # in meters
+    invisible_cube_dims = [very_small] * 3
+    
+    default_goal_pose = [0.47, 0.47, 0.1, 0, 2.5, 0, 1] # in storm ccordinates
+    optional_goal_poses = [[0.47, 0.47, 0.1, 0, 2.5, 0, 1], [0.47, 0.47, 0.1, 0, 0, 0, 1]]
+    invisible_state_sphere = {'radius': very_small, 'position': far_away_position}
+    invisible_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
+
+    if sample_goal_pose:
+        goal_pose = random.choice(optional_goal_poses)
+    else:
+        goal_pose = default_goal_pose
+    
+    particiating = {} # name to loc
+    not_participatig = {} # name to loc
+    all_obj_names = all_coll_objs_with_positions.keys()
+    if sample_coll_objs:
+        total_objs = len(all_coll_objs_with_positions)
+        participating_number = random.randint(1, total_objs)
+        particiating = sorted(random.sample(all_obj_names, participating_number))
+    else:
+        particiating = all_obj_names 
+
+    for obj_name in all_coll_objs_with_positions:
+        if obj_name not in particiating:
+            curr_obj = all_coll_objs_with_positions[obj_name]
+            not_participatig[obj_name] = invisible_state_cube if is_cube(curr_obj) else invisible_state_sphere 
+             
+    return particiating, not_participatig, goal_pose                
+                    
+    
+    
+    
+    
+    
+            
+    
+    
+    
+        
+    
+    
+     
     
 def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     
@@ -880,70 +1037,182 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
     output_file = f'BGU/Rlpt/experiments/experiments_results/experiment1_{make_date_time_str()}.pl'
-    worlds_generator = select_world_callback()
+    # worlds_generator = select_world_callback() # callback must select participating collision objects from original file
+    mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
+    data = []
+    
+    # Init rlpt agent action space
+    cost_weights_space = { 
+                
+        # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
+        "goal_pose":  [[15.0, 100.0]],
+        "zero_vel": [0.0], 
+        "zero_acc": [0.0],
+        "joint_l2": [0.0],
+        
+        # ArmBase costs
+        "robot_self_collision": [5000],
+        # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
+        "primitive_collision": [5000],
+        # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
+        "voxel_collision" : [0],
+        "null_space": [1.0],
+        "manipulability": [30],
+        # "manipulability": [30, 10, 50, 100], 
+        "ee_vel": [0.0], 
+        # "stop_cost": [100, 10, 50, 200], 
+        # "stop_cost": [100],
+        "stop_cost": [1],        
+        "stop_cost_acc": [0.0], 
+        "smooth": [1.0],
+        # "smooth": [1.0, 0.1, 5, 10], 
+        # "state_bound": [1000.0, 100, 500, 2000]
+        "state_bound": [1000.0],
+        # "state_bound": [200.0] # Joint limit avoidance
+    }
+    mpc_params_space = {
+        "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
+        # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+        "particles": [500],
+        # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
+        "n_iters": [1]
+        } 
+    rlpt_action_space = list(get_combinations({
+        'cost_weights': get_combinations(cost_weights_space),
+        'mpc_params': get_combinations(mpc_params_space),
+    }))
+    
+    
+    # compute the rlpt agent state dimention
+    
+    # # robot section size in state
+    # # robot_base_pos_dim = 3 # x,y,z
+    # robot_dofs_positions_dim = 7 # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
+    # robot_dofs_velocities_dim = 7 # an angular velocity on each dof 
+    # robot_section_size = robot_dofs_positions_dim + robot_dofs_velocities_dim 
+     
+    # # objects section size in state
+    # sphere_dim = 4 # position of center (3), radius (1)
+    # cube_dim = 10  # position (3), orientation (4), width (1), height (1), depth (1) 
+    # n_spheres = len(mpc.get_actor_group_from_env('sphere')) # all objects in file
+    # n_cubes = len(mpc.get_actor_group_from_env('cube')) # all objects in file
+    # objectes_section_size = sphere_dim * n_spheres + cube_dim * n_cubes 
+    
+    # # task section size in state
+    # goal_pose_dim = 7 # position (3), orientation (4)
+    # task_section_size = goal_pose_dim
+    
+    # # finally 
+    # rlpt_state_dim = robot_section_size + objectes_section_size + task_section_size
+    
+            
     try:
         
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
         
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
+       
             # define episode settings
             # episode_max_ts: int = episode_max_ts combo['episode_settings']['episode_max_ts']
             
-            if ep == 0:
-                mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
-                data = []
+            # if ep == 0:
+            #     pass
+            #     # mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
+            #     # data = []
                 
-                # Init rlpt agent
-                cost_weights_space = { 
+            #     # # Init rlpt agent
+            #     # cost_weights_space = { 
                             
-                    # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
-                    "goal_pose":  [[15.0, 100.0]],
-                    "zero_vel": [0.0], 
-                    "zero_acc": [0.0],
-                    "joint_l2": [0.0],
+            #     #     # "goal_pose": [[15.0, 100.0], [100, 1000], [500,1000], [1000,1000]], # orientation, position
+            #     #     "goal_pose":  [[15.0, 100.0]],
+            #     #     "zero_vel": [0.0], 
+            #     #     "zero_acc": [0.0],
+            #     #     "joint_l2": [0.0],
                     
-                    # ArmBase costs
-                    "robot_self_collision": [5000],
-                    # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
-                    "primitive_collision": [5000],
-                    # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
-                    "voxel_collision" : [0],
-                    "null_space": [1.0],
-                    "manipulability": [30],
-                    # "manipulability": [30, 10, 50, 100], 
-                    "ee_vel": [0.0], 
-                    # "stop_cost": [100, 10, 50, 200], 
-                    # "stop_cost": [100],
-                    "stop_cost": [1],        
-                    "stop_cost_acc": [0.0], 
-                    "smooth": [1.0],
-                    # "smooth": [1.0, 0.1, 5, 10], 
-                    # "state_bound": [1000.0, 100, 500, 2000]
-                    "state_bound": [1000.0],
-                    # "state_bound": [200.0] # Joint limit avoidance
-                }
-                mpc_params_space = {
-                    "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
-                    # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-                    "particles": [500],
-                    # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
-                    "n_iters": [1]
-                    } 
-                rlpt_action_space = get_combinations({
-                    'cost_weights': get_combinations(cost_weights_space),
-                    'mpc_params': get_combinations(mpc_params_space),
-                    # 'episode_settings': get_combinations(episode_settings_space)
-                })
-                state_dim_flatten = len(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr).flatten())
-                rlpt_agent = rlptAgent(rlpt_action_space, state_dim_flatten)
+            #     #     # ArmBase costs
+            #     #     "robot_self_collision": [5000],
+            #     #     # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
+            #     #     "primitive_collision": [5000],
+            #     #     # "primitive_collision" :  [5000, 1000, 3000, 10000],# 5000,
+            #     #     "voxel_collision" : [0],
+            #     #     "null_space": [1.0],
+            #     #     "manipulability": [30],
+            #     #     # "manipulability": [30, 10, 50, 100], 
+            #     #     "ee_vel": [0.0], 
+            #     #     # "stop_cost": [100, 10, 50, 200], 
+            #     #     # "stop_cost": [100],
+            #     #     "stop_cost": [1],        
+            #     #     "stop_cost_acc": [0.0], 
+            #     #     "smooth": [1.0],
+            #     #     # "smooth": [1.0, 0.1, 5, 10], 
+            #     #     # "state_bound": [1000.0, 100, 500, 2000]
+            #     #     "state_bound": [1000.0],
+            #     #     # "state_bound": [200.0] # Joint limit avoidance
+            #     # }
+            #     # mpc_params_space = {
+            #     #     "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
+            #     #     # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+            #     #     "particles": [500],
+            #     #     # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
+            #     #     "n_iters": [1]
+            #     #     } 
+            #     # rlpt_action_space = get_combinations({
+            #     #     'cost_weights': get_combinations(cost_weights_space),
+            #     #     'mpc_params': get_combinations(mpc_params_space),
+            #     #     # 'episode_settings': get_combinations(episode_settings_space)
+            #     # })
                 
+                
+            #     # # objects state
+            #     # sphere_dim = 4 # position of center (3), radius (1)
+            #     # cube_dim = 10  # position (3), orientation (4), width (1), height (1), depth (1) 
+            #     # goal_pose_dim = 7 # position (3), orientation (4)
+            #     # n_spheres = len(mpc.get_actor_group_from_env('sphere'))
+            #     # n_cubes = len(mpc.get_actor_group_from_env('cube')) 
+                
+            #     # # robot state
+            #     # # robot_base_pos_dim = 3 # x,y,z
+            #     # robot_dofs_positions_dim = 7 # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
+            #     # robot_dofs_velocities_dim = 7 # an angular velocity on each dof 
+            #     # state_dim_flatten = sphere_dim * n_spheres + 
+            #     # rlpt_agent = rlptAgent(rlpt_action_space, state_dim_flatten)
+                
+                
+            # select a world for the episode and reset environment to use it
+            # all_collision_objs = mpc.all_collision_objs_names # replace to all collision objs (so it can render locations)
+            all_coll_objs_with_locs = {}
+            for obj_type in mpc.all_collision_objs:
+                for obj_name in mpc.all_collision_objs[obj_type]:
+                    all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
+                 
+            particiating, not_participatig, goal_pose_storm = select_world_callback(True, True, False, all_coll_objs_with_locs) 
+            # selected_coll_obs_names = list(particiating.keys()) 
+            env_selected = mpc.reset_environment(particiating, goal_pose_storm) # reset environment and return its new specifications
+            selected_collision_objs = env_selected['world_model']['coll_objs']
             
-            curr_world = next(worlds_generator)
-            coll_obs_names, goal_pose_storm = curr_world['coll_obs_names'], curr_world['goal_pose_storm']
-            episode_environment_model = mpc.reset_environment(coll_obs_names, goal_pose_storm) # reset environment and return its new specifications
-            selected_collision_objs = episode_environment_model['world_model']['coll_objs'] 
-            # run episode and collect data  
+            # selecetd_coll_objs_names = []
+            # for obj_cat in selected_collision_objs:
+            #     for obj_name in selected_collision_objs[obj_cat]:
+            #         selecetd_coll_objs_names.append(selected_collision_objs[obj_cat][obj_name])
+                     
+            
+            # non_selected_collision_objs_names =  set(mpc.all_collision_objs_names) - set(selecetd_coll_objs_names)
+            
+            
+            
+
+            # update actor name -> handle, handle->name cache
+            mpc.set_handle_to_name(mpc.get_actor_handle_to_actor_name_map())
+            mpc.set_name_to_handle(mpc.get_actor_name_to_actor_handle_map())
+            
+            load_model_file = False # TODO change in future
+            if ep == 0 and not load_model_file:
+                rlpt_agent = rlptAgent(particiating, not_participatig, rlpt_action_space)
+
+            
+       
+            # run episode and collect data (statistics) 
             steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors = \
                 mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep) 
             
@@ -970,5 +1239,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     
     
 if __name__ == '__main__':
-    train_loop(100, 500, get_random_world)
+    train_loop(100, 500, make_random_world)
     
