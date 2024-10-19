@@ -681,8 +681,7 @@ class MpcRobotInteractive:
             goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
             curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
             s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np) # converting the state to a form that agent would feel comfortable with
-            if ts == episode_max_ts - 1:
-                s_next = None
+            
             # rlpt - compute reward (r(t))    
             ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
             ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error   
@@ -697,10 +696,10 @@ class MpcRobotInteractive:
             rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, unweighted_cost_primitive_coll,step_duration)
             
             # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
-            s_next_tensor =  torch.tensor(s_next, device="cuda", dtype=torch.float64)
+            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
+            s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not (ts == episode_max_ts - 1) else None
             rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
-            at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.float64) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+            at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
             rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
             
             print(f'a(t) index: {at_idx}')
@@ -712,6 +711,7 @@ class MpcRobotInteractive:
             
             # rlpt- update target network
             if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
+                print("optimization...")
                 rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
             
             # rlpt - update state before next iter
@@ -1223,5 +1223,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     
     
 if __name__ == '__main__':
-    train_loop(100, 500, generate_new_world)
+    train_loop(10000, 20, generate_new_world)
     
