@@ -34,7 +34,25 @@ class trainSuit:
     
     def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=128,gamma=0.99, eps_start = 0.9, eps_end=0.05, eps_decay=1000,learning_rate=1e-4,
                 C=100,N=10000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
-    
+        """Initializing a dqn/ddqn network 
+
+        Args:
+            state_dim_flatten (_type_): _description_
+            n_actions (_type_): _description_
+            ddqn (bool, optional): _description_. Defaults to True.
+            seed (int, optional): _description_. Defaults to 42.
+            batch_size (int, optional): _description_. Defaults to 128.
+            gamma (float, optional): _description_. Defaults to 0.99.
+            eps_start (float, optional): _description_. Defaults to 0.9.
+            eps_end (float, optional): _description_. Defaults to 0.05.
+            eps_decay (int, optional): _description_. Defaults to 1000.
+            learning_rate (_type_, optional): _description_. Defaults to 1e-4.
+            C (int, optional): _description_. Defaults to 100.
+            N (int, optional): _description_. Defaults to 10000.
+            T (int, optional): _description_. Defaults to 10000.
+            criterion (_type_, optional): _description_. Defaults to nn.MSELoss.
+            optimizer (_type_, optional): _description_. Defaults to optim.AdamW.
+        """
         # BATCH_SIZE is the number of transitions sampled from the replay buffer
         # GAMMA is the discount factor as mentioned in the previous section
         # EPS_START is the starting value of epsilon
@@ -79,77 +97,6 @@ class trainSuit:
         elif optimizer == optim.SGD:
             self.optimizer = optimizer(self.current.parameters(), lr=self.learning_rate) # original paper
 
-        
-    
-    def train(self, n_episodes, n_actions, state_dim_flatten):
-    
-      
-
-        # user argumaents:
-        # >>>>>
-        # <<<<<<
-        print(text2art(f"{'DDQN' if self.ddqn else 'DQN'}"))
- 
-        device = torch.device("cuda" if torch.cuda.is_available() else  "mps" if torch.backends.mps.is_available() else "cpu")
-        # if torch.cuda.is_available() or torch.backends.mps.is_available():
-        #     num_episodes = 1000
-        # else:
-        #     num_episodes = 50
-
-        # env: gym.Env = gym.make("CartPole-v1",render_mode="human") # env = gym.make("CartPole-v1")
-        # n_actions = env.action_space.n # Get number of actions from gym action space
-        
-        # state, info = env.reset()
-        # state_dim = len(state)
-        episode_durations = []
-
-        ####### DQN: https://daiwk.github.io/assets/dqn.pdf ##########
-
-        # criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
-        criterion = nn.MSELoss()
-        memory = ReplayMemory(self.N, self.seed) # Initialize replay memory D to capacity N
-        steps_done = 0 # in total, over all episodes    
-        # Initialize action-value function Q with random weights θ
-        current:DQN = DQN(state_dim_flatten, n_actions).to(device) # Q
-        #Initialize target action-value function Q^ with weights θ- ← θ
-        target:DQN = DQN(state_dim_flatten, n_actions).to(device) # Q^
-        target.load_state_dict(current.state_dict()) # θ- ← θ
-        optimizer = optim.AdamW(current.parameters(), lr=self.learning_rate, amsgrad=True) 
-        # optimizer = optim.SGD(current.parameters(), lr=self.learning_rate) # original paper
-
-
-        for i_episode in range(n_episodes): # https://daiwk.github.io/assets/dqn.pdf
-            # Initialize the environment and get its state
-            # o, info = env.reset()
-            o, _ = self.env.reset() # TODO
-            
-            s_t = torch.tensor(o, dtype=torch.float32, device=device).unsqueeze(0)
-            # print(f'episde: {i_episode}')
-            # for t in count(): # iterating time steps of current episode
-            for t in range(1, T+1):  
-                # steps_done += 1
-                # select action a_t according to €-greedy policy (With probability € select a random action at)
-                a_t, _ = self.select_action(s_t)  
-                # execute action a_t in environment
-                o_next, r_t, terminated, truncated, _ = self.env.step(a_t.item()) # o_t+1, r_t, mdp's terminal state reached, forced to stop (outside of mdp's scope)   
-                r_t = torch.tensor([r_t], device=device)
-                done = terminated or truncated 
-                s_next = None
-                if not terminated:
-                    s_next = torch.tensor(o_next, dtype=torch.float32, device=device).unsqueeze(0) # s_t+1 ← o_t+1 (fully observable)
-                
-                # store transition (st, at, st+1, rt) in replay memory D. To make data to train the Q network 
-                memory.push(s_t, a_t, s_next, r_t)   
-                
-                # self.optimize() # sample a random minibatch of transitions (s_j, a_j, s_j+1, r_j) from D, compute errors and make a gradient step.   
-                # if steps_done % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-                #     target.load_state_dict(current.state_dict())
-                        
-                if done:
-                    end_of_epiosode_steps()
-                    break
-                
-                s_t = s_next 
 
 
     def set_seed(self, env, seed=1):
@@ -167,7 +114,7 @@ class trainSuit:
         
         sample = random.random()
         eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
-            math.exp(-1. * self.steps_done / EPS_DECAY)
+            math.exp(-1. * self.steps_done / self.eps_decay)
         select_greedily = sample > eps_threshold  
         
         if select_greedily: # best a (which maximizes current Q)
@@ -175,8 +122,9 @@ class trainSuit:
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                action_idx_tensor = self.current(state).max(1).indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
-                action_idx = action_idx_tensor.item()
+                # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
+                action_idx_tensor = torch.argmax(self.current(state)) # [index]
+                action_idx = action_idx_tensor.item() # index
                 
         else: # random a (each action has a fair chance to be selected)
             action_idx = random.randint(0, self.n_actions -1)
@@ -189,11 +137,13 @@ class trainSuit:
     
     def optimize(self):
         """
+        Sample a random minibatch of transitions from the shape (s, a, s', r) from D, 
+        compute error in Q^ w.r to target Q^s as the "true values",  and make a gradient step.
+        
+        sources:    
         https://daiwk.github.io/assets/dqn.pdf alg 1
         or with the modification to ddqn:  https://arxiv.org/pdf/1509.06461
-        
         This is the optimization step of the model.
-        The optimization step is the heart of the algorithm and its geniousity.
         We will use experience replay and optimize using 2 networks: Q network (updated) and targets network Q^ (older, fixed).
 
         """
