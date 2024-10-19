@@ -622,8 +622,7 @@ class MpcRobotInteractive:
         Return:
         a tuple 
         """
-        curr_ee_pose: gymapi.Transform
-        goal_ee_pose: gymapi.Transform
+         
         # curr_ee_pose_np: np.ndarray
         goal_ee_pose_np: np.ndarray
         
@@ -682,10 +681,17 @@ class MpcRobotInteractive:
             goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
             curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
             s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np) # converting the state to a form that agent would feel comfortable with
-
+            if ts == episode_max_ts - 1:
+                s_next = None
             # rlpt - compute reward (r(t))    
-            ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, curr_ee_pose_gym.p) # end effector position error
-            ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r,curr_ee_pose_gym.r)  # end effector rotation error   
+            ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
+            ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error   
+            print("ee_pos", "goal_ee_pos")
+            # print(curr_ee_pose_gym, goal_ee_pose_gym)
+            # print(curr_ee_pose_gym.p, curr_ee_pose_gym.r, curr_ee_pose_gym.p, curr_ee_pose_gym.r)
+            print("ee_pos_error, ee_rot_error")
+            print(ee_pos_error, ee_rot_error)
+            
             mpc_costs_current_step:dict = GLobalVars.cost_sniffer.get_current_costs() # current real world costs
             unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
             rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, unweighted_cost_primitive_coll,step_duration)

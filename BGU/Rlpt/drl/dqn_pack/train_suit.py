@@ -161,7 +161,7 @@ class trainSuit:
         # zero gradient
         self.optimizer.zero_grad()
         
-        # Q(s, a, θ) (computing Q with updated (online) Q network, where a is the action which was taken in batch)
+        # Q(s, a, θ) (computing Q with updated (online, current) Q network, where a is the action which was taken in batch)
         q_values: torch.Tensor = self.current(states).gather(1, actions) # https://pytorch.org/docs/stable/generated/torch.Tensor.gather.html#torch.Tensor.gather
         with torch.no_grad():        
             if not self.ddqn: # standard dqn

@@ -19,8 +19,8 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from itertools import count
-from dqn_pack.dqn import DQN
-from dqn_pack.replay_memory import ReplayMemory, Transition
+from BGU.Rlpt.drl.dqn_pack.dqn import DQN
+from BGU.Rlpt.drl.dqn_pack.replay_memory import ReplayMemory, Transition
 from art import text2art 
 def set_seed(env, seed=1):
     random.seed(seed)
