@@ -658,7 +658,7 @@ class MpcRobotInteractive:
 
         ep_start_time = time.time()
         for ts in range(episode_max_ts):
-            print(f"episode: {ep_num} time step: {ts} ")
+            print(f"episode: {ep_num} time step: {ts}, steps_done (total): {steps_done} ")
             
             # rlpt - select action (a(t))
             at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
@@ -711,14 +711,13 @@ class MpcRobotInteractive:
             
             # rlpt- update target network
             if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-                print("optimization...")
                 rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
             
             # rlpt - update state before next iter
             st = s_next       
          
             
-        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, ts
+        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done
         
     def get_all_coll_obs_actor_names(self): # all including non participating
         all_names = self.get_actor_name_to_actor_handle_map().keys()
@@ -1025,7 +1024,11 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     invisible_cube_dims = [very_small] * 3
     
     default_goal_pose = [0.47, 0.47, 0.1, 0, 2.5, 0, 1] # in storm ccordinates
-    optional_goal_poses = [[0.47, 0.47, 0.1, 0, 2.5, 0, 1], [0.47, 0.47, 0.1, 0, 0, 0, 1]]
+    optional_goal_poses = [[0.47, 0.47, 0.1, 0, 2.5, 0, 1], 
+                           [0.47, 0.47, 0.1, 0, 0.4, 0, 0.2],
+                           [-0.3, 0.07, 0.31, 0, 0, 0, 1],
+                           [-0.20, 0.11, 0.2, 0.3, 0.4, 0, 0.4],
+                           ]
     external_to_env_state_sphere = {'radius': very_small, 'position': far_away_position}
     external_to_env_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
 
@@ -1071,7 +1074,7 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     return participating, not_participatig, goal_pose                
                 
     
-def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
+def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_path=True):
     """
 
     Args:
@@ -1130,7 +1133,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     cost_weights_space = { 
                 
         "goal_pose": [[15.0, 100.0]], # orientation, position
-        # "goal_pose":  [[15.0, 100.0], [100.0, 100.0]], # orientation, position
+        #"goal_pose":  [[15.0, 100.0], [100.0, 100.0]], # orientation, position
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0],
@@ -1183,7 +1186,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
             for obj_type in mpc.all_collision_objs:
                 for obj_name in mpc.all_collision_objs[obj_type]:
                     all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-            particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, True, False, all_coll_objs_with_locs) 
+            particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
             env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
             load_model_file = False # TODO change in future
             if ep == 0 and not load_model_file:
@@ -1193,10 +1196,10 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
                 rlpt_agent = rlptAgent(particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
        
             # run episode and collect data (statistics) 
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, total_steps = \
+            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done = \
                 mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep, steps_done=steps_done) 
             
-            steps_done += total_steps
+            
             
             # save collected data from episode
             if ep > 0:
@@ -1223,5 +1226,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     
     
 if __name__ == '__main__':
-    train_loop(10000, 20, generate_new_world)
+    train_loop(10000, 300, generate_new_world)
     
