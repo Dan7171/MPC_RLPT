@@ -74,7 +74,7 @@ class rlptAgent:
         
         action_idx_tensor = self.train_suit.select_action(st)
         action_idx = int(action_idx_tensor.item()) # action's index
-        return self.action_space[action_idx] # the action itself 
+        return action_idx, self.action_space[action_idx] # the action itself 
     
     
     
@@ -114,6 +114,8 @@ class rlptAgent:
         
         total_reward = pose_reward + primitive_collision_reward + step_duration_reward
         
+        print(f"pose_reward,  primitive_collision_reward,  step_duration_reward\n\
+              {pose_reward}, {primitive_collision_reward}, {step_duration_reward}")
         return total_reward
         
         

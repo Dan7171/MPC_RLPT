@@ -155,7 +155,7 @@ class trainSuit:
         batch = Transition(*zip(*transitions))
         states, actions, rewards = torch.cat(batch.state), torch.cat(batch.action), torch.cat(batch.reward)
         
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool) # a vector in length = batch size. True where sj+1 is not final
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=self.device, dtype=torch.bool) # a vector in length = batch size. True where sj+1 is not final
         non_final_next_states = torch.cat([s for s in batch.next_state if s is not None]) # a vector in length <= batch size. Only the non final states sj+1 from batch.         
         
         # zero gradient

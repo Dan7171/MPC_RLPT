@@ -149,43 +149,42 @@ class CostFnSniffer:
             real_world = is_real_world()
             buff = self.costs_buff_real if real_world else self.costs_buff_mpc
             costs = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
-            # lock = lock1 if real_world else lock2
-            
-            if len(buff) == self.buffer_n:
-                # with lock:    
-                self._flush_to_storage(buff, real_world)
-                buff = []
-                if real_world:    
-                    self.costs_buff_real = buff
-                else:
-                    self.costs_buff_mpc = buff
-                buff.append(copy.deepcopy(costs))
-    
+            lock = lock1 if real_world else lock2
+            with lock:        
+                if len(buff) == self.buffer_n:
+                    self._flush_to_storage(buff, real_world)
+                    buff = []
+                    if real_world:    
+                        self.costs_buff_real = buff
+                    else:
+                        self.costs_buff_mpc = buff
+                    buff.append(copy.deepcopy(costs))
+        
     
         
     def _cost_terms_reading_loop(self, real_world: bool,full_horizon=False):  # thread target
         update_rate = 0.1 # how often rendering you
         time.sleep(update_rate)
         while True:
+            if real_world:
+                lock = lock1
+                gui = self._gui_dashboard1
+            else:
+                lock = lock2
+                gui = self._gui_dashboard2
             # all_costs =  self.costs_buff_real if real_world else self.costs_buff_mpc
-            costs_to_show = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
-            if len(costs_to_show): # wait for first write to dest array        
-                if real_world:
-                    lock = lock1
-                    gui = self._gui_dashboard1
-                else:
-                    lock = lock2
-                    gui = self._gui_dashboard2
-                
-                with lock:
-                    pass
+            with lock:
+                costs_to_show = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
+                costs_to_show_tmp = copy.deepcopy(costs_to_show)
+         
+                if len(costs_to_show): # wait for first write to dest array        
                     if full_horizon:
                         # Option 1 - Display at the mpc graph the mean cost over all trajectories
-                        display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in costs_to_show.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
+                        display_data = {ct_name: (ct.mean(), ct.weight) for ct_name, ct in costs_to_show_tmp.items()} # convet each CostTerm to its mean over nxk rollouts x horizons (int he mpc case) or leaves it the same (mean of single value) in the real world case   
                     else:
                         # Option 2 - display the mean cost only over the first actions in rollouts
                         # Display at the mpc graph the mean cost over all trajectories
-                        display_data = {ct_name: (ct.mean_over_first_action(),ct.weight) for ct_name, ct in costs_to_show.items()}
+                        display_data = {ct_name: (ct.mean_over_first_action(),ct.weight) for ct_name, ct in costs_to_show_tmp.items()}
                         
                 
                     x = 'cost term'

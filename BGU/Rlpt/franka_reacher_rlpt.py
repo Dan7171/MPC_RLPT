@@ -662,11 +662,11 @@ class MpcRobotInteractive:
             print(f"episode: {ep_num} time step: {ts} ")
             
             # rlpt - select action (a(t))
-            at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
+            at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
             # if we just begun, parameters (initial parameters) must be selected, so we force agent to try until it selects any
             if ep_num == 0 and ts == 0: 
                 while at == rlptAgent.NO_OP_CODE:
-                    at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
+                    at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
             
             
             # rlpt and mpc planner - make steps
@@ -689,10 +689,16 @@ class MpcRobotInteractive:
             mpc_costs_current_step:dict = GLobalVars.cost_sniffer.get_current_costs() # current real world costs
             unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
             rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, unweighted_cost_primitive_coll,step_duration)
-            rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
             
             # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-            rlpt_agent.train_suit.memory.push(st, at, s_next, rt_tensor)   
+            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+            s_next_tensor =  torch.tensor(s_next, device="cuda", dtype=torch.float64)
+            rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
+            at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.float64) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+            rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
+            
+            print(f'a(t) index: {at_idx}')
+            print(f'r(t): {rt}')
             
             # rlpt- perform optimization step
             rlpt_agent.train_suit.optimize() 
