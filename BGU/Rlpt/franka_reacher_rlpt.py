@@ -385,7 +385,7 @@ class MpcRobotInteractive:
     
         self.mpc_control.update_params(goal_ee_pos=self.prev_mpc_goal_pos,
                                     goal_ee_quat=self.prev_mpc_goal_quat)    
-    def step(self, at:Union[dict,str], step_num: int):
+    def step(self, at:dict, at_idx: int, step_num: int, prev_at_idx: Union[int,None]=None):
         """
         Update arm parameters. cost_weights are the parameters for the mpc cost function.
         mpc_params are the horizon and number of particles of the mpc.
@@ -412,11 +412,10 @@ class MpcRobotInteractive:
         """
         
         GOAL_POSE_CHANGE_TOLL = 0.0001 # TOLERANCE
-        tuning_action_selected = at != rlptAgent.NO_OP_CODE 
-    
+        update_params = prev_at_idx is None or at_idx != prev_at_idx # initial step or voluntary update 
         # Update Cost and MPC variables dynamically (RLPT Part)
-        if tuning_action_selected:
-            assert type(at) == dict
+        if update_params:
+            # assert type(at) == dict
             cost_weights, mpc_params = at['cost_weights'], at['mpc_params']
             self.mpc_control.update_costs(cost_weights) 
             self.mpc_control.update_mpc_params(mpc_params) 
@@ -609,7 +608,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, float]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -644,33 +643,28 @@ class MpcRobotInteractive:
         
         time_to_goal = -1
         ts_to_goal = -1
-        reached_goal = False
         
         # -- start episode control loop --
         
         # s0
+        at: dict
+        prev_at_idx = None
         robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
         goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
         goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
-        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np) # converting the state to a form that agent would feel comfortable with
-
+        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
         for ts in range(episode_max_ts):
             print(f"episode: {ep_num} time step: {ts}, steps_done (total): {steps_done} ")
             
             # rlpt - select action (a(t))
             at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
-            # if we just begun, parameters (initial parameters) must be selected, so we force agent to try until it selects any
-            if ep_num == 0 and ts == 0: 
-                while at == rlptAgent.NO_OP_CODE:
-                    at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
-            
             
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
-            self.step(at, ts) # moving to next time step t+1, optinonally performing parameter tuning
+            self.step(at, at_idx, ts, prev_at_idx) # moving to next time step t+1, optinonally performing parameter tuning
             step_duration = time.time() - step_start_time # time it took to move from st to st+1
             
             # rlpt - compute the state you just moved to (s(t+1))
@@ -680,7 +674,8 @@ class MpcRobotInteractive:
             goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
             goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
             curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-            s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np) # converting the state to a form that agent would feel comfortable with
+            s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx) # converting the state to a form that agent would feel comfortable with
+            
             
             # rlpt - compute reward (r(t))    
             ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
@@ -706,7 +701,7 @@ class MpcRobotInteractive:
             print(f'r(t): {rt}')
             
             # rlpt- perform optimization step
-            rlpt_agent.train_suit.optimize() 
+            loss_t = rlpt_agent.train_suit.optimize() 
             steps_done += 1
             
             # rlpt- update target network
@@ -714,10 +709,11 @@ class MpcRobotInteractive:
                 rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
             
             # rlpt - update state before next iter
-            st = s_next       
+            st = s_next
+            prev_at_idx = at_idx       
          
             
-        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done
+        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done, loss_t
         
     def get_all_coll_obs_actor_names(self): # all including non participating
         all_names = self.get_actor_name_to_actor_handle_map().keys()
@@ -1076,9 +1072,9 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         'cost_weights': get_combinations(cost_weights_space),
         'mpc_params': get_combinations(mpc_params_space)}))
     
-    rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
+    # rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
     
-    
+    current_q_network_path = 'current_q_net.' 
     try:
         
         if profile_memory: # for debugging gpu if needed   
@@ -1101,11 +1097,20 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 rlpt_agent = rlptAgent(particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
        
             # run episode and collect data (statistics) 
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done = \
+            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done, loss = \
                 mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep, steps_done=steps_done) 
             
+            if ep % 10 == 0:
+                torch.save({
+                'model_state_dict': rlpt_agent.train_suit.current.state_dict(),
+                'optimizer_state_dict': rlpt_agent.train_suit.optimizer.state_dict(),
+                'episode': ep,  # Optional: if you want to save the current epoch number
+                'loss': loss,  # Optional: if you want to save the last loss value
+            }, 'ddqn_model_checkpoint.pth')
             
-            
+            # checkpoint = torch.load('ddqn_model_checkpoint.pth')
+            # ddqn_model.load_state_dict(checkpoint['model_state_dict'])
+            # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             # save collected data from episode
             if ep > 0:
                 with open(output_file, 'rb') as file:

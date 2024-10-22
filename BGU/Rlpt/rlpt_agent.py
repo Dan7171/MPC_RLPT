@@ -1,5 +1,5 @@
 import copy
-from typing import List, Set
+from typing import List, Set, Union
 from click import BadArgumentUsage
 from networkx import union
 from storm_kit.mpc import task
@@ -19,7 +19,7 @@ def _merge_dict(original, update):
     return new
     
 class rlptAgent:
-    NO_OP_CODE = 'no_op' # A constant representing a special action which every rlpt agent has. It's meaning is doing nothing. So if a(t) is NO_OP: rlpt won't tune parameters in time t (and system will be based on previous parameters)
+    # NO_OP_CODE = 'no_op' # A constant representing a special action which every rlpt agent has. It's meaning is doing nothing. So if a(t) is NO_OP: rlpt won't tune parameters in time t (and system will be based on previous parameters)
     
     def __init__(self, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
         """
@@ -45,20 +45,23 @@ class rlptAgent:
         self.state_dim = self._calc_state_dimension() # input dimension for the ddqn. 
         self.train_suit = trainSuit(self.state_dim , len(action_space)) # input dim, output di,m
         
-        
+     
     def _calc_state_dimension(self) -> int:
         
         # robot_base_pos_dim = 3 # x,y,z
         robot_dofs_positions_dim = 7 # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
         robot_dofs_velocities_dim = 7 # an angular velocity on each dof 
         goal_pose_dim = 7 # position (3), orientation (4)
+        prev_action_idx_dim = 1
+
         
         task_section_size = goal_pose_dim  # section size from state
         robot_section_size = robot_dofs_positions_dim + robot_dofs_velocities_dim # section size from state
-        
         # objectes_section_size = sphere_dim * n_spheres + cube_dim * n_cubes # section size from state 
         objects_section_size = len(self.all_coll_objs_initial_state)
-        return robot_section_size + task_section_size + objects_section_size
+        prev_action_idx_section_size = prev_action_idx_dim
+        
+        return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size
     
     def select_action(self, st:torch.Tensor):
         """Given state s(t) return action a(t)
@@ -92,14 +95,17 @@ class rlptAgent:
             all_objs_state_flatten = np.append(all_objs_state_flatten, flattened_obj_state) # np.append([1, 2, 3], [[4, 5, 6], [7, 8, 9]]) - >array([1, 2, 3, ..., 7, 8, 9])
         return all_objs_state_flatten
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, prev_at_idx:Union[None, int]) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
             st (_type_): _description_
         """
-        # return np.ndarray([self.all_coll_objs_initial_state,robot_dof_positions, robot_dof_velocities, goal_pose]).ravel()
-        return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym])
+        no_prev_action_code = -1
+        if prev_at_idx is None:
+            prev_at_idx = no_prev_action_code
+        prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
+        return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym, prev_at_idx_np])
     
     def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration)->np.float64:
         
