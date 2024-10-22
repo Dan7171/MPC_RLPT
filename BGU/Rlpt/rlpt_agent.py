@@ -108,9 +108,9 @@ class rlptAgent:
         pose_error = alpha * ee_pos_error + beta * (ee_rot_error / ee_pos_error)
         pose_reward = - pose_error
         
-        primitive_collision_reward = gamma * primitive_collision_error
+        primitive_collision_reward = - gamma * primitive_collision_error
         
-        step_duration_reward = delta * -step_duration
+        step_duration_reward = delta * - step_duration
         
         total_reward = pose_reward + primitive_collision_reward + step_duration_reward
         

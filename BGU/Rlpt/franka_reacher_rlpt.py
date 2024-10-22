@@ -823,23 +823,7 @@ class MpcRobotInteractive:
         pose_t.p = gymapi.Vec3(pose[0], pose[1], pose[2])
         pose_t.r = gymapi.Quat(pose[3], pose[4], pose[5], pose[6])
         return pose_t
-    def select_random_indexes(self, first, last, max_n, min_n):
-        """
-        first and last indexes
-        n = max number of objects
-        min = min number of objects
-        """
-        #print("ELIAS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        # Define the range of indexes from first to last (inclusive)
-        indexes = list(range(first, last))
-        
-        # Randomly determine how many indexes to select (between 0 and n)
-        num_indexes_to_select = random.randint(min_n, max_n)
-        
-        # Randomly select the determined number of indexes from the list
-        selected_indexes = random.sample(indexes, min(num_indexes_to_select, len(indexes)))
-        
-        return selected_indexes
+    
     def generate_random_position(self, n):
         # Generate random position in a grid divided into n^2 blocks
         x = random.uniform(-2/n, 2/n)
@@ -904,86 +888,7 @@ class MpcRobotInteractive:
             return position + quat
         else:
             return position                
-    def select_participating_obstacles(self, world_yml, indexes_cubes=[], indexes_spheres=[], render_poses=True):
-        """
-        # Formerly called "modify_dict" but changed to this name for more clarity.
-         
-        This method: 
-        1. selects randomly just a subset of the participating obstacles in next run, out of all available obstacles (cubes and spheres) in  world_yml
-        2. changing randomly the selected obstacles locations, using randomize_pos()
-
-        """
-        
-        MIN_SPHERE_INDEX = 0 # inclusive
-        MAX_SPHERE_INDEX = 9 # inclusive
-        # MIN_CUBE_INDEX = 11 # inclusive
-        MIN_CUBE_INDEX = 10 # inclusive
-        MAX_CUBE_INDEX = 34 # inclusive 
-        # MIN_CUBE_INDEX = 0
-         #MAX_CUBE_INDEX = 25
-        is_sampling_cubes, is_sampling_spheres = indexes_cubes == [], indexes_spheres == []
-         
-        if not is_sampling_cubes: # selelecting cube indices manually
-            assert all([MIN_CUBE_INDEX <= ind <= MAX_CUBE_INDEX for ind in indexes_cubes])
-        else: # sample cubes
-            min_cubes = 1 # # minimum cubes to select
-            max_cubes = 20 # maximum cubes to select
-            indexes_cubes = self.select_random_indexes(MIN_CUBE_INDEX, MAX_CUBE_INDEX + 1, max_cubes, min_cubes)
-        
-        # same for the spheres
-        if not is_sampling_spheres: # selelecting cube indices manually
-            assert all([MIN_SPHERE_INDEX <= ind <= MAX_SPHERE_INDEX for ind in indexes_spheres])
-        else:
-            min_spheres = 1 # minumum spheres to select
-            max_spheres = 10 # maximum spheres to select
-            indexes_spheres = self.select_random_indexes(MIN_SPHERE_INDEX, MAX_SPHERE_INDEX + 1, max_spheres, min_spheres)  
-        
-        
-        indexes = indexes_spheres + indexes_cubes
-        world_params = self.open_yaml(world_yml) # = {'world_model': {'coll_objs': {'sphere': {all spheres..},'cube': {all cubes..}}}}
-        selected_objects = self.get_objects_by_indexes(world_params, indexes)
-        compressed_world_params = {'world_model': {'coll_objs': {'sphere': {},'cube': {}}}}
-        sphere_index = 1
-        cube_index = 1
-        
-        for i in range(len(indexes)):
-            obj = selected_objects[i]
-            name = obj[0]
-            base_name = self.get_base_name(name)
-            
-            if render_poses:
-                new_pos = self.randomize_pos(obj, base_name) 
-            
-            if base_name == 'sphere':
-                # Modify dict
-                if render_poses:
-                    world_params['world_model']['coll_objs'][base_name][name]['position'] = new_pos
-                # Add to compressed dict
-                radius_position = {}
-                radius_position['radius'] = world_params['world_model']['coll_objs'][base_name][name]['radius']
-                radius_position['position'] = world_params['world_model']['coll_objs'][base_name][name]['position']
-                compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(sphere_index)] = radius_position
-                sphere_index += 1
-            elif base_name == 'cube':
-                #print("Cube added !!!")
-                # Modify dict
-                if render_poses:
-                    world_params['world_model']['coll_objs'][base_name][name]['pose'] = new_pos
-                # Add to compressed dict
-                dims_pose = {}
-                dims_pose['dims'] = world_params['world_model']['coll_objs'][base_name][name]['dims']
-                dims_pose['pose'] = world_params['world_model']['coll_objs'][base_name][name]['pose']
-                compressed_world_params['world_model']['coll_objs'][base_name][base_name + str(cube_index)] = dims_pose
-                cube_index += 1
-
-            dims_pose = {}
-            dims_pose['dims'] = world_params['world_model']['coll_objs']['cube']['cube28']['dims']
-            dims_pose['pose'] = world_params['world_model']['coll_objs']['cube']['cube28']['pose']
-            compressed_world_params['world_model']['coll_objs']['cube']['cube28'] = dims_pose
-
-        
-        return world_params, indexes, compressed_world_params # return: all optional obstacles objects
-
+    
 
 
 def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict) -> Tuple[dict, dict, list]:
