@@ -5,6 +5,7 @@ Based on Elias's franka_reacher_for_comparison.py
 
 import copy
 from os import name
+import os
 import pickle
 from re import I, match
 from select import select
@@ -385,7 +386,7 @@ class MpcRobotInteractive:
     
         self.mpc_control.update_params(goal_ee_pos=self.prev_mpc_goal_pos,
                                     goal_ee_quat=self.prev_mpc_goal_quat)    
-    def step(self, at:dict, at_idx: int, step_num: int, prev_at_idx: Union[int,None]=None):
+    def step(self, at:dict, prev_at: dict):
         """
         Update arm parameters. cost_weights are the parameters for the mpc cost function.
         mpc_params are the horizon and number of particles of the mpc.
@@ -412,14 +413,19 @@ class MpcRobotInteractive:
         """
         
         GOAL_POSE_CHANGE_TOLL = 0.0001 # TOLERANCE
-        update_params = prev_at_idx is None or at_idx != prev_at_idx # initial step or voluntary update 
-        # Update Cost and MPC variables dynamically (RLPT Part)
-        if update_params:
-            # assert type(at) == dict
-            cost_weights, mpc_params = at['cost_weights'], at['mpc_params']
-            self.mpc_control.update_costs(cost_weights) 
-            self.mpc_control.update_mpc_params(mpc_params) 
         
+        cost_weights, mpc_params = at['cost_weights'], at['mpc_params']
+        no_prev_at = not len(prev_at) 
+        
+        
+        if update_mpc_params := (no_prev_at or cost_weights != prev_at['cost_weights']):
+            print(f'new mpc params:\n{mpc_params}') # TODO check how printing only the difference between two dicts
+            self.mpc_control.update_mpc_params(mpc_params) 
+
+        if update_cost_weights := (no_prev_at or mpc_params !=  prev_at['mpc_params']):
+            print(f'new cost weights:\n{cost_weights}') # TODO check how printing only the difference between two dicts
+            self.mpc_control.update_costs(cost_weights) 
+            
         self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
         if(self.vis_ee_target): # only when visualizng goal state (red and green cups)            
@@ -647,8 +653,9 @@ class MpcRobotInteractive:
         # -- start episode control loop --
         
         # s0
+        prev_at_idx = None # None or int
         at: dict
-        prev_at_idx = None
+        prev_at:dict = {} # dict 
         robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
@@ -664,7 +671,7 @@ class MpcRobotInteractive:
             
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
-            self.step(at, at_idx, ts, prev_at_idx) # moving to next time step t+1, optinonally performing parameter tuning
+            self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_duration = time.time() - step_start_time # time it took to move from st to st+1
             
             # rlpt - compute the state you just moved to (s(t+1))
@@ -680,12 +687,6 @@ class MpcRobotInteractive:
             # rlpt - compute reward (r(t))    
             ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
             ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error   
-            print("ee_pos", "goal_ee_pos")
-            # print(curr_ee_pose_gym, goal_ee_pose_gym)
-            # print(curr_ee_pose_gym.p, curr_ee_pose_gym.r, curr_ee_pose_gym.p, curr_ee_pose_gym.r)
-            print("ee_pos_error, ee_rot_error")
-            print(ee_pos_error, ee_rot_error)
-            
             mpc_costs_current_step:dict = GLobalVars.cost_sniffer.get_current_costs() # current real world costs
             unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
             rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, unweighted_cost_primitive_coll,step_duration)
@@ -699,6 +700,7 @@ class MpcRobotInteractive:
             
             print(f'a(t) index: {at_idx}')
             print(f'r(t): {rt}')
+            print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
             
             # rlpt- perform optimization step
             loss_t = rlpt_agent.train_suit.optimize() 
@@ -708,9 +710,10 @@ class MpcRobotInteractive:
             if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
                 rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
             
-            # rlpt - update state before next iter
+            # rlpt - update state for next iter where ts t+1
             st = s_next
-            prev_at_idx = at_idx       
+            prev_at_idx = at_idx
+            prev_at = at       
          
             
         return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done, loss_t
@@ -1033,12 +1036,11 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     # Init rlpt agent action space
     cost_weights_space = { 
                 
-        "goal_pose": [[15.0, 100.0]], # orientation, position
-        #"goal_pose":  [[15.0, 100.0], [100.0, 100.0]], # orientation, position
+        # "goal_pose": [[15.0, 100.0]], # orientation, position
+        "goal_pose":  [[15.0, 100.0], [100.0, 100.0], [300.0, 100.0]], # orientation, position
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0],
-        
         # ArmBase costs
         "robot_self_collision": [5000],
         # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
@@ -1060,8 +1062,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         # "state_bound": [200.0] # Joint limit avoidance
     }
     mpc_params_space = {
-        "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
-        # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
+        # "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
+        "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
         # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "particles": [500],
         # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
@@ -1073,15 +1075,13 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         'mpc_params': get_combinations(mpc_params_space)}))
     
     # rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
-    
-    current_q_network_path = 'current_q_net.' 
+    model_file_path = 'ddqn_model_checkpoint.pth'
+    ep = 0
     try:
-        
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
-            
         steps_done = 0 # in total (throughout all training)    
-        for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
+        while ep < n_episodes: # for each episode id with a unique combination of initial parameters
             # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
             all_coll_objs_with_locs = {}
             for obj_type in mpc.all_collision_objs:
@@ -1089,41 +1089,54 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                     all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
             particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
             env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
-            load_model_file = False # TODO change in future
-            if ep == 0 and not load_model_file:
+            if ep == 0:
                 # Initialize the rlpt agent, including a DQN/DDQN.
                 all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
                 all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
                 rlpt_agent = rlptAgent(particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
-       
+                
+                # load model if a saved one exists
+                if load_model_file := os.path.exists(model_file_path):
+                    checkpoint = torch.load(model_file_path)
+                    rlpt_agent.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
+                    rlpt_agent.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
+                    rlpt_agent.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                    rlpt_agent.train_suit.memory = checkpoint['memory']
+                    ep = checkpoint['episode']
+                    steps_done = checkpoint['steps_done']
+                    print(f"model loaded. episode modified to: {ep}")
+                
             # run episode and collect data (statistics) 
             steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done, loss = \
                 mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep, steps_done=steps_done) 
             
-            if ep % 10 == 0:
-                torch.save({
-                'model_state_dict': rlpt_agent.train_suit.current.state_dict(),
+            ep += 1
+            
+            # save model with relevant info to start the next episode
+            torch.save({
+                'current_state_dict': rlpt_agent.train_suit.current.state_dict(),
+                'target_state_dict': rlpt_agent.train_suit.target.state_dict(),
                 'optimizer_state_dict': rlpt_agent.train_suit.optimizer.state_dict(),
+                'memory':rlpt_agent.train_suit.memory,
                 'episode': ep,  # Optional: if you want to save the current epoch number
+                'steps_done': steps_done,
                 'loss': loss,  # Optional: if you want to save the last loss value
-            }, 'ddqn_model_checkpoint.pth')
+            }, model_file_path)
             
-            # checkpoint = torch.load('ddqn_model_checkpoint.pth')
-            # ddqn_model.load_state_dict(checkpoint['model_state_dict'])
-            # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            # save collected data from episode
-            if ep > 0:
-                with open(output_file, 'rb') as file:
-                    data = pickle.load(file)    
             
-            episode_data = {
-                'settings': {'goal_pose_storm': goal_pose_storm, 'participating_objects': env_selected_storm['world_model']['coll_objs']},
-                'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
-            }
+
+            # if ep > 0:
+            #     with open(output_file, 'rb') as file:
+            #         data = pickle.load(file)    
             
-            data.append(episode_data) # index specifies the episode id
-            with open(output_file, 'wb') as file:
-                pickle.dump(data, file)
+            # episode_data = {
+            #     'settings': {'goal_pose_storm': goal_pose_storm, 'participating_objects': env_selected_storm['world_model']['coll_objs']},
+            #     'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
+            # }
+            
+            # data.append(episode_data) # index specifies the episode id
+            # with open(output_file, 'wb') as file:
+            #     pickle.dump(data, file)
                 
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
@@ -1136,5 +1149,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     
     
 if __name__ == '__main__':
-    train_loop(10000, 300, generate_new_world)
+    train_loop(10000, 60, generate_new_world)
     

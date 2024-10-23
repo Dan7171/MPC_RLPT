@@ -109,19 +109,23 @@ class rlptAgent:
     
     def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration)->np.float64:
         
-        alpha, beta, gamma, delta = 1, 1, 1, 1
+        alpha, beta, gamma, delta = 1, 0.1, 1, 1
+        postion_reward =  alpha * - ee_pos_error 
         
-        pose_error = alpha * ee_pos_error + beta * (ee_rot_error / ee_pos_error)
-        pose_reward = - pose_error
+        orientation_reward =  beta *  - (ee_rot_error / ee_pos_error)
+        # pose_error = alpha * ee_pos_error + beta * (ee_rot_error / ee_pos_error)
+        # pose_reward = - pose_error
         
-        primitive_collision_reward = - gamma * primitive_collision_error
+        primitive_collision_reward = gamma * - primitive_collision_error
         
         step_duration_reward = delta * - step_duration
         
-        total_reward = pose_reward + primitive_collision_reward + step_duration_reward
+        # total_reward = pose_reward + primitive_collision_reward + step_duration_reward
+
+        total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
         
-        print(f"pose_reward,  primitive_collision_reward,  step_duration_reward\n\
-              {pose_reward}, {primitive_collision_reward}, {step_duration_reward}")
+        print(f"REWARDS: position, orientation  premitive-collision , step duration\n\
+              {postion_reward},{orientation_reward}, {primitive_collision_reward}, {step_duration_reward}")
         return total_reward
         
         
