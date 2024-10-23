@@ -2,7 +2,6 @@
 """ 
 Based on Elias's franka_reacher_for_comparison.py 
 """
-
 import copy
 from os import name
 import os
@@ -52,10 +51,11 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
-import BGU.Rlpt.reward.point_cloud_utils 
 import matplotlib.pyplot as plt
 from BGU.Rlpt.experiments.experiment_utils import get_combinations
 from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
+from deepdiff import DeepDiff
+
 np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
@@ -414,18 +414,20 @@ class MpcRobotInteractive:
         
         GOAL_POSE_CHANGE_TOLL = 0.0001 # TOLERANCE
         
-        cost_weights, mpc_params = at['cost_weights'], at['mpc_params']
-        no_prev_at = not len(prev_at) 
+        prev_at_exists = len(prev_at) 
         
-        
-        if update_mpc_params := (no_prev_at or cost_weights != prev_at['cost_weights']):
-            print(f'new mpc params:\n{mpc_params}') # TODO check how printing only the difference between two dicts
-            self.mpc_control.update_mpc_params(mpc_params) 
-
-        if update_cost_weights := (no_prev_at or mpc_params !=  prev_at['mpc_params']):
-            print(f'new cost weights:\n{cost_weights}') # TODO check how printing only the difference between two dicts
-            self.mpc_control.update_costs(cost_weights) 
+        if update_mpc_params := (not prev_at_exists or at['mpc_params'] != prev_at['mpc_params']):
+            self.mpc_control.update_mpc_params(at['mpc_params']) 
+            # if prev_at_exists:
+                # diff = DeepDiff(at['mpc_params'], prev_at['mpc_params'])
+                # print(f'change in mpc params: (old = a(t-1), new = a(t)) :\n{diff}') # TODO check how printing only the difference between two dicts
             
+        if update_cost_weights := (not prev_at_exists or at['cost_weights'] !=  prev_at['cost_weights']):
+            self.mpc_control.update_costs(at['cost_weights']) 
+            # if prev_at_exists:  
+                # diff = DeepDiff(at['cost_weights'], prev_at['cost_weights'])
+                # print(f'change in cost weights: (old = a(t-1), new = a(t)) :\n{diff}') # TODO check how printing only the difference between two dicts
+                
         self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
         if(self.vis_ee_target): # only when visualizng goal state (red and green cups)            
@@ -614,7 +616,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, float]:
+    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -664,11 +666,12 @@ class MpcRobotInteractive:
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
         for ts in range(episode_max_ts):
-            print(f"episode: {ep_num} time step: {ts}, steps_done (total): {steps_done} ")
+            print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")
             
             # rlpt - select action (a(t))
             at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
-            
+            at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
+            print(f'a(t): {at_unique_features}')
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -714,9 +717,8 @@ class MpcRobotInteractive:
             st = s_next
             prev_at_idx = at_idx
             prev_at = at       
-         
-            
-        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done, loss_t
+             
+        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done
         
     def get_all_coll_obs_actor_names(self): # all including non participating
         all_names = self.get_actor_name_to_actor_handle_map().keys()
@@ -1074,8 +1076,10 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         'cost_weights': get_combinations(cost_weights_space),
         'mpc_params': get_combinations(mpc_params_space)}))
     
+    
     # rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
     model_file_path = 'ddqn_model_checkpoint.pth'
+    # settings_file = 'rlpt_settings.pl'
     ep = 0
     try:
         if profile_memory: # for debugging gpu if needed   
@@ -1098,17 +1102,19 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 # load model if a saved one exists
                 if load_model_file := os.path.exists(model_file_path):
                     checkpoint = torch.load(model_file_path)
+                    # rlpt_agent.action_space = checkpoint['action_space']
                     rlpt_agent.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
                     rlpt_agent.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
                     rlpt_agent.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                     rlpt_agent.train_suit.memory = checkpoint['memory']
                     ep = checkpoint['episode']
                     steps_done = checkpoint['steps_done']
+                    
                     print(f"model loaded. episode modified to: {ep}")
                 
             # run episode and collect data (statistics) 
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done, loss = \
-                mpc.episode(rlpt_agent, episode_max_ts,ep_num=ep, steps_done=steps_done) 
+            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done = \
+                mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, steps_done=steps_done) 
             
             ep += 1
             
@@ -1120,7 +1126,6 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 'memory':rlpt_agent.train_suit.memory,
                 'episode': ep,  # Optional: if you want to save the current epoch number
                 'steps_done': steps_done,
-                'loss': loss,  # Optional: if you want to save the last loss value
             }, model_file_path)
             
             
@@ -1149,5 +1154,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     
     
 if __name__ == '__main__':
-    train_loop(10000, 60, generate_new_world)
+    train_loop(10000, 1000, generate_new_world)
     

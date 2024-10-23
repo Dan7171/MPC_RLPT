@@ -28,7 +28,7 @@ class ReplayMemory(object):
     def push(self, *args):
         """Save a transition"""
         self.memory.append(Transition(*args))
-
+        
     def sample(self, batch_size):
         """
         Sample random mini-batch of transitions (s, a, r, s’) from D 

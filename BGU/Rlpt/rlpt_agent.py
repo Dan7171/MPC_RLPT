@@ -1,4 +1,5 @@
 import copy
+from os import access
 from typing import List, Set, Union
 from click import BadArgumentUsage
 from networkx import union
@@ -6,7 +7,7 @@ from storm_kit.mpc import task
 import torch
 from BGU.Rlpt.drl.dqn_pack.train_suit import trainSuit
 import numpy as np
-
+import pandas as pd
 def get_obj_type(obj_properties):
     if 'radius' in obj_properties:
         return 'sphere'
@@ -21,6 +22,8 @@ def _merge_dict(original, update):
 class rlptAgent:
     # NO_OP_CODE = 'no_op' # A constant representing a special action which every rlpt agent has. It's meaning is doing nothing. So if a(t) is NO_OP: rlpt won't tune parameters in time t (and system will be based on previous parameters)
     
+ 
+        
     def __init__(self, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
         """
         Summary:
@@ -43,8 +46,9 @@ class rlptAgent:
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
         self.all_coll_objs_initial_state:np.ndarray = self._parse_coll_objs_state() # in storm cs
         self.state_dim = self._calc_state_dimension() # input dimension for the ddqn. 
-        self.train_suit = trainSuit(self.state_dim , len(action_space)) # input dim, output di,m
-        
+        self.train_suit = trainSuit(self.state_dim , len(action_space)) # input dim, output dim
+        self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info()
+
      
     def _calc_state_dimension(self) -> int:
         
@@ -110,24 +114,42 @@ class rlptAgent:
     def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration)->np.float64:
         
         alpha, beta, gamma, delta = 1, 0.1, 1, 1
+        
         postion_reward =  alpha * - ee_pos_error 
-        
         orientation_reward =  beta *  - (ee_rot_error / ee_pos_error)
-        # pose_error = alpha * ee_pos_error + beta * (ee_rot_error / ee_pos_error)
-        # pose_reward = - pose_error
-        
-        primitive_collision_reward = gamma * - primitive_collision_error
-        
+        primitive_collision_reward = gamma * - primitive_collision_error        
         step_duration_reward = delta * - step_duration
-        
-        # total_reward = pose_reward + primitive_collision_reward + step_duration_reward
-
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
         
-        print(f"REWARDS: position, orientation  premitive-collision , step duration\n\
-              {postion_reward},{orientation_reward}, {primitive_collision_reward}, {step_duration_reward}")
-        return total_reward
+        print(f"rewards: position, orientation  premitive-collision , step duration\n{postion_reward:{.3}f},{orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
         
+        return total_reward
+
+    def action_space_info(self):
+        
+        # deep copy and flattening of the action space 
+        action_space_flatten = copy.deepcopy(self.action_space)
+        for i in range(len(action_space_flatten)):
+            action_space_flatten[i] = copy.deepcopy(action_space_flatten[i])
+            action_space_flatten[i]['mpc_params'].update(action_space_flatten[i]['cost_weights'])
+            action_space_flatten[i]['mpc_params']['goal_pose'] = tuple(action_space_flatten[i]['mpc_params']['goal_pose'])            
+            action_space_flatten[i] = action_space_flatten[i]['mpc_params']
+ 
+        df = pd.DataFrame.from_records(action_space_flatten) # rows = actions, columns = action dofs (features) 
+        # Find columns where all values along rows are equal (action features that are the same over all actions)
+        equal_columns = df.columns[df.nunique() == 1]
+        df_equality = df[equal_columns][:1:] # equality between actions
+ 
+        # Drop the columns with all equal values (more these action features to stay just with varying features)
+        df_diffs = df.drop(equal_columns, axis=1) # differences between actions
+ 
+        # parse output before returning it
+        shared_params_all_actions:dict = df_equality.to_dict(orient='records')[0] # shared params between all actions
+        different_params_by_action_inx:list = df_diffs.to_dict(orient='records') # l[i] a dict of the ith action, containing the unique assignment of this action to action features with 2 or more options  
+        return shared_params_all_actions, different_params_by_action_inx 
+    
+                
+                
         
   
             
