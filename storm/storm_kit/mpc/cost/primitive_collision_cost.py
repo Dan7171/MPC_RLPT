@@ -65,25 +65,57 @@ class PrimitiveCollisionCost(nn.Module):
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
-        dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
-                                                                   link_rot_batch)
-        dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
+        dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+        # signed distance (negative)
+        dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs) 
+        #print(f"all dists are negative dists: {len(dist[dist > 0]) < 1}")
+        
+        # safety_dist_debug = -0.005
+        # if dist.shape == torch.Size([1,1,6]) and torch.any(dist > safety_dist_debug): # real world and collision - print red 
+        #     print(f"'\033[91m'DEBUG!!!\
+        #           \nmaximun penetration distance - robot links as spheres\
+        #           \n{dist}\
+        #          \n'\033[0m'")
+            
+        sniffer = GLobalVars.cost_sniffer
+        safety_distance_rltp = 0.005 # alternative to distance_threshold
+        penetration_to_obstacles_depth = dist + safety_distance_rltp
+        if dist.shape == torch.Size([1,1,6]): # real world
+            contact = torch.any(penetration_to_obstacles_depth > 0)
+            if sniffer is not None:
+                sniffer.is_contact_real_world = True if contact else False # contact detected
+                
+            if contact: # real world and collision - print red 
+                print(f"'\033[91m'Collision detected!!!\
+                    \nmaximum penetration depth into obstacles, by link index:\
+                    \n{penetration_to_obstacles_depth}\
+                        \n'\033[0m'")
+                
+                
         # cost only when dist is less
-        dist += self.distance_threshold
-
-        dist[dist <= 0.0] = 0.0
+        dist += self.distance_threshold # like threshold (in cms) - distance (in cms). If > 0, distance to obstacle is smaller than allowed threshold.
+        
+            
+        dist[dist <= 0.0] = 0.0 
         dist[dist > 0.2] = 0.2
         dist = dist / 0.25
         
+        # Prints in red when real world premitive collision cost  > 0
+        # if dist.shape == torch.Size([1,1,6]) and torch.any(dist > 0): # real world and collision - print red 
+        #     print(f"'\033[91m'TOO CLOSE TO OBSTACLES!!!\
+        #           \nmaximun penetration distance - robot links as spheres\
+        #           \n{dist}\
+        #          \n'\033[0m'")
+            
         cost = torch.sum(dist, dim=-1)
 
 
         # cost = self.weight * cost 
-        w1 = self.weight # Dan
-        t1 = cost # Dan
-        cost = w1 * t1 # Dan
+        w1 = self.weight  
+        t1 = cost  
+        cost = w1 * t1  
         
-        sniffer = GLobalVars.cost_sniffer
+        # sniffer = GLobalVars.cost_sniffer
         if sniffer is not None:
             sniffer.set('primitive_collision', CostTerm(w1, t1))
             

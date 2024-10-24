@@ -82,6 +82,7 @@ class CostFnSniffer:
         self._current_ts_costs_mpc = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
         self.save_costs = save_costs # save all costs to a file
         self.gui = gui
+        self.is_contact_real_world = False # if collision/contact with obstacles was detected
         
         # relevant only when save_costs is True:
         if self.save_costs:    

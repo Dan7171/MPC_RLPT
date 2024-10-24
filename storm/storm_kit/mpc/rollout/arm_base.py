@@ -74,7 +74,6 @@ class ArmBase(RolloutBase):
         # rollout traj_dt starts from dt->dt*(horizon+1) as tstep 0 is the current state
         #self.traj_dt = torch.arange(self.dt, (mppi_params['horizon'] + 1) * self.dt, self.dt, device=device, dtype=float_dtype)
         self.traj_dt = self.dynamics_model.traj_dt
-        #print(self.traj_dt)
         
         self.fd_matrix = build_fd_matrix(10 - self.exp_params['cost']['smooth']['order'], device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], PREV_STATE=True, order=self.exp_params['cost']['smooth']['order'])
         self.goal_state = None
@@ -319,19 +318,18 @@ class ArmBase(RolloutBase):
         return cost, state_dict
     
     #def update_costs(self, manipulability, stop_cost, stop_cost_acc, smooth, state_bound, ee_vel, robot_self_collision, primitive_collision, voxel_collision):
-    def update_costs(self, new_weights):
+    def update_costs(self, new_params):
         """
-        Setting new cost weights to the cost terms
+        Setting new cost weights and other params to the cost terms
         """
-        if "null_space" in new_weights:        
-            self.null_cost.update_weight(new_weights["null_space"])
-        if "manipulability" in new_weights:
-            self.manipulability_cost.update_weight(new_weights["manipulability"])
-        if "stop_cost" in new_weights:
-            self.stop_cost.update_weight(new_weights["stop_cost"][0])
-            self.stop_cost.update_max_acceleration(new_weights["stop_cost"][0])
-        if "stop_cost_acc" in new_weights:
-            self.stop_cost_acc.update_weight(new_weights["stop_cost_acc"])
+        if "null_space" in new_params:        
+            self.null_cost.update_weight(new_params["null_space"])
+        if "manipulability" in new_params:
+            self.manipulability_cost.update_weight(new_params["manipulability"])
+        if "stop_cost" in new_params:
+            self.stop_cost.update_all(new_params["stop_cost"])
+        if "stop_cost_acc" in new_params:
+            self.stop_cost_acc.update_all(new_params["stop_cost_acc"],is_stop_acc=True)
             
         
         if self.prev_ts_cost_weights is not None:  # when they are 0 , cost term is not used at all 
@@ -348,12 +346,14 @@ class ArmBase(RolloutBase):
             if "voxel_collision" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["voxel_collision"] > 0.0:
                 self.voxel_collision_cost.update_weight(self.prev_ts_cost_weights["voxel_collision"])
             
-        self.prev_ts_cost_weights = new_weights
+        self.prev_ts_cost_weights = new_params
 
     def update_mpc_params(self, mpc_params):
         self.dynamics_model.update_mpc_params(mpc_params)
-        self.traj_dt = self.dynamics_model.traj_dt
-        self.stop_cost.update_mpc_params(self.traj_dt)
+        self.traj_dt = self.dynamics_model.traj_dt # torch vector, fixed for every H. Change as a result of H
+        # these two are affected by self.traj_dt 
+        self.stop_cost.update_max_vel(self.traj_dt)
+        self.stop_cost_acc.update_max_vel(self.traj_dt)
         
     def update_world_params(self, world_params):
         """

@@ -32,12 +32,27 @@ from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_ac
 class URDFKinematicModel(DynamicsModelBase):
     def __init__(self, urdf_path, dt, batch_size=1000, horizon=5,
                  tensor_args={'device':'cpu','dtype':torch.float32}, ee_link_name='ee_link', link_names=[], dt_traj_params=None, vel_scale=0.5, control_space='acc'):
+        """_summary_
+
+        Args:
+            urdf_path (_type_): _description_
+            dt (_type_):  # 0.02 or similar
+            batch_size (int, optional): _description_. Defaults to 1000.
+            horizon (int, optional): _description_. Defaults to 5.
+            tensor_args (dict, optional): _description_. Defaults to {'device':'cpu','dtype':torch.float32}.
+            ee_link_name (str, optional): _description_. Defaults to 'ee_link'.
+            link_names (list, optional): _description_. Defaults to [].
+            dt_traj_params (_type_, optional): _description_. Defaults to None.  dict like {'base_dt': 0.02, 'base_ratio': 0.5, 'max_dt': 0.2}
+            vel_scale (float, optional): _description_. Defaults to 0.5.
+            control_space (str, optional): _description_. Defaults to 'acc'.
+        """
+        
         self.urdf_path = urdf_path
         self.device = tensor_args['device']
 
         self.float_dtype = tensor_args['dtype']
         self.tensor_args = tensor_args
-        self.dt = dt
+        self.dt = dt # 0.02 or similar
         self.ee_link_name = ee_link_name
         self.batch_size = batch_size
         self.horizon = horizon
@@ -87,18 +102,20 @@ class URDFKinematicModel(DynamicsModelBase):
 
         self._fd_matrix = build_fd_matrix(self.num_traj_points, device=self.device,
                                           dtype=self.float_dtype, order=1)
-        if(dt_traj_params is None):
+        
+        # dt array in length of horizon with smooth belending 
+        if(dt_traj_params is None): 
             dt_array = [self.dt] * int(1.0 * self.num_traj_points) 
         else:
             dt_array = [dt_traj_params['base_dt']] * int(dt_traj_params['base_ratio'] * self.num_traj_points)
             smooth_blending = torch.linspace(dt_traj_params['base_dt'],dt_traj_params['max_dt'], steps=int((1 - dt_traj_params['base_ratio']) * self.num_traj_points)).tolist()
-            dt_array += smooth_blending
-            
-            
+            dt_array += smooth_blending    
             self.dt = dt_traj_params['base_dt']
         if(len(dt_array) != self.num_traj_points):
             dt_array.insert(0,dt_array[0])
         self.dt_traj_params = dt_traj_params
+        
+        # dt array to tensor
         self._dt_h = torch.tensor(dt_array, dtype=self.float_dtype, device=self.device)
         self.dt_traj = self._dt_h
         self.traj_dt = self._dt_h
@@ -335,9 +352,8 @@ class URDFKinematicModel(DynamicsModelBase):
             dt_array = [self.dt_traj_params['base_dt']] * int(self.dt_traj_params['base_ratio'] * self.num_traj_points)
             smooth_blending = torch.linspace(self.dt_traj_params['base_dt'],self.dt_traj_params['max_dt'], steps=int((1 - self.dt_traj_params['base_ratio']) * self.num_traj_points)).tolist()
             dt_array += smooth_blending
-            
-            
             self.dt = self.dt_traj_params['base_dt']
+            
         if(len(dt_array) != self.num_traj_points):
             dt_array.insert(0,dt_array[0])
         self._dt_h = torch.tensor(dt_array, dtype=self.float_dtype, device=self.device)

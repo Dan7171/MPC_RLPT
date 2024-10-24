@@ -91,35 +91,74 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         Returns:
             tensor: signed distance [b,1]
+            
+        by gpt:
+        The function checks for collisions between a robot's spherical collision model and objects in the environment (represented as a signed distance field, SDF).
+        It computes the signed distance for each robot link's spherical collision shape from the environment's grid, indicating whether the link is inside, outside, or touching any objects.
+        
+        Args:        
+        link_trans: A tensor of shape [b, 3] representing the translation (position) of each robot link in the batch.
+        link_rot: A tensor of shape [b, 3, 3] representing the rotation matrices for each link in the batch.
+        b: The batch size, i.e., the number of robot links.
+        Returns:
+
+        A tensor of shape [b, 1] representing the signed distances for the batch, where:
+        Positive values indicate the distance from the nearest surface outside the object.
+        Negative values indicate the penetration depth inside an object.
         """        
+        
+        # The function begins by checking if the current batch size (batch_size) 
+        # matches the stored batch size (self.robot_batch_size).
+        # If the batch size has changed, it updates the stored batch size and rebuilds features for the batch by calling self.build_batch_features. 
+        # This might involve preparing pose and point data (e.g., collision spheres) for the current batch.
         batch_size = link_trans.shape[0]
         # update link pose:
         if(self.robot_batch_size != batch_size):
             self.robot_batch_size = batch_size
             self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
 
+        # This function call updates the collision objects 
+        # (likely spherical approximations of the robot's links)
+        # based on the new translations (link_trans) and rotations (link_rot) provided.
         self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)
 
+        # Get link spheres:
         w_link_spheres = self.robot_coll.get_batch_robot_link_spheres()
-        
-                
-        
         n_links = len(w_link_spheres)
-
+        
+        # Distance tensor initialization:
         if(self.dist is None or self.dist.shape[0] != n_links):
             self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
         dist = self.dist
 
+        # Compute signed distance for each link:
+        # The function iterates through each link's spheres (for all links in the batch). 
+        # For each link, w_link_spheres[i] contains the spheres representing that link.
+        # spheres is reshaped to [b * n, 4], where n is the number of spheres per link, 
+        # and 4 represents the x, y, z coordinates and the radius of each sphere.
         for i in range(n_links):
             spheres = w_link_spheres[i]
             b, n, _ = spheres.shape
             spheres = spheres.view(b * n, 4)
 
             # compute distance between world objs and link spheres
+            
+            # check_pts_sdf is called to compute the signed distance field (SDF) for the sphere centers (spheres[:,:3]). 
+            # This gives the distance from the environment for each sphere's center.
+            # spheres[:,3] contains the radius of each sphere, so the distance is adjusted by adding the sphere's radius to the SDF value. 
+            # This step checks whether the sphere intersects with the environment.
             sdf = self.world_coll.check_pts_sdf(spheres[:,:3]) + spheres[:,3]
-            sdf = sdf.view(b,n)
-            dist[:,i] = torch.max(sdf, dim=-1)[0]
- 
+            sdf = sdf.view(b,n) # The result is reshaped back to [b, n], where each entry contains the signed distance for a specific sphere.
+            dist[:,i] = torch.max(sdf, dim=-1)[0] # For each link (i), the maximum distance (torch.max(sdf, dim=-1)[0]) is selected across all the spheres in the link. This gives the overall distance for the link.
+        
+        # if dist.shape == torch.Size([1,6]) and torch.any(dist >= 0): # real world and collision - print red 
+        #     print(f"'\033[91m'TOO CLOSE TO OBSTACLES!!!\
+        #           \nmaximun penetration distance - robot links as spheres\
+        #           \n{dist}\
+        #          \n'\033[0m'")
+            
+            
+            
         return dist
 
 
@@ -249,6 +288,8 @@ class RobotWorldCollisionVoxel():
 
         Returns:
             [type]: [description]
+            
+        GPT:
         """        
         table_link_trans, table_link_rot = self.transform_to_table(link_trans, link_rot)
         

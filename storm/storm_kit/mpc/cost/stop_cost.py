@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from sympy import limit
 import torch
 import torch.nn as nn
 # import torch.nn.functional as F
@@ -46,17 +47,26 @@ class StopCost(nn.Module):
         sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
 
         if(max_nlimit is not None): # Guess it means stop_cost (of velocities. see /content/configs/mpc/franka_reacher.yml
-            # # every timestep max acceleration:
-            # sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
-            # delta_vel = self.traj_dt * max_nlimit
-            # self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
             # every timestep max acceleration:
-            self.set_stop_cost_max_nlimit(self.max_nlimit)
-        
+            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
+            delta_vel = self.traj_dt * max_nlimit
+            self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
+            
         elif(max_limit is not None): # Guess it means stop_acc cost (of accelerations). see /content/configs/mpc/franka_reacher.yml
             sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
             delta_vel = torch.ones_like(self.traj_dt) * max_limit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
+    
+    def update_all(self, stop_cost_params, is_stop_acc=False):
+        new_weight, new_max_limit, =  stop_cost_params
+        self.weight = new_weight
+        if is_stop_acc: # stop_cost_acc
+            self.max_limit = new_max_limit 
+        else: # stop_cost
+            self.max_nlimit = new_max_limit
+    
+        
+        
         
     def forward(self, vels,is_stop_acc=False):
         """
@@ -89,7 +99,7 @@ class StopCost(nn.Module):
              
         return cost.to(inp_device)
     
-    def set_stop_cost_max_nlimit(self, max_nlimit):
+    def set_limit_for_stop_cost(self, max_nlimit):
         """Update max acceleration (only in  stop_cost).
 
         Args:
@@ -99,20 +109,19 @@ class StopCost(nn.Module):
         sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
         delta_vel = self.traj_dt * max_nlimit
         self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
-    
-        
+
+   
     def update_weight(self, weight):
         """
         Update weight dynamically
         """
         self.weight = torch.as_tensor(weight, **self.tensor_args)
      
-    def update_mpc_params(self, traj_dt):
+    def update_max_vel(self, traj_dt):
         """
         Update traj_dt and all ots dependencies
         """
         self.traj_dt = traj_dt
-        
         # compute max velocity across horizon:
         self.horizon = self.traj_dt.shape[0]
         sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T

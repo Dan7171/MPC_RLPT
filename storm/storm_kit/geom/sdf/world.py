@@ -148,8 +148,8 @@ class WorldGridCollision(WorldCollision):
         pts: [n,3]
         '''
         #print(self.bounds, self.pitch)
-        in_bounds = (pts > self.bounds[0] + self.pitch).all(dim=-1)
-        in_bounds &= (pts < self.bounds[1] - self.pitch).all(dim=-1)
+        in_bounds = (pts > self.bounds[0] + self.pitch).all(dim=-1) # in_bounds[i] is True <=> point i'th x,y,z (row i) are all in bound
+        in_bounds &= (pts < self.bounds[1] - self.pitch).all(dim=-1) # intersection with above tensor
 
         #pts[~in_bounds] = self.bounds[0]
         pt_idx = self.voxel_inds(pts)

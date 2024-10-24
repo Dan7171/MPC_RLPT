@@ -49,7 +49,7 @@ class rlptAgent:
         self.state_dim = self._calc_state_dimension() # input dimension for the ddqn. 
         self.train_suit = trainSuit(self.state_dim , len(action_space)) # input dim, output dim
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info()
-
+        
      
     def _calc_state_dimension(self) -> int:
         
@@ -112,16 +112,16 @@ class rlptAgent:
         prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
         return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym, prev_at_idx_np])
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration, pos_w=1,col_w=100, step_dur_w=1, pos_r_radius=0.05, pos_r_sharpness=50)->np.float64:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=1000, step_dur_w=1, pos_r_radius=0.05, pos_r_sharpness=50)->np.float64:
         """ A weighted sum of reward terms considering next terms:
             1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
             2. ee_rot_error: orientation distance" (l2 norm of the difference between current and goal)
-            3. primitive_collision_error: error taken from storm system, Correlated with the distance from obstacles. 
+            # 3. primitive_collision_error: error taken from storm system, Correlated with the distance from obstacles. 
             4. step_duration - the time it took to execute transition s(t) to s(t+1)
         Args:
             ee_pos_error (float): l2 norm of the distance to target error (position error): {v = (x,y,z) = (current end effector location - goal end effector location)} of the transition from s(t) to s(t+1) 
             ee_rot_error (float): l2 norm of the quaternion error (rotation error): {v = (r1,r2,r3,r4) = (current end effector rotation - goal end effector rotation)} of the transition from s(t) to s(t+1) 
-            primitive_collision_error (float): premitive ("with obstacles") collision error of the transition from s(t) to s(t+1)  
+            # primitive_collision_error (float): premitive ("with obstacles") collision error of the transition from s(t) to s(t+1)  
             step_duration (float): the time it took to tune the params (perform action a(t) of rlpt) + the time it took to execute the step in robot
             pos_w (int, optional): Defaults to 1. the weight of position reward in total reward calculation of the transition..
             col_w (int, optional): Defaults to 1.the weight of premitive ("with obstacles") collision reward in total reward calculation of the transition.
@@ -149,13 +149,16 @@ class rlptAgent:
         postion_reward = math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
         orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
         orientation_reward = orient_w * - ee_rot_error  
-        primitive_collision_reward = col_w * - primitive_collision_error        
+        # primitive_collision_reward = col_w * - primitive_collision_error        
+        primitive_collision_reward = col_w * - int(contact_detected)
         step_duration_reward = step_dur_w * - step_duration
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
         
         # print(f"rewards: position, orientation, premitive-collision , step duration\n{postion_reward:{.3}f}, {orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
+#         print(f"r(t) (term, reward):\n\
+# position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (error, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({primitive_collision_error:{.3}f},{primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
         print(f"r(t) (term, reward):\n\
-position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (error, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({primitive_collision_error:{.3}f},{primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
+position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (was contact, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
         
         return total_reward
 
@@ -178,6 +181,10 @@ position (ee to goal distance, r), orientation (ee to goal distance, r), prim-co
         df_diffs = df.drop(equal_columns, axis=1) # differences between actions
  
         # parse output before returning it
+        print("rlpt action space: shared action featueres")
+        print(df_equality)
+        print("rlpt: action space: unique action featueres")
+        print(df_diffs)
         shared_params_all_actions:dict = df_equality.to_dict(orient='records')[0] # shared params between all actions
         different_params_by_action_inx:list = df_diffs.to_dict(orient='records') # l[i] a dict of the ith action, containing the unique assignment of this action to action features with 2 or more options  
         return shared_params_all_actions, different_params_by_action_inx 

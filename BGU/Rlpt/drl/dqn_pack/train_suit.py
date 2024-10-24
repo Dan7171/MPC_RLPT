@@ -115,8 +115,8 @@ class trainSuit:
         sample = random.random()
         eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
             math.exp(-1. * self.steps_done / self.eps_decay)
-        print(f'chance for non-greedy  {eps_threshold}')
         select_greedily = sample > eps_threshold  
+        print(f'random action chance: {eps_threshold}, random action: {not select_greedily}')
         
         if select_greedily: # best a (which maximizes current Q)
             with torch.no_grad():
@@ -124,8 +124,10 @@ class trainSuit:
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
                 # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
-                action_idx_tensor = torch.argmax(self.current(state)) # [index]
+                Q_all_actions = self.current(state)
+                action_idx_tensor = torch.argmax(Q_all_actions) # [index]
                 action_idx = action_idx_tensor.item() # index
+                print(f'best action q: {torch.max(Q_all_actions)}')
                 
         else: # random a (each action has a fair chance to be selected)
             action_idx = random.randint(0, self.n_actions -1)
