@@ -21,7 +21,7 @@ class ReplayMemory(object):
     """
 
     def __init__(self, capacity, seed=-1):
-        self.memory = deque([], maxlen=capacity)
+        self.memory = deque([], maxlen=capacity) # lru
         if seed != -1 and type(seed) == int:
             random.seed(seed)
 

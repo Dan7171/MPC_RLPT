@@ -149,10 +149,14 @@ class ArmReacher(ArmBase):
         Driven and inspired by the super class update_costs 
         """    
         super().update_costs(new_weights)
-        self.dist_cost.update_weight(new_weights["joint_l2"])
-        self.goal_cost.update_weight(new_weights["goal_pose"])
-        self.zero_acc_cost.update_weight(new_weights["zero_acc"])
-        self.zero_vel_cost.update_weight(new_weights["zero_vel"])
+        if "joint_l2" in new_weights:
+            self.dist_cost.update_weight(new_weights["joint_l2"])
+        if "goal_pose" in new_weights:
+            self.goal_cost.update_weight(new_weights["goal_pose"])
+        if "zero_acc" in new_weights:
+            self.zero_acc_cost.update_weight(new_weights["zero_acc"])
+        if "zero_vel" in new_weights:
+            self.zero_vel_cost.update_weight(new_weights["zero_vel"])
         
         
     

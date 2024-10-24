@@ -323,33 +323,38 @@ class ArmBase(RolloutBase):
         """
         Setting new cost weights to the cost terms
         """
-        self.null_cost.update_weight(new_weights["null_space"])
-        self.manipulability_cost.update_weight(new_weights["manipulability"])
-        self.stop_cost.update_weight(new_weights["stop_cost"])
-        self.stop_cost_acc.update_weight(new_weights["stop_cost_acc"])
+        if "null_space" in new_weights:        
+            self.null_cost.update_weight(new_weights["null_space"])
+        if "manipulability" in new_weights:
+            self.manipulability_cost.update_weight(new_weights["manipulability"])
+        if "stop_cost" in new_weights:
+            self.stop_cost.update_weight(new_weights["stop_cost"][0])
+            self.stop_cost.update_max_acceleration(new_weights["stop_cost"][0])
+        if "stop_cost_acc" in new_weights:
+            self.stop_cost_acc.update_weight(new_weights["stop_cost_acc"])
+            
         
         if self.prev_ts_cost_weights is not None:  # when they are 0 , cost term is not used at all 
-            if self.prev_ts_cost_weights["smooth"] > 0.0:
+            if "smooth" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["smooth"] > 0.0:
                 self.smooth_cost.update_weight(self.prev_ts_cost_weights["smooth"])
-            if self.prev_ts_cost_weights["state_bound"] > 0.0:
+            if "state_bound" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["state_bound"] > 0.0:
                 self.bound_cost.update_weight(self.prev_ts_cost_weights["state_bound"])
-            if self.prev_ts_cost_weights["ee_vel"] > 0.0:
+            if "ee_vel" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["ee_vel"] > 0.0:
                 self.ee_vel_cost.update_weight(self.prev_ts_cost_weights["ee_vel"]) 
-            if self.prev_ts_cost_weights["robot_self_collision"] > 0.0:
+            if "robot_self_collision" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["robot_self_collision"] > 0.0:
                 self.robot_self_collision_cost.update_weight(self.prev_ts_cost_weights["robot_self_collision"])
-            if self.prev_ts_cost_weights["primitive_collision"] > 0.0:
+            if "primitive_collision" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["primitive_collision"] > 0.0:
                 self.primitive_collision_cost.update_weight(self.prev_ts_cost_weights["primitive_collision"])
-            if self.prev_ts_cost_weights["voxel_collision"] > 0.0:
+            if "voxel_collision" in self.prev_ts_cost_weights and self.prev_ts_cost_weights["voxel_collision"] > 0.0:
                 self.voxel_collision_cost.update_weight(self.prev_ts_cost_weights["voxel_collision"])
             
         self.prev_ts_cost_weights = new_weights
 
     def update_mpc_params(self, mpc_params):
         self.dynamics_model.update_mpc_params(mpc_params)
-
         self.traj_dt = self.dynamics_model.traj_dt
-
         self.stop_cost.update_mpc_params(self.traj_dt)
+        
     def update_world_params(self, world_params):
         """
         Input: new positions of objects

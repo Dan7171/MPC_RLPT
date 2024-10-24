@@ -1,4 +1,5 @@
 import copy
+import math
 from os import access
 from typing import List, Set, Union
 from click import BadArgumentUsage
@@ -111,17 +112,50 @@ class rlptAgent:
         prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
         return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym, prev_at_idx_np])
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration)->np.float64:
-        
-        alpha, beta, gamma, delta = 1, 0.1, 1, 1
-        
-        postion_reward =  alpha * - ee_pos_error 
-        orientation_reward =  beta *  - (ee_rot_error / ee_pos_error)
-        primitive_collision_reward = gamma * - primitive_collision_error        
-        step_duration_reward = delta * - step_duration
+    def compute_reward(self, ee_pos_error, ee_rot_error, primitive_collision_error, step_duration, pos_w=1,col_w=100, step_dur_w=1, pos_r_radius=0.05, pos_r_sharpness=50)->np.float64:
+        """ A weighted sum of reward terms considering next terms:
+            1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
+            2. ee_rot_error: orientation distance" (l2 norm of the difference between current and goal)
+            3. primitive_collision_error: error taken from storm system, Correlated with the distance from obstacles. 
+            4. step_duration - the time it took to execute transition s(t) to s(t+1)
+        Args:
+            ee_pos_error (float): l2 norm of the distance to target error (position error): {v = (x,y,z) = (current end effector location - goal end effector location)} of the transition from s(t) to s(t+1) 
+            ee_rot_error (float): l2 norm of the quaternion error (rotation error): {v = (r1,r2,r3,r4) = (current end effector rotation - goal end effector rotation)} of the transition from s(t) to s(t+1) 
+            primitive_collision_error (float): premitive ("with obstacles") collision error of the transition from s(t) to s(t+1)  
+            step_duration (float): the time it took to tune the params (perform action a(t) of rlpt) + the time it took to execute the step in robot
+            pos_w (int, optional): Defaults to 1. the weight of position reward in total reward calculation of the transition..
+            col_w (int, optional): Defaults to 1.the weight of premitive ("with obstacles") collision reward in total reward calculation of the transition.
+            step_dur_w (int, optional):. Defaults to 1.  the weight of step duration reward in total reward calculation of the transition.
+            
+            pos_r_radius (float, optional): Defaults to 0.05. "Radius of interest" of position error in centimeters. It affects position reward- the greater it is, the further from goal position (earlier in route) that the arm starts being aware to position error.  
+                This is the exponent sharpness. the greater it is, the sharper/faster the orientation reward weight (how much we care about orientation) is inceased when we cross the radius towards the exact goal position. 
+                Position reward logic:  
+                1. When ee position is at distance pos_r_radius (in cm) from goal- the reward is 1. If distance from goal is infinity, the reward is 0
+                2. The smaller the distance to goal gets, reward climbs
+                3. At distance is pos_r_radius ()"the radius of interest") or smaller, the reward starts to climb sharply. In other words, pos_r_radius represents 
+                a sphere in that shape around the goal position, which when the ee is entering that sphere, you start treating that entry as reaching close enough to the exact goal pose (and if the ee is outside that sphere, you don't really care or consider it as sucecss)).
+                Meaning: the smaller you set pos_r_radius, the more precise you want ee to reach, and you consider a smaller sphere around goal positio as success.
+                4. The greater pos_r_sharpness is, the faster the reward climbs when you get close to the goal position (it mostly gets when you cross the "pos_r_radius")
+            pos_r_sharpness (int, optional): Defaults to 50. the weight of position reward in total reward calculation of the transition..
+            
+        Returns:
+            np.float64: total reward of the transition from s(t) to s(t+1).
+        """
+        assert_positive = [pos_w, col_w, step_dur_w, pos_r_radius, pos_r_sharpness]
+        for arg in assert_positive:
+            arg_name = f'{arg=}'.split('=')[0]
+            assert arg > 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
+         
+        postion_reward = math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
+        orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
+        orientation_reward = orient_w * - ee_rot_error  
+        primitive_collision_reward = col_w * - primitive_collision_error        
+        step_duration_reward = step_dur_w * - step_duration
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
         
-        print(f"rewards: position, orientation  premitive-collision , step duration\n{postion_reward:{.3}f},{orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
+        # print(f"rewards: position, orientation, premitive-collision , step duration\n{postion_reward:{.3}f}, {orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
+        print(f"r(t) (term, reward):\n\
+position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (error, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({primitive_collision_error:{.3}f},{primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
         
         return total_reward
 

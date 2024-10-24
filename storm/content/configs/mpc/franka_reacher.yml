@@ -142,7 +142,7 @@ cost:
     
   stop_cost:
     weight: 100.0
-    max_nlimit: 1.5 #0.2
+    max_nlimit: 1.5 # max acceleration?
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
 
   stop_cost_acc:

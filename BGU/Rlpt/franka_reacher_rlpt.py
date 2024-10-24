@@ -361,7 +361,6 @@ class MpcRobotInteractive:
         self.non_coll_objs_actor_names = {'robot','ee_target_object', 'ee_current_as_mug'} # in file
         self.all_collision_objs_names = self.get_all_coll_obs_actor_names() # in file
         
-        
     def set_name_to_handle(self, item):
         self.name_to_handle = item
         
@@ -670,8 +669,10 @@ class MpcRobotInteractive:
             
             # rlpt - select action (a(t))
             at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
+            # print action unique features
             at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
             print(f'a(t): {at_unique_features}')
+            
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -1035,36 +1036,52 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
     data = []
     
+    cost_fn_space_defaults = {
+        "goal_pose": {'weight': [15.0, 100.0]# orientation, position.
+                      }, 
+        "zero_vel": {'weight': 0.0}, 
+        "zero_acc": {'weight': 0.0},
+        "joint_l2": {'weight': 0.0},
+        "robot_self_collision": {'weight': 5000,
+                                 'distance_threshold': 0.05
+                                 },
+        "primitive_collision" : {'weight': 5000,
+                                 'distance_threshold': 0.05
+                                 },
+        "voxel_collision" :{'weight': 0.0},
+        "null_space": {'weight': 1.0},
+        "manipulability": {'weight': 30},
+        "ee_vel": {'weight': 0.0}, 
+        "stop_cost": {'weight': 100,
+                      'max_nlimit': 1.5 # maximal joint speed acceleration on some a(t,h)
+                      },         
+        "stop_cost_acc": {'weight': 0.0}, # ? 
+        "smooth": {'weight': 0.0}, # smoothness
+        "state_bound": {'weight': 1000}, # joint limit avoidance
+    }
+    mppi_space_defaults = {'horizon': 30,
+                           'n_iters': 1,
+                           'num_particles': 500
+                        }
+
     # Init rlpt agent action space
-    cost_weights_space = { 
-                
-        # "goal_pose": [[15.0, 100.0]], # orientation, position
-        "goal_pose":  [[15.0, 100.0], [100.0, 100.0], [300.0, 100.0]], # orientation, position
+    cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
+        "goal_pose":  [[1.0, 100.0], [15.0, 100.0], [200.0, 100.0]], # orientation, position.
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0],
-        # ArmBase costs
         "robot_self_collision": [5000],
-        # "robot_self_collision" : [5000, 1000, 3000, 10000],  # 5000, 
-        # "primitive_collision": [5000], # collision with obstacles 
-        "primitive_collision" :  [1000, 5000],
-        "voxel_collision" : [0],
+        "primitive_collision" : [5000],
+        "voxel_collision" : [0.0],
         "null_space": [1.0],
         "manipulability": [30],
-        # "manipulability": [30, 10, 50, 100], 
         "ee_vel": [0.0], 
-        # "stop_cost": [100, 10, 50, 200], 
-        # "stop_cost": [100],
-        "stop_cost": [1],        
-        "stop_cost_acc": [0.0], 
-        "smooth": [1.0],
-        # "smooth": [1.0, 0.1, 5, 10], 
-        # "state_bound": [1000.0, 100, 500, 2000]
-        "state_bound": [1000.0],
-        # "state_bound": [200.0] # Joint limit avoidance
-    }
-    mpc_params_space = {
-        # "horizon" : [30] , #  How deep into the future each rollout (imaginary simulation) sees
+        "stop_cost": [[100.0, 1.5], [1.0, 3]], # weight, max acceleration        
+        "stop_cost_acc": [0.0], # 
+        "smooth": [1.0], # smoothness
+        "state_bound": [1000.0], # joint limit avoidance
+        }
+    mppi_space = {
         "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
         # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "particles": [500],
@@ -1073,8 +1090,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         } 
     # This op is aimed to save time when some parameters like horizon are too expansive to modify 
     rlpt_action_space:list = list(get_combinations({
-        'cost_weights': get_combinations(cost_weights_space),
-        'mpc_params': get_combinations(mpc_params_space)}))
+        'cost_weights': get_combinations(cost_fn_space),
+        'mpc_params': get_combinations(mppi_space)}))
     
     
     # rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
@@ -1107,9 +1124,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                     rlpt_agent.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
                     rlpt_agent.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                     rlpt_agent.train_suit.memory = checkpoint['memory']
+                    rlpt_agent.train_suit.steps_done = checkpoint['steps_done']
                     ep = checkpoint['episode']
-                    steps_done = checkpoint['steps_done']
-                    
                     print(f"model loaded. episode modified to: {ep}")
                 
             # run episode and collect data (statistics) 
@@ -1126,6 +1142,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 'memory':rlpt_agent.train_suit.memory,
                 'episode': ep,  # Optional: if you want to save the current epoch number
                 'steps_done': steps_done,
+                
             }, model_file_path)
             
             

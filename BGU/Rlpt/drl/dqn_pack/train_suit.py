@@ -32,7 +32,7 @@ class trainSuit:
     
     """
     
-    def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=128,gamma=0.99, eps_start = 0.9, eps_end=0.05, eps_decay=1000,learning_rate=1e-4,
+    def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99, eps_start = 0.99, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
                 C=100,N=10000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
         """Initializing a dqn/ddqn network 
 
@@ -115,6 +115,7 @@ class trainSuit:
         sample = random.random()
         eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
             math.exp(-1. * self.steps_done / self.eps_decay)
+        print(f'chance for non-greedy  {eps_threshold}')
         select_greedily = sample > eps_threshold  
         
         if select_greedily: # best a (which maximizes current Q)
@@ -154,7 +155,6 @@ class trainSuit:
         transitions = self.memory.sample(self.batch_size) 
         batch = Transition(*zip(*transitions))
         states, actions, rewards = torch.cat(batch.state), torch.cat(batch.action), torch.cat(batch.reward)
-        
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=self.device, dtype=torch.bool) # a vector in length = batch size. True where sj+1 is not final
         non_final_next_states = torch.cat([s for s in batch.next_state if s is not None]) # a vector in length <= batch size. Only the non final states sj+1 from batch.         
         
@@ -182,7 +182,7 @@ class trainSuit:
         y = rewards +  self.gamma * qs_for_target_with_final_states # targtes. expected q values given. our "labeled" data     
         
         # loss calculation and greadient step
-        loss = self.criterion(input=q_values, target=y.unsqueeze(1))
+        loss = self.criterion(input=q_values, target=y.unsqueeze(1)) # update current (Q network) weights in such way that we minimize the prediction error, w.r. to Q targets as our "y_real" with Q network predictiosn as "y_pred"
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.current.parameters(), 1.0) # 1 is the maximal norm of each grad, like in paper
         self.optimizer.step()
