@@ -17,6 +17,7 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 from matplotlib.transforms import Transform
+from pygame import Vector3
 import scipy as sp
 from storm_kit import mpc
 from storm_kit.mpc.cost import cost_base
@@ -669,7 +670,7 @@ class MpcRobotInteractive:
         
         for ts in range(episode_max_ts):
             print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")
-            
+            print(f's(t):\n{st}')
             # rlpt - select action (a(t))
             st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
             forbidden_action_indices:set = set() # empty set - all actions are allowed
@@ -1141,7 +1142,9 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 # Initialize the rlpt agent, including a DQN/DDQN.
                 all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
                 all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
-                rlpt_agent = rlptAgent(particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
+                
+                robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
+                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
                 
                 # load model if a saved one exists
                 if load_model_file := os.path.exists(model_file_path):

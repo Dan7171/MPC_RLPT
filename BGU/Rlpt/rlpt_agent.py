@@ -1,7 +1,7 @@
 import copy
 import math
 from os import access
-from typing import List, Set, Union
+from typing import Dict, List, Set, Tuple, Union
 from click import BadArgumentUsage
 from networkx import union
 from storm_kit.mpc import task
@@ -25,7 +25,7 @@ class rlptAgent:
     
  
         
-    def __init__(self, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -36,41 +36,53 @@ class rlptAgent:
             col_obj_handles dict: a dict which keys are the names of collision objects (participating or not) and values are the object's handle (int)
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
         """
-        
+        self.base_pos_gym_s0 = base_pos_gym
         self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
         self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
         self.all_coll_obj_names_sorted:list = sorted(list(self.col_obj_handles.keys()), key=lambda x: self.col_obj_handles[x]) # sorted by obj handle
-        self.all_objs = _merge_dict(self.participating_storm, self.not_participating_storm)
-        if len(self.all_objs) != len(self.participating_storm) + len(self.not_participating_storm):
+        self.all_coll_objs_s0 = _merge_dict(self.participating_storm, self.not_participating_storm)
+        if len(self.all_coll_objs_s0) != len(self.participating_storm) + len(self.not_participating_storm):
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
-        self.all_coll_objs_initial_state:np.ndarray = self._parse_coll_objs_state() # in storm cs
-        self.state_dim = self._calc_state_dimension() # input dimension for the ddqn. 
-        self.train_suit = trainSuit(self.state_dim , len(action_space)) # input dim, output dim
-        self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info()
+        self.col_obj_s0_flat_states:dict[str,np.ndarray]= self.flatten_coll_obj_states(self.all_coll_objs_s0) # {'obj name': flattened objected state in storm cs([5,1,3,0.4...])}
+        self.col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
         
-     
-    def _calc_state_dimension(self) -> int:
+        # define every s(t) specifications
+        self.st_componentes_ordered = ['robot_base_pos',
+                                       'robot_dofs_positions',
+                                       'robot_dofs_velocities', 
+                                       'goal_pose',  
+                                       'prev_action_idx',
+                                       'coll_objs'
+                                       ]
         
-        # robot_base_pos_dim = 3 # x,y,z
-        robot_dofs_positions_dim = 7 # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
-        robot_dofs_velocities_dim = 7 # an angular velocity on each dof 
-        goal_pose_dim = 7 # position (3), orientation (4)
-        prev_action_idx_dim = 1 # the index of the previous action which was taken
-        # steps_from_horizon_switch_dim = 1 # the number of steps passed from the last action where we actually switched the horizon
-
+        self.st_componentes_ordered_dims = [3, # x,y,z pos of robot base (3)
+                                            7, # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
+                                            7, # similarly to positions, an angular velocity on each dof 
+                                            7, # position (3), orientation (4)
+                                            1, # the index of the previous action which was taken
+                                            len(self.col_obj_s0_sorted_concat) # flatten state length (NN input length). 
+                                            ]  
+        self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t)
+        # self.st_legend = self.get_states_legend() # readable shape of the state 
+        self.train_suit = trainSuit(self.st_dim , len(action_space)) # bulding the DQN (state dim is input dim,len action space is  output dim)
+        self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
-        task_section_size = goal_pose_dim  # section size from state
-        robot_section_size = robot_dofs_positions_dim + robot_dofs_velocities_dim # section size from state
-        # objectes_section_size = sphere_dim * n_spheres + cube_dim * n_cubes # section size from state 
-        objects_section_size = len(self.all_coll_objs_initial_state)
-        prev_action_idx_section_size = prev_action_idx_dim
-        # h_switch_counter_section_size = steps_from_horizon_switch_dim
-        return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size
-    
+    # def _calc_state_dimension(self) -> int:
+    #     return sum(self.st_componentes_ordered_dims)
+                
         # return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size + h_switch_counter_section_size
+    
+    def flatten_coll_obj_states(self, all_coll_objs_st):
         
+        out: dict[str,np.ndarray] = {}
+        for obj_name in self.all_coll_obj_names_sorted:
+            nested_obj_state = list(all_coll_objs_st[obj_name].values()) 
+            flattened_obj_state = np.concatenate([np.atleast_1d(x) for x in nested_obj_state]) # [x,[y],z,[t,w]]] -> [[x],[y],[z],[t,w]] -> [x,y,z,t,w]
+            out[obj_name] = flattened_obj_state
+        return out
+    
     def select_action(self, st:torch.Tensor,forbidden_action_indices):
         """Given state s(t) return action a(t) and its index
         
@@ -82,26 +94,22 @@ class rlptAgent:
         """
         action_idx_tensor: torch.Tensor
         action_idx:int
-        
         action_idx_tensor = self.train_suit.select_action_idx(st, forbidden_action_indices)
         action_idx = int(action_idx_tensor.item()) # action's index
         return action_idx, self.action_space[action_idx] # the action itself 
     
     
     
-    def _parse_coll_objs_state(self):
+    def flatten_sorted_coll_objs_states(self, col_obj_st_flat_states):
         """ 
         Flatten collision object locs (participating and not) to ndarray of all objects states
         Returns:
 
         """
-        
-        all_objs_state_flatten = np.array([]) # one long state, will contain sequenced coll objs states (participating and not) sorted by their handle
+        out = np.array([]) # one long state, will contain sequenced coll objs states (participating and not) sorted by their handle
         for obj_name in self.all_coll_obj_names_sorted:
-            nested_obj_state = list(self.all_objs[obj_name].values()) 
-            flattened_obj_state = np.concatenate([np.atleast_1d(x) for x in nested_obj_state]) # [x,[y],z,[t,w]]] -> [[x],[y],[z],[t,w]] -> [x,y,z,t,w]
-            all_objs_state_flatten = np.append(all_objs_state_flatten, flattened_obj_state) # np.append([1, 2, 3], [[4, 5, 6], [7, 8, 9]]) - >array([1, 2, 3, ..., 7, 8, 9])
-        return all_objs_state_flatten
+            out= np.append(out, col_obj_st_flat_states[obj_name]) # np.append([1, 2, 3], [[4, 5, 6], [7, 8, 9]]) - >array([1, 2, 3, ..., 7, 8, 9])
+        return out
     
     def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, prev_at_idx:Union[None, int]) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
@@ -113,8 +121,41 @@ class rlptAgent:
         if prev_at_idx is None:
             prev_at_idx = no_prev_action_code
         prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
-        return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym, prev_at_idx_np])
+
+        st = {'robot_base_pos': self.base_pos_gym_s0, 
+              'robot_dofs_positions': robot_dof_positions_gym,
+              'robot_dofs_velocities': robot_dof_velocities_gym, 
+              'goal_pose': goal_pose_gym, # 
+              'prev_action_idx': prev_at_idx_np,
+              'coll_objs': self.col_obj_s0_sorted_concat
+        }
+        ordered_st_components = [st[key] for key in self.st_componentes_ordered]
+        return np.concatenate(ordered_st_components)
     
+    def get_states_legend(self)->List[tuple]:
+        
+        out = []
+        start_idx = 0
+        for i in range(len(self.st_componentes_ordered)):
+            if self.st_componentes_ordered[i] != 'coll_objs':
+                component_name = self.st_componentes_ordered[i]
+                component_len_in_st = self.st_componentes_ordered_dims[i]
+                end_idx = start_idx + component_len_in_st - 1 # inclusive
+                out.append(((start_idx, end_idx),component_name))
+                print(component_name, (start_idx, end_idx))
+                start_idx = end_idx + 1
+            else:
+                for j in range(len(self.all_coll_obj_names_sorted)):
+                    component_name = self.all_coll_obj_names_sorted[j]
+                    component_len_in_st = len(self.col_obj_s0_flat_states[component_name]) # obj shape
+                    end_idx = start_idx + component_len_in_st - 1 # inclusive
+                    out.append(((start_idx, end_idx),component_name))
+                    print(component_name, (start_idx, end_idx))
+                    start_idx = end_idx + 1
+        return out
+                    
+                    
+                
     def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=5000, step_dur_w=1, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
         """ A weighted sum of reward terms considering next terms:
             1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
