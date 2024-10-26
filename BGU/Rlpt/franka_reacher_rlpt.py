@@ -17,6 +17,7 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 from matplotlib.transforms import Transform
+import scipy as sp
 from storm_kit import mpc
 from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
@@ -657,6 +658,8 @@ class MpcRobotInteractive:
         prev_at_idx = None # None or int
         at: dict
         prev_at:dict = {} # dict 
+        h_sequence_len = 0
+        speedup_training = True
         robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
@@ -664,11 +667,28 @@ class MpcRobotInteractive:
         goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
+        
         for ts in range(episode_max_ts):
             print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")
             
             # rlpt - select action (a(t))
-            at_idx, at = rlpt_agent.select_action(torch.tensor(st, device="cuda", dtype=torch.float64))
+            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+            forbidden_action_indices:set = set() # empty set - all actions are allowed
+            if speedup_training: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
+                prev_h = prev_at['mpc_params']['horizon'] if prev_at_idx is not None else -1 
+                if h_sequence_len < prev_h:  
+                    different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
+                    forbidden_action_indices = different_h_action_indices
+            
+            at_idx, at = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
+            # print("at_idx:::::::::::::::::: ", at_idx)
+            if speedup_training: 
+                new_h =  at['mpc_params']['horizon']
+                if new_h != prev_h:
+                    h_sequence_len = 0
+                else:
+                    h_sequence_len += 1
+                    
             # print action unique features
             at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
             print(f'a(t): {at_unique_features}')
@@ -707,7 +727,7 @@ class MpcRobotInteractive:
             
             print(f'a(t) index: {at_idx}')
             print(f'r(t): {rt}')
-            print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
+            # print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
             
             # rlpt- perform optimization step
             loss_t = rlpt_agent.train_suit.optimize() 
@@ -1089,7 +1109,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         }
     mppi_space = {
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
-        "horizon": [30],
+        "horizon": [30,60],
         # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "particles": [500],
         # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)

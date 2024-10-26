@@ -9,6 +9,7 @@ https://youtu.be/UoPei5o4fps?si=BQdBcYCl60NGhGtJ
 https://arxiv.org/pdf/1312.5602
 
 """
+from typing import Union
 from graphviz import render
 import gymnasium as gym
 import math
@@ -103,7 +104,7 @@ class trainSuit:
         random.seed(seed)
         torch.random.manual_seed(seed)
 
-    def select_action(self, state):
+    def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set()):
         """
         https://daiwk.github.io/assets/dqn.pdf alg 1
         Select an action from an epsilon greedy policy.
@@ -112,6 +113,11 @@ class trainSuit:
         Return the idx of the aciton and the action
         """
         
+        all_action_indices:set = set(range(self.n_actions))
+        allowed_actions_indices = all_action_indices - indices_to_filter_out
+        
+        # decide if selecting action greedily (best Q) for exploitation or select random action for exploration
+        # current epsilon is the chance of selecting a random action
         sample = random.random()
         eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
             math.exp(-1. * self.steps_done / self.eps_decay)
@@ -125,16 +131,25 @@ class trainSuit:
                 # found, so we pick action with the larger expected reward.
                 # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
                 Q_all_actions = self.current(state)
-                action_idx_tensor = torch.argmax(Q_all_actions) # [index]
-                action_idx = action_idx_tensor.item() # index
-                print(f'best action q: {torch.max(Q_all_actions)}')
+                Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
+                allowed_Q_values_with_idx = [qi for qi in Q_all_actions_with_idx if qi[1] in allowed_actions_indices] # filter out the not allowed actions 
+                max_allowed_q, max_allowed_q_idx = max(allowed_Q_values_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
                 
-        else: # random a (each action has a fair chance to be selected)
-            action_idx = random.randint(0, self.n_actions -1)
-            action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
+                # action_idx_tensor = torch.argmax(Q_all_actions) # [index]
+                # action_idx = action_idx_tensor.item() # index
+                action_idx = max_allowed_q_idx
+                
+                # print(f'best action q: {torch.max(Q_all_actions)}')
+                print(f'max q(s,a): {torch.max(Q_all_actions)}, max allowed q(s,a): {max_allowed_q}')
+                # print(f'arg max q(s,a): {torch.max(Q_all_actions)}, max allowed q(s,a): {max_allowed_q}')
+                
+        else: # random action (each action has a fair chance to be selected)
+            # action_idx = random.randint(0, self.n_actions -1)
+            action_idx = random.choice(list(allowed_actions_indices)) 
         
-        # action = self.action_space[action_idx]
-        # return action_idx_tensor, action # picking a random action
+        action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
+        
+     
         
         return action_idx_tensor # that index is the id of the action 
     

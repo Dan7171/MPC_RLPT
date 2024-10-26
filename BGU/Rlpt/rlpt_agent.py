@@ -57,7 +57,8 @@ class rlptAgent:
         robot_dofs_positions_dim = 7 # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
         robot_dofs_velocities_dim = 7 # an angular velocity on each dof 
         goal_pose_dim = 7 # position (3), orientation (4)
-        prev_action_idx_dim = 1
+        prev_action_idx_dim = 1 # the index of the previous action which was taken
+        # steps_from_horizon_switch_dim = 1 # the number of steps passed from the last action where we actually switched the horizon
 
         
         task_section_size = goal_pose_dim  # section size from state
@@ -65,14 +66,16 @@ class rlptAgent:
         # objectes_section_size = sphere_dim * n_spheres + cube_dim * n_cubes # section size from state 
         objects_section_size = len(self.all_coll_objs_initial_state)
         prev_action_idx_section_size = prev_action_idx_dim
-        
+        # h_switch_counter_section_size = steps_from_horizon_switch_dim
         return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size
     
-    def select_action(self, st:torch.Tensor):
-        """Given state s(t) return action a(t)
-
+        # return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size + h_switch_counter_section_size
+        
+    def select_action(self, st:torch.Tensor,forbidden_action_indices):
+        """Given state s(t) return action a(t) and its index
+        
         Args:
-            st (_type_): _description_
+            st (torch.Tensor): s(t)
 
         Returns:
             _type_: _description_
@@ -80,7 +83,7 @@ class rlptAgent:
         action_idx_tensor: torch.Tensor
         action_idx:int
         
-        action_idx_tensor = self.train_suit.select_action(st)
+        action_idx_tensor = self.train_suit.select_action_idx(st, forbidden_action_indices)
         action_idx = int(action_idx_tensor.item()) # action's index
         return action_idx, self.action_space[action_idx] # the action itself 
     
