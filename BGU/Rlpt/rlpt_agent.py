@@ -112,7 +112,7 @@ class rlptAgent:
         prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
         return np.concatenate([self.all_coll_objs_initial_state,robot_dof_positions_gym, robot_dof_velocities_gym, goal_pose_gym, prev_at_idx_np])
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=1000, step_dur_w=1, pos_r_radius=0.05, pos_r_sharpness=50)->np.float64:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=5000, step_dur_w=1, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
         """ A weighted sum of reward terms considering next terms:
             1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
             2. ee_rot_error: orientation distance" (l2 norm of the difference between current and goal)
@@ -141,6 +141,10 @@ class rlptAgent:
         Returns:
             np.float64: total reward of the transition from s(t) to s(t+1).
         """
+        pos_eps_ee_convergence = 0.01
+        rot_eps_ee_convergence = 0.01
+        
+        
         assert_positive = [pos_w, col_w, step_dur_w, pos_r_radius, pos_r_sharpness]
         for arg in assert_positive:
             arg_name = f'{arg=}'.split('=')[0]
@@ -151,6 +155,9 @@ class rlptAgent:
         orientation_reward = orient_w * - ee_rot_error  
         # primitive_collision_reward = col_w * - primitive_collision_error        
         primitive_collision_reward = col_w * - int(contact_detected)
+        if ee_pos_error < pos_eps_ee_convergence and ee_rot_error < rot_eps_ee_convergence: #if in target
+            print(f"'\033[94m'In convergence zone'\033[0m'") # blue
+            step_dur_w = 0 # don't punish on step duration to target since we are alreay in target
         step_duration_reward = step_dur_w * - step_duration
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
         

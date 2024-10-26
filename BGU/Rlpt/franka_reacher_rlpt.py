@@ -937,7 +937,9 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     optional_goal_poses = [[0.47, 0.47, 0.1, 0, 2.5, 0, 1], 
                            [0.47, 0.47, 0.1, 0, 0.4, 0, 0.2],
                            [-0.3, 0.07, 0.31, 0, 0, 0, 1],
-                           [-0.20, 0.11, 0.2, 0.3, 0.4, 0, 0.4],
+                           [-0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
+                           [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
+                           [-0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
                            ]
     external_to_env_state_sphere = {'radius': very_small, 'position': far_away_position}
     external_to_env_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
@@ -1075,7 +1077,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         "zero_acc": [0.0],
         "joint_l2": [0.0], 
         "robot_self_collision": [5000], # collision with self (robot with itself)
-        "primitive_collision" : [5000], # collision with environment (obstacles)
+        "primitive_collision" : [5, 5000], # collision with environment (obstacles)
         "voxel_collision" : [0.0],
         "null_space": [1.0],
         "manipulability": [30], # 
