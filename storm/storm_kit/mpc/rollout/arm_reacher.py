@@ -107,7 +107,7 @@ class ArmReacher(ArmBase):
             ans = cost
          
         sniffer = GLobalVars.cost_sniffer
-        if sniffer is not None:
+        if sniffer.is_initialized():
             sniffer.finish()
             
         return ans

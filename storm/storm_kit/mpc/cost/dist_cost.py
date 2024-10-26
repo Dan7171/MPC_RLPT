@@ -63,7 +63,7 @@ class DistCost(nn.Module):
         cost = w1 * t1 # Dan
         
         sniffer = GLobalVars.cost_sniffer
-        if sniffer is not None:
+        if sniffer.is_initialized():
             cost_term_name = 'joint_l2' if is_joint_l2 else 'null_disp'     
             sniffer.set(cost_term_name, CostTerm(w1, t1))
         

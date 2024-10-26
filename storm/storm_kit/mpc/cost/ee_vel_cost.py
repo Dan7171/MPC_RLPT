@@ -62,7 +62,7 @@ class EEVelCost(nn.Module):
         cost = w1 * t1 # Dan
         
         sniffer = GLobalVars.cost_sniffer
-        if sniffer is not None:
+        if sniffer.is_initialized():
             sniffer.set('ee_vel', CostTerm(w1, t1))
         
         return cost.to(inp_device)

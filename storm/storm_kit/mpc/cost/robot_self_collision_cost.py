@@ -115,7 +115,7 @@ class RobotSelfCollisionCost(nn.Module):
         cost_term_name = 'self_collision'    
         
         sniffer = GLobalVars.cost_sniffer
-        if sniffer is not None:   
+        if sniffer.is_initialized():   
             sniffer.set(cost_term_name, CostTerm(w1, t1))
         
         return cost

@@ -3,9 +3,9 @@ from datetime import datetime
 import os
 from typing import List
 import yaml
-
+from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 
 ##### Globals ######
 class GLobalVars:
-    cost_sniffer = None # if using sniffer, will be changed from None to the sniffer
+    cost_sniffer:CostFnSniffer =  CostFnSniffer() # if using sniffer, will be changed from None to the sniffer
     

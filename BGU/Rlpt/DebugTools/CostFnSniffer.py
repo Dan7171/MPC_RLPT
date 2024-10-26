@@ -76,7 +76,11 @@ class Gui:
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
 
 class CostFnSniffer:
-    def __init__(self, gui=False, save_costs=False, buffer_n=1000):
+    def __init__(self, gui=False, save_costs=False, buffer_n=1000, is_initialized=False):
+        
+        self._is_initialized = is_initialized
+        if not self._is_initialized:
+            return
         
         self._current_ts_costs_real = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
         self._current_ts_costs_mpc = {} # Cuurent timestep costs (an array which is switching between real world and  mpc at a time). We fill it with costs along the cost fn and wipe it afterwards.- will be wiped at the beginning of every cost_fn calc
@@ -195,6 +199,10 @@ class CostFnSniffer:
                         
             
             time.sleep(update_rate)
+            
+    def is_initialized(self):
+        return self._is_initialized
+        
 
 # Example usage:
 # cost_fn_sniffer = CostFnSniffer(gui=True)

@@ -129,7 +129,7 @@ class PoseCost(nn.Module):
         cost = w1 * t1 + w2 * t2         
         
         sniffer = GLobalVars.cost_sniffer
-        if sniffer is not None:
+        if sniffer.is_initialized():
             sniffer.set('goal_orientation', CostTerm(w1, t1))
             sniffer.set('goal_position', CostTerm(w2, t2))
         return cost.to(inp_device), rot_err_norm, goal_dist

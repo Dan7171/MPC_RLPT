@@ -708,7 +708,7 @@ class MpcRobotInteractive:
             
             
             # rlpt - compute reward (r(t))
-            sniffer = GLobalVars.cost_sniffer    
+            sniffer:CostFnSniffer = GLobalVars.cost_sniffer    
             ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
             ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error   
             mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
@@ -1047,6 +1047,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     # rlpt setup
     rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
+    sniffer_params['is_initialized'] = True
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
         
