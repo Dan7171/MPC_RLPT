@@ -638,7 +638,6 @@ class MpcRobotInteractive:
         
         # rlpt state and action
         st: np.ndarray
-        at: Union[dict,str]
         rt: np.float64
         ee_pos_error: np.float64
         ee_rot_error: np.float64 
