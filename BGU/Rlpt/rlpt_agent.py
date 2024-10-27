@@ -1,4 +1,5 @@
 import copy
+from importlib import metadata
 import math
 from os import access
 from typing import Dict, List, Set, Tuple, Union
@@ -65,14 +66,11 @@ class rlptAgent:
                                             len(self.col_obj_s0_sorted_concat) # flatten state length (NN input length). 
                                             ]  
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t)
-        # self.st_legend = self.get_states_legend() # readable shape of the state 
+        self.st_legend = self.get_states_legend() # readable shape of the state 
         self.train_suit = trainSuit(self.st_dim , len(action_space)) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
-    # def _calc_state_dimension(self) -> int:
-    #     return sum(self.st_componentes_ordered_dims)
-                
-        # return robot_section_size + task_section_size + objects_section_size + prev_action_idx_section_size + h_switch_counter_section_size
+ 
     
     def flatten_coll_obj_states(self, all_coll_objs_st):
         
@@ -83,6 +81,15 @@ class rlptAgent:
             out[obj_name] = flattened_obj_state
         return out
     
+    def parse_st(self,st:np.ndarray)-> Dict[str,np.ndarray]:    
+        out = {}
+        for tup in self.st_legend:
+            component_range, component_name = tup
+            start = component_range[0]
+            stop = component_range[1]
+            out[component_name] = st[start:stop+1]
+        return out
+        
     def select_action(self, st:torch.Tensor,forbidden_action_indices):
         """Given state s(t) return action a(t) and its index
         
@@ -94,12 +101,30 @@ class rlptAgent:
         """
         action_idx_tensor: torch.Tensor
         action_idx:int
-        action_idx_tensor = self.train_suit.select_action_idx(st, forbidden_action_indices)
+        action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices)
         action_idx = int(action_idx_tensor.item()) # action's index
-        return action_idx, self.action_space[action_idx] # the action itself 
+        return action_idx, self.action_space[action_idx], meta_data # the action itself 
     
-    
-    
+    def load(self, checkpoint):
+        self.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
+        self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
+        self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.train_suit.memory = checkpoint['memory']
+        self.train_suit.steps_done = checkpoint['steps_done']
+        
+    def save(self, ep, ts, steps_done, model_file_path):
+        # save model with relevant info to start the next episode
+        torch.save({
+            'current_state_dict': self.train_suit.current.state_dict(),
+            'target_state_dict': self.train_suit.target.state_dict(),
+            'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
+            'memory':self.train_suit.memory,
+            'episode': ep,  # Optional: if you want to save the current epoch number
+            'ts': ts,
+            'steps_done': steps_done,
+            
+        }, model_file_path)
+        
     def flatten_sorted_coll_objs_states(self, col_obj_st_flat_states):
         """ 
         Flatten collision object locs (participating and not) to ndarray of all objects states
@@ -156,7 +181,7 @@ class rlptAgent:
                     
                     
                 
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=5000, step_dur_w=1, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=5000, step_dur_w=50, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
         """ A weighted sum of reward terms considering next terms:
             1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
             2. ee_rot_error: orientation distance" (l2 norm of the difference between current and goal)
@@ -185,8 +210,8 @@ class rlptAgent:
         Returns:
             np.float64: total reward of the transition from s(t) to s(t+1).
         """
-        pos_eps_ee_convergence = 0.01
-        rot_eps_ee_convergence = 0.01
+        # pos_eps_ee_convergence = 0.01
+        # rot_eps_ee_convergence = 0.01
         
         
         assert_positive = [pos_w, col_w, step_dur_w, pos_r_radius, pos_r_sharpness]
@@ -197,13 +222,10 @@ class rlptAgent:
         postion_reward = math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
         orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
         orientation_reward = orient_w * - ee_rot_error  
-        # primitive_collision_reward = col_w * - primitive_collision_error        
         primitive_collision_reward = col_w * - int(contact_detected)
-        if ee_pos_error < pos_eps_ee_convergence and ee_rot_error < rot_eps_ee_convergence: #if in target
-            print(f"'\033[94m'In convergence zone'\033[0m'") # blue
-            step_dur_w = 0 # don't punish on step duration to target since we are alreay in target
         step_duration_reward = step_dur_w * - step_duration
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
+        
         
         # print(f"rewards: position, orientation, premitive-collision , step duration\n{postion_reward:{.3}f}, {orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
 #         print(f"r(t) (term, reward):\n\

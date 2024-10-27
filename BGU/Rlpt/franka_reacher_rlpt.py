@@ -9,7 +9,9 @@ import pickle
 from re import I, match
 from select import select
 import shutil
+from threading import Thread
 from typing import Callable, Collection, Iterable, List, Tuple, Union
+import typing
 from click import BadArgumentUsage
 from colorlog import root
 from cv2 import norm
@@ -24,6 +26,7 @@ from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
 import torch
 from traitlets import default
+from BGU.Rlpt.monitor import Monitor
 from BGU.Rlpt.rlpt_agent import rlptAgent 
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -57,12 +60,15 @@ import matplotlib.pyplot as plt
 from BGU.Rlpt.experiments.experiment_utils import get_combinations
 from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
 from deepdiff import DeepDiff
+from multiprocessing import Process
+import csv
 
 np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
- 
- 
+ONE_CM = 0.01 # IN METERS
+etl_file_path = 'etl.csv'
+
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
 def make_plot(x:Union[None,tuple]=None, ys:list=[]):
@@ -617,7 +623,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int) -> Tuple[int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int=0, in_zone_threshold=10, moni=None):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -633,7 +639,7 @@ class MpcRobotInteractive:
          
         # curr_ee_pose_np: np.ndarray
         goal_ee_pose_np: np.ndarray
-        
+
         robot_handle = self.name_to_handle['robot'] # actor handle in current env
         goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
         
@@ -655,8 +661,10 @@ class MpcRobotInteractive:
         # -- start episode control loop --
         
         # s0
+        in_zone_cntr = 0
         prev_at_idx = None # None or int
         at: dict
+        convergence_threshold_pos, convergence_threshold_rot = ONE_CM, ONE_CM 
         prev_at:dict = {} # dict 
         h_sequence_len = 0
         speedup_training = True
@@ -667,82 +675,144 @@ class MpcRobotInteractive:
         goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
-        
-        for ts in range(episode_max_ts):
-            print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")
-            print(f's(t):\n{st}')
-            # rlpt - select action (a(t))
-            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
-            forbidden_action_indices:set = set() # empty set - all actions are allowed
-            if speedup_training: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
-                prev_h = prev_at['mpc_params']['horizon'] if prev_at_idx is not None else -1 
-                if h_sequence_len < prev_h:  
-                    different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
-                    forbidden_action_indices = different_h_action_indices
-            
-            at_idx, at = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
-            # print("at_idx:::::::::::::::::: ", at_idx)
-            if speedup_training: 
-                new_h =  at['mpc_params']['horizon']
-                if new_h != prev_h:
-                    h_sequence_len = 0
-                else:
-                    h_sequence_len += 1
-                    
-            # print action unique features
-            at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
-            print(f'a(t): {at_unique_features}')
-            
-            # rlpt and mpc planner - make steps
-            step_start_time = time.time()
-            self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
-            step_duration = time.time() - step_start_time # time it took to move from st to st+1
-            
-            # rlpt - compute the state you just moved to (s(t+1))
-            robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
-            robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
-            robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
-            goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
-            goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
-            curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-            s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx) # converting the state to a form that agent would feel comfortable with
-            
-            
-            # rlpt - compute reward (r(t))
-            sniffer:CostFnSniffer = GLobalVars.cost_sniffer    
-            ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error
-            ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error   
-            mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
-            # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
-            contacted_detected:bool = sniffer.is_contact_real_world
-            # rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, unweighted_cost_primitive_coll,step_duration)
-            rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contacted_detected, step_duration)
+        forced_stopping = False
 
-            # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-            s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not (ts == episode_max_ts - 1) else None
-            rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
-            at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
-            rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
+        try:
+            for ts in range(episode_max_ts):
+                print(f'\n')
+                print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")     
+                # print(f's(t):\n{st}\n{rlpt_agent.parse_st(st)})')
+                print('s(t) parsed:')
+                st_parsed = rlpt_agent.parse_st(st)
+                st_parsed_dict = {} 
+                for item_name, item_st  in st_parsed.items():
+                    print(f'{item_name}: {item_st}')
+                    st_parsed_dict[item_name] = item_st
+                # rlpt - select action (a(t))
+                st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+                forbidden_action_indices:set = set() # empty set - all actions are allowed
+                if speedup_training: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
+                    prev_h = prev_at['mpc_params']['horizon'] if prev_at_idx is not None else -1 
+                    if h_sequence_len < prev_h:  
+                        different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
+                        forbidden_action_indices = different_h_action_indices
+                
+                at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
+                
+                if speedup_training: 
+                    new_h =  at['mpc_params']['horizon']
+                    if new_h != prev_h:
+                        h_sequence_len = 0
+                    else:
+                        h_sequence_len += 1
+                        
+                # print action unique features
+                at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
+                print(f'a(t): {at_unique_features}')
+                
+                # rlpt and mpc planner - make steps
+                step_start_time = time.time()
+                self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
+                step_duration = time.time() - step_start_time # time it took to move from st to st+1
+                
+                # rlpt - compute the state you just moved to (s(t+1))
+                robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
+                robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
+                robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
+                goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+                goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
+                curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
+                s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx) # converting the state to a form that agent would feel comfortable with
+                
+                
+                # rlpt - compute reward (r(t))
+                sniffer:CostFnSniffer = GLobalVars.cost_sniffer    
+                ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
+                ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
+                # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
+                # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
+                contacted_detected:bool = sniffer.is_contact_real_world
+                rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contacted_detected, step_duration)
+
+                # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
+                st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
+                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not (ts == episode_max_ts - 1) else None
+                rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
+                at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
+                
+                print(f'a(t) index: {at_idx}')
+                print(f'r(t): {rt}')
+                # print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
+                
+                # rlpt- perform optimization step
+                optim_meta_data = rlpt_agent.train_suit.optimize()
+                
+                steps_done += 1
+                
+                # rlpt- update target network
+                if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
+                    rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
+                
+                # ys = [ep_num, ts, step_duration, rt, ee_pos_error, ee_rot_error, contacted_detected, *st_parsed_dict.values()]
+                # x = ts
+                # new_data = ['value1', 'value2', 'value3']  # Replace with your actual data row
+                # set etl labels
+                
+                st_parsed:list = list(rlpt_agent.parse_st(st).values()) 
+                # st_titles = ['st_'+k for k in st_titles]
+                at_unique_features:list = list(rlpt_agent.unique_action_features_by_idx[at_idx].values())
+                # at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
+                # at_titles_shared_features = rlpt_agent.shared_action_features.keys()
+                at_shared_features:list = list(rlpt_agent.shared_action_features.values())
+                st_at:list = st_parsed + at_unique_features + at_shared_features
+                
+                # row for etl
+                new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
+                        at_meta_data['q'], *st_at, step_duration, rt, contacted_detected, ee_pos_error, ee_rot_error, 
+                        optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
+                
+                with open(etl_file_path, mode='a', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(new_row)
+                
+                # moni.update_data(x, ys)   
+                        
+                # rlpt - update state for next iter where ts t+1
+                st = s_next
+                prev_at_idx = at_idx
+                prev_at = at
+                
+                # Perform goal test
+                # update counters
+                if in_target_pose := ee_pos_error < convergence_threshold_pos and ee_rot_error < convergence_threshold_rot: # in target (goal) pose 
+                    print(f"'\033[94m'In convergence zone'\033[0m'") # blue
+                    in_zone_cntr += 1
+                else:
+                    in_zone_cntr = 0
+                # required achievment is to reach goal pose (be in a very small zone of it) and hold there for convergence_threshold_pos time steps in a row                 
+                if passed_goal_test := in_zone_cntr >= in_zone_threshold: # steps in a row where ee was in target  
+                    break    
+                           
             
-            print(f'a(t) index: {at_idx}')
-            print(f'r(t): {rt}')
-            # print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
+        except KeyboardInterrupt:
+            forced_stopping = True
+            new_row = []
+            with open(etl_file_path, mode='r', newline='') as file:
+                n_cols = len(file.readline().split(',')) - 1
+                new_row = [-1] * n_cols
+                new_row.append(forced_stopping)
+                
+            with open(etl_file_path, mode='a', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(new_row)
+                
             
-            # rlpt- perform optimization step
-            loss_t = rlpt_agent.train_suit.optimize() 
-            steps_done += 1
+                
             
-            # rlpt- update target network
-            if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-                rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
+        finally:
+            return ts, steps_done, forced_stopping
             
-            # rlpt - update state for next iter where ts t+1
-            st = s_next
-            prev_at_idx = at_idx
-            prev_at = at       
-             
-        return ts_to_goal, time_to_goal, pos_errors, rot_errors, self_collision_errors, objs_collision_errors, steps_done
         
     def get_all_coll_obs_actor_names(self): # all including non participating
         all_names = self.get_actor_name_to_actor_handle_map().keys()
@@ -1061,6 +1131,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     # worlds_generator = select_world_callback() # callback must select participating collision objects from original file
     mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
     data = []
+
     
     cost_fn_space_defaults = {
         "goal_pose": {'weight': [15.0, 100.0]# orientation, position.
@@ -1126,6 +1197,10 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     model_file_path = 'ddqn_model_checkpoint.pth'
     # settings_file = 'rlpt_settings.pl'
     ep = 0
+    
+    # moni = Monitor(x_label='t', y_labels = ['r(t)', 'mean dofs abs vel (s(t))', 'contact(r(t))','selection-duration(a(t))'])
+    # moni.start()
+    
     try:
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
@@ -1142,53 +1217,40 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 # Initialize the rlpt agent, including a DQN/DDQN.
                 all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
                 all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
-                
                 robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
                 rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
-                
                 # load model if a saved one exists
-                if load_model_file := os.path.exists(model_file_path):
-                    checkpoint = torch.load(model_file_path)
+                load_model_file = os.path.exists(model_file_path)
+                if load_model_file:
                     # rlpt_agent.action_space = checkpoint['action_space']
-                    rlpt_agent.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
-                    rlpt_agent.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
-                    rlpt_agent.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                    rlpt_agent.train_suit.memory = checkpoint['memory']
-                    rlpt_agent.train_suit.steps_done = checkpoint['steps_done']
+                    checkpoint = torch.load(model_file_path)
+                    rlpt_agent.load(checkpoint)
                     ep = checkpoint['episode']
                     print(f"model loaded. episode modified to: {ep}")
+                else:
+                    # If no model file exists, initialize etl file (set etl labels)
+                    st_titles = rlpt_agent.get_states_legend()
+                    # list(rlpt_agent.parse_st(st).values()) 
+                    st_titles = ['st_' + pair[1] for pair in st_titles]
+                    at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
+                    at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
+                    at_titles_shared_features = rlpt_agent.shared_action_features.keys()
+                    at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
+                    st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
+                    col_names = ['ep', 't','rand_at_p','rand_at', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'contact_s(t+1)', 'pos_er_s(t+1)','rot_er_s(t+1)','optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss', 'forced_stopping']
+                    if os.path.exists(etl_file_path):
+                        os.remove(etl_file_path)
+                    with open(etl_file_path, mode='a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(col_names)
                 
-            # run episode and collect data (statistics) 
-            steps_to_goal, time_to_goal, pos_errors, rot_errors, self_col_errors, obj_col_errors, steps_done = \
-                mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, steps_done=steps_done) 
-            
+            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, steps_done=steps_done) 
+            rlpt_agent.save(ep, ts, steps_done, model_file_path)                
+            if keyboard_interupt:
+                raise KeyboardInterrupt()    
             ep += 1
             
-            # save model with relevant info to start the next episode
-            torch.save({
-                'current_state_dict': rlpt_agent.train_suit.current.state_dict(),
-                'target_state_dict': rlpt_agent.train_suit.target.state_dict(),
-                'optimizer_state_dict': rlpt_agent.train_suit.optimizer.state_dict(),
-                'memory':rlpt_agent.train_suit.memory,
-                'episode': ep,  # Optional: if you want to save the current epoch number
-                'steps_done': steps_done,
-                
-            }, model_file_path)
             
-            
-
-            # if ep > 0:
-            #     with open(output_file, 'rb') as file:
-            #         data = pickle.load(file)    
-            
-            # episode_data = {
-            #     'settings': {'goal_pose_storm': goal_pose_storm, 'participating_objects': env_selected_storm['world_model']['coll_objs']},
-            #     'results': {'steps_to_goal': steps_to_goal , 'time_to_goal': time_to_goal, 'pos_errors':pos_errors, 'rot_errors':rot_errors , 'self_col_errors':self_col_errors, 'obj_col_errors':obj_col_errors}
-            # }
-            
-            # data.append(episode_data) # index specifies the episode id
-            # with open(output_file, 'wb') as file:
-            #     pickle.dump(data, file)
                 
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
@@ -1197,9 +1259,14 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-  
-    
+            
+    # except KeyboardInterrupt:
+    #     print("KeyboardInterrupt: Shutting down...")
+    # finally:
+    #     moni.stop()
+    #     # moni.thread.join()
+    #     print("Stopped successfully.")
     
 if __name__ == '__main__':
-    train_loop(10000, 1000, generate_new_world)
+    train_loop(10000, 1500, generate_new_world)
     

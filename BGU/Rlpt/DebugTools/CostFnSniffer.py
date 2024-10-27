@@ -67,10 +67,15 @@ class Gui:
             return fig
 
     def update(self, data, axis_names):
+        # lock = lock1 if is_real_world() else lock2
+        # with lock:
+        #     self.latest_data = data
+        #     if not self.axis_names is None:
+        #         self.axis_names = axis_names
         self.latest_data = data
         if not self.axis_names is None:
             self.axis_names = axis_names
-        
+            
 
     def run(self):
         self.app.run_server(debug=True, use_reloader=False, port=self.port)
@@ -113,12 +118,16 @@ class CostFnSniffer:
             threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": True}).start()
             threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False, "full_horizon": True}).start()
             
-
-    def set(self, ct_name: str, ct: CostTerm):
-        is_real = is_real_world()
-        costs = self._current_ts_costs_real if is_real else self._current_ts_costs_mpc
-        costs[ct_name] = ct
+    def aquire_lock(self):
+        lock = lock1 if is_real_world() else lock2
+        return lock
     
+    def set(self, ct_name: str, ct: CostTerm):
+        with self.aquire_lock():    
+            is_real = is_real_world()
+            costs = self._current_ts_costs_real if is_real else self._current_ts_costs_mpc
+            costs[ct_name] = ct
+        
     def get_current_costs(self):
         return self._current_ts_costs_real if is_real_world() else self._current_ts_costs_mpc
                 
@@ -154,8 +163,7 @@ class CostFnSniffer:
             real_world = is_real_world()
             buff = self.costs_buff_real if real_world else self.costs_buff_mpc
             costs = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
-            lock = lock1 if real_world else lock2
-            with lock:        
+            with self.aquire_lock():        
                 if len(buff) == self.buffer_n:
                     self._flush_to_storage(buff, real_world)
                     buff = []
@@ -171,14 +179,9 @@ class CostFnSniffer:
         update_rate = 0.1 # how often rendering you
         time.sleep(update_rate)
         while True:
-            if real_world:
-                lock = lock1
-                gui = self._gui_dashboard1
-            else:
-                lock = lock2
-                gui = self._gui_dashboard2
+            gui = self._gui_dashboard1 if is_real_world else self._gui_dashboard2 
             # all_costs =  self.costs_buff_real if real_world else self.costs_buff_mpc
-            with lock:
+            with self.aquire_lock():
                 costs_to_show = self._current_ts_costs_real if real_world else self._current_ts_costs_mpc
                 costs_to_show_tmp = copy.deepcopy(costs_to_show)
          
