@@ -1164,29 +1164,40 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
 
     # Init rlpt agent action space
     cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
-        "goal_pose":  [(1.0, 100.0), (15.0, 100.0), (200.0, 100.0)], # distance from goal pose (orientation err weight, position err weight).
+        
+        # distance from goal pose (orientation err weight, position err weight).
+        "goal_pose":  [(1.0, 100.0), # goal 100:1
+                       (15.0, 100.0), # goal 100:15
+                       (100.0, 15.0)], # orientation 100:15
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0], 
         "robot_self_collision": [5000], # collision with self (robot with itself)
-        "primitive_collision" : [5, 5000], # collision with environment (obstacles)
+        
+        # collision with environment (obstacles)
+        "primitive_collision" : [500, # low collison carefulness   
+                                 5000], # high collison carefulness
         "voxel_collision" : [0.0],
         "null_space": [1.0],
-        "manipulability": [30], # 
+        "manipulability": [30], 
         "ee_vel": [0.0], 
-        "stop_cost": [(100.0, 1.5), (1.0, 3)], # charging for crossing max velocity limit (weight, max_nlimit (max acceleration))        
-        "stop_cost_acc": [(0.0, 0.1)], # # charging for crossing max acceleration limit (weight, max_limit)
-        "smooth": [1.0], # smoothness
-        "state_bound": [1000.0], # joint limit avoidance
+        # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration))
+        "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
+                      (1.0, 10.0)], # low charging (1), and high acceleration limit (10)
+                 
+        "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
+        "smooth": [1.0], # smoothness weight
+        "state_bound": [1000.0], # joint limit avoidance weight
         }
     mppi_space = {
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
-        "horizon": [30,60],
-        # "particles" : [500, 50, 100, 1000, 2000],# How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-        "particles": [500],
-        # "n_iters": [1, 3, 5] # Num of optimization steps - TODO (from paper)
-        "n_iters": [1]
-        } 
+        "horizon": [30, # myopic
+                    60, # mid-level 
+                    120 # long ranger observer
+                    ],         
+        "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+        "n_iters": [1] # Num of optimization steps 
+    } 
     # This op is aimed to save time when some parameters like horizon are too expansive to modify 
     rlpt_action_space:list = list(get_combinations({
         'cost_weights': get_combinations(cost_fn_space),
