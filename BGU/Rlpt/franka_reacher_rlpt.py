@@ -425,15 +425,9 @@ class MpcRobotInteractive:
         
         if update_mpc_params := (not prev_at_exists or at['mpc_params'] != prev_at['mpc_params']):
             self.mpc_control.update_mpc_params(at['mpc_params']) 
-            # if prev_at_exists:
-                # diff = DeepDiff(at['mpc_params'], prev_at['mpc_params'])
-                # print(f'change in mpc params: (old = a(t-1), new = a(t)) :\n{diff}') # TODO check how printing only the difference between two dicts
-            
+           
         if update_cost_weights := (not prev_at_exists or at['cost_weights'] !=  prev_at['cost_weights']):
             self.mpc_control.update_costs(at['cost_weights']) 
-            # if prev_at_exists:  
-                # diff = DeepDiff(at['cost_weights'], prev_at['cost_weights'])
-                # print(f'change in cost weights: (old = a(t-1), new = a(t)) :\n{diff}') # TODO check how printing only the difference between two dicts
                 
         self.gym_instance.step() # Advancing the simulation by one time step. TODO: I belive that should be before the cost update and not after. Check with elias
 
@@ -1030,7 +1024,9 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
                            [-0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
                            [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
                            [-0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
-                           ]
+                           [0.25, 0.21, 0.3, 0.13, 0.4, 0.1, -0.1],
+                           [0.15, -0.11, 0.2, 0.33, -0.4, 0, 0.2],
+                           [0.25, 0.11, 0.2, -0.23, 1, 0.4, 0.2]]
     external_to_env_state_sphere = {'radius': very_small, 'position': far_away_position}
     external_to_env_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
 
@@ -1167,24 +1163,24 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         
         # distance from goal pose (orientation err weight, position err weight).
         "goal_pose":  [(1.0, 100.0), # goal 100:1
-                       (15.0, 100.0), # goal 100:15
-                       (100.0, 15.0)], # orientation 100:15
+                       # (15.0, 100.0), # goal 100:15
+                       (100.0, 1.0)], # orientation 100:15
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0], 
         "robot_self_collision": [5000], # collision with self (robot with itself)
         
         # collision with environment (obstacles)
-        "primitive_collision" : [500, # low collison carefulness   
+        "primitive_collision" : [100, # low collison carefulness   
                                  5000], # high collison carefulness
         "voxel_collision" : [0.0],
         "null_space": [1.0],
         "manipulability": [30], 
         "ee_vel": [0.0], 
         # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration))
-        "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
-                      (1.0, 10.0)], # low charging (1), and high acceleration limit (10)
-                 
+        # "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
+        #               (1.0, 30.0)], # low charging (1), and high acceleration limit (10)
+        "stop_cost" : [(100.0, 1.5)],        
         "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
         "smooth": [1.0], # smoothness weight
         "state_bound": [1000.0], # joint limit avoidance weight
@@ -1193,7 +1189,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
         "horizon": [30, # myopic
                     60, # mid-level 
-                    120 # long ranger observer
+                    150 # long ranger observer
                     ],         
         "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "n_iters": [1] # Num of optimization steps 

@@ -21,11 +21,7 @@ def _merge_dict(original, update):
     new.update(update)
     return new
     
-class rlptAgent:
-    # NO_OP_CODE = 'no_op' # A constant representing a special action which every rlpt agent has. It's meaning is doing nothing. So if a(t) is NO_OP: rlpt won't tune parameters in time t (and system will be based on previous parameters)
-    
- 
-        
+class rlptAgent:       
     def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
         """
         Summary:
@@ -181,7 +177,7 @@ class rlptAgent:
                     
                     
                 
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=1, col_w=5000, step_dur_w=50, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=0.1, col_w=1000, step_dur_w=10, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
         """ A weighted sum of reward terms considering next terms:
             1. ee_pos_error: position distance from goal (ee_pos_error, l2 norm of the difference between current ee pos and goal ee pos), 
             2. ee_rot_error: orientation distance" (l2 norm of the difference between current and goal)
@@ -210,28 +206,20 @@ class rlptAgent:
         Returns:
             np.float64: total reward of the transition from s(t) to s(t+1).
         """
-        # pos_eps_ee_convergence = 0.01
-        # rot_eps_ee_convergence = 0.01
-        
+       
         
         assert_positive = [pos_w, col_w, step_dur_w, pos_r_radius, pos_r_sharpness]
         for arg in assert_positive:
             arg_name = f'{arg=}'.split('=')[0]
             assert arg > 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
          
-        postion_reward = math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
+        postion_reward = pos_w * math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
         orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
         orientation_reward = orient_w * - ee_rot_error  
         primitive_collision_reward = col_w * - int(contact_detected)
         step_duration_reward = step_dur_w * - step_duration
         total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
-        
-        
-        # print(f"rewards: position, orientation, premitive-collision , step duration\n{postion_reward:{.3}f}, {orientation_reward:{.3}f}, {primitive_collision_reward:{.3}f}, {step_duration_reward:{.3}f}")
-#         print(f"r(t) (term, reward):\n\
-# position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (error, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({primitive_collision_error:{.3}f},{primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
-        print(f"r(t) (term, reward):\n\
-position (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (was contact, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
+        print(f"r(t) (term, reward):\nposition (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (was contact, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
         
         return total_reward
 
