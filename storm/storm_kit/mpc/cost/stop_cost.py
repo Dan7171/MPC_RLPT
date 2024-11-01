@@ -94,8 +94,8 @@ class StopCost(nn.Module):
             
         
         sniffer = GLobalVars.cost_sniffer
-        if sniffer.is_initialized():    
-            sniffer.set(cost_term_name, CostTerm(w1, t1))
+        # if sniffer.is_initialized():    
+        sniffer.set(cost_term_name, CostTerm(w1, t1))
              
         return cost.to(inp_device)
     

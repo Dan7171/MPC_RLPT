@@ -82,8 +82,8 @@ class PrimitiveCollisionCost(nn.Module):
         penetration_to_obstacles_depth = dist + safety_distance_rltp
         if dist.shape == torch.Size([1,1,6]): # real world
             contact = torch.any(penetration_to_obstacles_depth > 0)
-            if sniffer.is_initialized():
-                sniffer.is_contact_real_world = True if contact else False # contact detected
+            # if sniffer.is_initialized():
+            sniffer.is_contact_real_world = True if contact else False # contact detected
                 
             if contact: # real world and collision - print red 
                 print(f"'\033[91m'Collision detected!!!\
@@ -116,8 +116,8 @@ class PrimitiveCollisionCost(nn.Module):
         cost = w1 * t1  
         
         # sniffer = GLobalVars.cost_sniffer
-        if sniffer.is_initialized():
-            sniffer.set('primitive_collision', CostTerm(w1, t1))
+        # if sniffer.is_initialized():
+        sniffer.set('primitive_collision', CostTerm(w1, t1))
             
         return cost.to(inp_device)
     def update_weight(self, weight):

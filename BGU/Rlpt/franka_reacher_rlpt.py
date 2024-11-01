@@ -832,8 +832,7 @@ class MpcRobotInteractive:
                 
             return ts, steps_done, forced_stopping
         
-        # finally:
-        #     return ts, steps_done, forced_stopping
+        
             
         
     def get_all_coll_obs_actor_names(self): # all including non participating
@@ -1146,7 +1145,6 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
     # rlpt setup
     rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
-    sniffer_params['is_initialized'] = True
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
         
