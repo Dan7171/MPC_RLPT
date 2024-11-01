@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import numpy as np
+import torch
 from BGU.Rlpt.DebugTools.storm_tools import RealWorldState, is_real_world 
 from BGU.Rlpt.Classes.CostTerm import CostTerm
 import threading
@@ -92,7 +93,7 @@ class CostFnSniffer:
         self.save_costs = save_costs # save all costs to a file
         self.gui = gui
         self.is_contact_real_world = False # if collision/contact with obstacles was detected
-        
+        self.mppi_policy = [torch.Tensor(), torch.Tensor()] #  
         # relevant only when save_costs is True:
         if self.save_costs:    
             self.costs_buff_real = []  # buffer to store real costs which were calculated during the simulation before flushing them to storage  
@@ -107,7 +108,7 @@ class CostFnSniffer:
 
             # 2 GUI objects - realated to URLS
             self._gui_dashboard1 = Gui(title="Real World Costs", port=8050)
-            self._gui_dashboard2 = Gui(title="MPC Costs", port=8081)
+            self._gui_dashboard2 = Gui(title="MPC Costs", port=8051)
             
             
             # 2 gui dashboard threads - update gui in background
@@ -203,6 +204,17 @@ class CostFnSniffer:
             
             time.sleep(update_rate)
             
+    def get_current_mppi_policy(self):
+        return self.mppi_policy
+    
+    def set_current_mppi_policy(self, horizon_means, covariances):
+        if horizon_means is not None:
+            self.mppi_policy[0] = horizon_means
+        if covariances is not None:
+            self.mppi_policy[1] = covariances
+        
+        
+
     def is_initialized(self):
         return self._is_initialized
         

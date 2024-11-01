@@ -69,6 +69,40 @@ RED = gymapi.Vec3(0.8, 0.1, 0.1)
 ONE_CM = 0.01 # IN METERS
 etl_file_path = 'etl.csv'
 
+
+
+# Only as reference:
+# cost_fn_space_defaults = {
+#     "goal_pose": {'weight': [15.0, 100.0]# orientation, position.
+#                     }, 
+#     "zero_vel": {'weight': 0.0}, 
+#     "zero_acc": {'weight': 0.0},
+#     "joint_l2": {'weight': 0.0},
+#     "robot_self_collision": {'weight': 5000,
+#                                 'distance_threshold': 0.05
+#                                 },
+#     "primitive_collision" : {'weight': 5000,
+#                                 'distance_threshold': 0.05
+#                                 },
+#     "voxel_collision" :{'weight': 0.0},
+#     "null_space": {'weight': 1.0},
+#     "manipulability": {'weight': 30},
+#     "ee_vel": {'weight': 0.0}, 
+#     "stop_cost": {'weight': 100,
+#                     'max_nlimit': 1.5 # maximal joint speed acceleration on some a(t,h)
+#                     },         
+#     "stop_cost_acc": {'weight': 0.0,
+#                         'max_limit': 0.1}, # ? 
+#     "smooth": {'weight': 0.0}, # smoothness
+#     "state_bound": {'weight': 1000}, # joint limit avoidance
+# }
+# mppi_space_defaults = {'horizon': 30,
+#                         'n_iters': 1,
+#                         'num_particles': 500
+#                     }
+
+
+
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
 def make_plot(x:Union[None,tuple]=None, ys:list=[]):
@@ -643,14 +677,7 @@ class MpcRobotInteractive:
         ee_pos_error: np.float64
         ee_rot_error: np.float64 
         
-        # empty arrays to log all errors along the episode 
-        pos_errors = np.zeros(episode_max_ts)
-        rot_errors = np.zeros(episode_max_ts)
-        self_collision_errors = np.zeros(episode_max_ts)
-        objs_collision_errors = np.zeros(episode_max_ts)
-        
-        time_to_goal = -1
-        ts_to_goal = -1
+    
         
         # -- start episode control loop --
         
@@ -726,6 +753,7 @@ class MpcRobotInteractive:
                 # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
                 # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
                 contacted_detected:bool = sniffer.is_contact_real_world
+                # mppi_policy_t = sniffer.get_current_policy()
                 rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contacted_detected, step_duration)
 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
@@ -788,7 +816,8 @@ class MpcRobotInteractive:
                 if passed_goal_test := in_zone_cntr >= in_zone_threshold: # steps in a row where ee was in target  
                     break    
                            
-            
+            return ts, steps_done, forced_stopping
+        
         except KeyboardInterrupt:
             forced_stopping = True
             new_row = []
@@ -801,11 +830,10 @@ class MpcRobotInteractive:
                     writer = csv.writer(file)
                     writer.writerow(new_row)
                 
-            
-                
-            
-        finally:
             return ts, steps_done, forced_stopping
+        
+        # finally:
+        #     return ts, steps_done, forced_stopping
             
         
     def get_all_coll_obs_actor_names(self): # all including non participating
@@ -978,7 +1006,11 @@ class MpcRobotInteractive:
         else:
             return position                
     
-
+def add_padding_to_objs(participating, not_participating):
+    all_objs = participating + not_participating
+    
+    
+    
 
 def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict) -> Tuple[dict, dict, list]:
     
@@ -1072,7 +1104,7 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     return participating, not_participatig, goal_pose                
                 
     
-def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_path=True):
+def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_path=True, max_col_objs = 10):
     """
 
     Args:
@@ -1124,39 +1156,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
     output_file = f'BGU/Rlpt/experiments/experiments_results/experiment1_{make_date_time_str()}.pl'
-    # worlds_generator = select_world_callback() # callback must select participating collision objects from original file
     mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
-    data = []
 
-    
-    cost_fn_space_defaults = {
-        "goal_pose": {'weight': [15.0, 100.0]# orientation, position.
-                      }, 
-        "zero_vel": {'weight': 0.0}, 
-        "zero_acc": {'weight': 0.0},
-        "joint_l2": {'weight': 0.0},
-        "robot_self_collision": {'weight': 5000,
-                                 'distance_threshold': 0.05
-                                 },
-        "primitive_collision" : {'weight': 5000,
-                                 'distance_threshold': 0.05
-                                 },
-        "voxel_collision" :{'weight': 0.0},
-        "null_space": {'weight': 1.0},
-        "manipulability": {'weight': 30},
-        "ee_vel": {'weight': 0.0}, 
-        "stop_cost": {'weight': 100,
-                      'max_nlimit': 1.5 # maximal joint speed acceleration on some a(t,h)
-                      },         
-        "stop_cost_acc": {'weight': 0.0,
-                          'max_limit': 0.1}, # ? 
-        "smooth": {'weight': 0.0}, # smoothness
-        "state_bound": {'weight': 1000}, # joint limit avoidance
-    }
-    mppi_space_defaults = {'horizon': 30,
-                           'n_iters': 1,
-                           'num_particles': 500
-                        }
 
     # Init rlpt agent action space
     cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
@@ -1199,26 +1200,24 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         'cost_weights': get_combinations(cost_fn_space),
         'mpc_params': get_combinations(mppi_space)}))
     
-    
-    # rlpt_action_space.append(rlptAgent.NO_OP_CODE)# an action of doing nothing
-    model_file_path = 'ddqn_model_checkpoint.pth'
-    # settings_file = 'rlpt_settings.pl'
-    ep = 0
-    
     # moni = Monitor(x_label='t', y_labels = ['r(t)', 'mean dofs abs vel (s(t))', 'contact(r(t))','selection-duration(a(t))'])
     # moni.start()
     
+    model_file_path = 'ddqn_model_checkpoint.pth'
+    ep = 0
+    steps_done = 0 # in total (throughout all training)    
+    # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
+    all_coll_objs_with_locs = {}
+    for obj_type in mpc.all_collision_objs:
+        for obj_name in mpc.all_collision_objs[obj_type]:
+            all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
+
     try:
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
-        steps_done = 0 # in total (throughout all training)    
         while ep < n_episodes: # for each episode id with a unique combination of initial parameters
-            # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
-            all_coll_objs_with_locs = {}
-            for obj_type in mpc.all_collision_objs:
-                for obj_name in mpc.all_collision_objs[obj_type]:
-                    all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
             particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
+            # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
             env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
             if ep == 0:
                 # Initialize the rlpt agent, including a DQN/DDQN.
@@ -1237,7 +1236,6 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
                 else:
                     # If no model file exists, initialize etl file (set etl labels)
                     st_titles = rlpt_agent.get_states_legend()
-                    # list(rlpt_agent.parse_st(st).values()) 
                     st_titles = ['st_' + pair[1] for pair in st_titles]
                     at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
                     at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
@@ -1267,13 +1265,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable,from_p
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
             
-    # except KeyboardInterrupt:
-    #     print("KeyboardInterrupt: Shutting down...")
-    # finally:
-    #     moni.stop()
-    #     # moni.thread.join()
-    #     print("Stopped successfully.")
+
     
 if __name__ == '__main__':
-    train_loop(10000, 1500, generate_new_world)
+    train_loop(10000, 1500, generate_new_world, max_col_objs = 10)
     

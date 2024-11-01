@@ -22,7 +22,7 @@ def _merge_dict(original, update):
     return new
     
 class rlptAgent:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_col_objs=10):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -42,6 +42,9 @@ class rlptAgent:
         self.all_coll_objs_s0 = _merge_dict(self.participating_storm, self.not_participating_storm)
         if len(self.all_coll_objs_s0) != len(self.participating_storm) + len(self.not_participating_storm):
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
+        if len(self.all_coll_objs_s0) > max_col_objs:
+            raise BadArgumentUsage(f"participating and non participating objects could be at most at length {max_col_objs}")
+        self.max_col_objs = max_col_objs        
         self.col_obj_s0_flat_states:dict[str,np.ndarray]= self.flatten_coll_obj_states(self.all_coll_objs_s0) # {'obj name': flattened objected state in storm cs([5,1,3,0.4...])}
         self.col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
         

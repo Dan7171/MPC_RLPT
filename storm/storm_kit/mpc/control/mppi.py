@@ -32,7 +32,8 @@ from torch.nn.functional import normalize as f_norm
 
 from .control_utils import cost_to_go, matrix_cholesky, batch_cholesky
 from .olgaussian_mpc import OLGaussianMPC
-
+from BGU.Rlpt.DebugTools.globs import GLobalVars
+sniffer = GLobalVars.cost_sniffer
 class MPPI(OLGaussianMPC):
     """
     .. inheritance-diagram:: MPPI
@@ -148,8 +149,11 @@ class MPPI(OLGaussianMPC):
         #print(w, top_idx)
         #new_mean = sum_seq.T
         #matplotlib.use('tkagg')
+        
+        # THESE ARE THE POLICY MEANS OF THE MPPI: tensor in shape Hx7 {(horizon) x (action means at on 7 joints)}
         self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
             self.step_size_mean * new_mean
+        sniffer.set_current_mppi_policy(self.mean_action, None)
         #c = self.mean_action.cpu().numpy()
         #plt.plot(a[:,0])
         #plt.plot(b[:,0])
@@ -195,9 +199,14 @@ class MPPI(OLGaussianMPC):
             #    return
             else:
                 raise ValueError('Unidentified covariance type in update_distribution')
-            
+        
+            # THESE ARE THE POLICY COVARIANCES OF THE MPPI: tensor in shape 1x7 {covariance of each mean of the policy means - to create the H gaussians}
+            # TOGETHER WITH POLICY MEANS IT CONSTRURCTS THE CURRENT POLICY
             self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
                 self.step_size_cov * cov_update
+            sniffer.set_current_mppi_policy(None, self.cov_action)
+        
+            
             #if(cov_update == 'diag_AxA'):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
