@@ -33,7 +33,6 @@ from torch.nn.functional import normalize as f_norm
 from .control_utils import cost_to_go, matrix_cholesky, batch_cholesky
 from .olgaussian_mpc import OLGaussianMPC
 from BGU.Rlpt.DebugTools.globs import GLobalVars
-sniffer = GLobalVars.cost_sniffer
 class MPPI(OLGaussianMPC):
     """
     .. inheritance-diagram:: MPPI
@@ -153,6 +152,9 @@ class MPPI(OLGaussianMPC):
         # THESE ARE THE POLICY MEANS OF THE MPPI: tensor in shape Hx7 {(horizon) x (action means at on 7 joints)}
         self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
             self.step_size_mean * new_mean
+
+        sniffer = GLobalVars.cost_sniffer
+
         sniffer.set_current_mppi_policy(self.mean_action, None)
         #c = self.mean_action.cpu().numpy()
         #plt.plot(a[:,0])

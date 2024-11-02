@@ -62,6 +62,7 @@ from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
 from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
+from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray
 
 np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
@@ -676,8 +677,9 @@ class MpcRobotInteractive:
         rt: np.float64
         ee_pos_error: np.float64
         ee_rot_error: np.float64 
-        
-    
+        curr_pi_mppi_means: torch.Tensor
+        curr_pi_mppi_covs: torch.Tensor
+        sniffer = GLobalVars.cost_sniffer 
         
         # -- start episode control loop --
         
@@ -694,21 +696,24 @@ class MpcRobotInteractive:
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
         goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
         goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
-        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx) # converting the state to a form that agent would feel comfortable with
+        
+        # set initial mppi policy means and covariances at sniffer (empty policy)
+        curr_pi_mppi_means = torch.zeros(rlpt_agent.max_horizon, 7)
+        curr_pi_mppi_covs = torch.zeros(7)
+        sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
+        curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
+        curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
+        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx,curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
         forced_stopping = False
-
+        
         try:
             for ts in range(episode_max_ts):
+                # rlpt - print status
                 print(f'\n')
                 print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")     
-                # print(f's(t):\n{st}\n{rlpt_agent.parse_st(st)})')
-                print('s(t) parsed:')
-                st_parsed = rlpt_agent.parse_st(st)
-                st_parsed_dict = {} 
-                for item_name, item_st  in st_parsed.items():
-                    print(f'{item_name}: {item_st}')
-                    st_parsed_dict[item_name] = item_st
+                rlpt_agent.print_state(st)
+                
                 # rlpt - select action (a(t))
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
                 forbidden_action_indices:set = set() # empty set - all actions are allowed
@@ -717,7 +722,6 @@ class MpcRobotInteractive:
                     if h_sequence_len < prev_h:  
                         different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
                         forbidden_action_indices = different_h_action_indices
-                
                 at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
                 
                 if speedup_training: 
@@ -728,9 +732,11 @@ class MpcRobotInteractive:
                         h_sequence_len += 1
                         
                 # print action unique features
-                at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
-                print(f'a(t): {at_unique_features}')
-                
+                if len(rlpt_agent.unique_action_features_by_idx):
+                    at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
+                    print(f'a(t): {at_unique_features}')
+                else:
+                    print(f'a(t): only one action allowed (fixed parameters)')
                 # rlpt and mpc planner - make steps
                 step_start_time = time.time()
                 self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -743,11 +749,13 @@ class MpcRobotInteractive:
                 goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
                 goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
                 curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-                s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx) # converting the state to a form that agent would feel comfortable with
+                curr_pi_mppi_means, curr_pi_mppi_covs = sniffer.get_current_mppi_policy() 
+                curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
+                curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
+                s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
                 
                 
-                # rlpt - compute reward (r(t))
-                sniffer:CostFnSniffer = GLobalVars.cost_sniffer    
+                # rlpt - compute reward (r(t))  
                 ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
                 ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
                 # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
@@ -765,29 +773,25 @@ class MpcRobotInteractive:
                 
                 print(f'a(t) index: {at_idx}')
                 print(f'r(t): {rt}')
-                # print(f'len memory: {len(rlpt_agent.train_suit.memory)}')
                 
                 # rlpt- perform optimization step
                 optim_meta_data = rlpt_agent.train_suit.optimize()
-                
                 steps_done += 1
                 
                 # rlpt- update target network
                 if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
                     rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
                 
-                # ys = [ep_num, ts, step_duration, rt, ee_pos_error, ee_rot_error, contacted_detected, *st_parsed_dict.values()]
-                # x = ts
-                # new_data = ['value1', 'value2', 'value3']  # Replace with your actual data row
-                # set etl labels
                 
                 st_parsed:list = list(rlpt_agent.parse_st(st).values()) 
-                # st_titles = ['st_'+k for k in st_titles]
-                at_unique_features:list = list(rlpt_agent.unique_action_features_by_idx[at_idx].values())
-                # at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
-                # at_titles_shared_features = rlpt_agent.shared_action_features.keys()
-                at_shared_features:list = list(rlpt_agent.shared_action_features.values())
-                st_at:list = st_parsed + at_unique_features + at_shared_features
+                at_unique_features = []
+                if len(rlpt_agent.unique_action_features_by_idx):
+                    at_unique_features = list(rlpt_agent.unique_action_features_by_idx[at_idx].values())
+                at_shared_features = []
+                if len(rlpt_agent.shared_action_features):
+                    at_shared_features = list(rlpt_agent.shared_action_features.values())
+                
+                st_at = st_parsed + at_unique_features + at_shared_features
                 
                 # row for etl
                 new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
@@ -804,6 +808,10 @@ class MpcRobotInteractive:
                 st = s_next
                 prev_at_idx = at_idx
                 prev_at = at
+                
+                
+                
+
                 
                 # Perform goal test
                 # update counters
@@ -1048,16 +1056,18 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     very_small = 1e-4 # in meters
     invisible_cube_dims = [very_small] * 3
     
-    default_goal_pose = [0.47, 0.47, 0.1, 0, 2.5, 0, 1] # in storm ccordinates
-    optional_goal_poses = [[0.47, 0.47, 0.1, 0, 2.5, 0, 1], 
-                           [0.47, 0.47, 0.1, 0, 0.4, 0, 0.2],
-                           [-0.3, 0.07, 0.31, 0, 0, 0, 1],
-                           [-0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
-                           [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
-                           [-0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
-                           [0.25, 0.21, 0.3, 0.13, 0.4, 0.1, -0.1],
-                           [0.15, -0.11, 0.2, 0.33, -0.4, 0, 0.2],
-                           [0.25, 0.11, 0.2, -0.23, 1, 0.4, 0.2]]
+    default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
+    optional_goal_poses = [
+        # [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
+        # [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
+        [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
+    #    [0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
+    #    [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
+    #    [0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
+    #    [0.25, 0.21, 0.4, 0.13, 0.4, 0.1, -0.1],
+    #    [0.25, -0.11, 0.2, 0.33, -0.4, 0, 0.2],
+    #    [0.35, -0.3, 0.5, -0.23, 1, 0.4, 0.2]
+        ]
     external_to_env_state_sphere = {'radius': very_small, 'position': far_away_position}
     external_to_env_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
 
@@ -1161,17 +1171,21 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
     cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
         
         # distance from goal pose (orientation err weight, position err weight).
-        "goal_pose":  [(1.0, 100.0), # goal 100:1
-                       # (15.0, 100.0), # goal 100:15
-                       (100.0, 1.0)], # orientation 100:15
+        "goal_pose":  [
+            # (1.0, 100.0), # goal 100:1
+            (15.0, 100.0), # goal 100:15
+            # (100.0, 1.0)
+            ], # orientation 100:15
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0], 
         "robot_self_collision": [5000], # collision with self (robot with itself)
         
         # collision with environment (obstacles)
-        "primitive_collision" : [100, # low collison carefulness   
-                                 5000], # high collison carefulness
+        "primitive_collision" : [
+            # 100, # low collison carefulness   
+            5000
+            ], # high collison carefulness
         "voxel_collision" : [0.0],
         "null_space": [1.0],
         "manipulability": [30], 
@@ -1186,10 +1200,11 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
         }
     mppi_space = {
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
-        "horizon": [30, # myopic
-                    60, # mid-level 
-                    150 # long ranger observer
-                    ],         
+        "horizon": [
+            30, # myopic sight
+            # 75, # mid-level 
+            320 # long range observer
+            ],         
         "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "n_iters": [1] # Num of optimization steps 
     } 
@@ -1235,9 +1250,13 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
                     # If no model file exists, initialize etl file (set etl labels)
                     st_titles = rlpt_agent.get_states_legend()
                     st_titles = ['st_' + pair[1] for pair in st_titles]
-                    at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
+                    at_titles_unique_features = []
+                    if len(rlpt_agent.unique_action_features_by_idx):
+                        at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
                     at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
-                    at_titles_shared_features = rlpt_agent.shared_action_features.keys()
+                    at_titles_shared_features = []
+                    if len(rlpt_agent.shared_action_features):
+                        at_titles_shared_features = rlpt_agent.shared_action_features.keys()
                     at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
                     st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
                     col_names = ['ep', 't','rand_at_p','rand_at', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'contact_s(t+1)', 'pos_er_s(t+1)','rot_er_s(t+1)','optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss', 'forced_stopping']
@@ -1266,5 +1285,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
 
     
 if __name__ == '__main__':
-    train_loop(10000, 1500, generate_new_world, max_col_objs = 10)
+    train_loop(10000, 3000, generate_new_world, max_col_objs = 10)
     

@@ -263,7 +263,7 @@ class Controller(ABC):
         value = 0.0
         if calc_val:
             trajectories = self.generate_rollouts(state)
-            value = self._calc_val(trajectories)
+            value = self._calc_val(trajectories) # costs
 
         # # shift distribution to hotstart next timestep
         # if self.hotstart:

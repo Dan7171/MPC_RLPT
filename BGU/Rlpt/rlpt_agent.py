@@ -42,19 +42,21 @@ class rlptAgent:
         self.all_coll_objs_s0 = _merge_dict(self.participating_storm, self.not_participating_storm)
         if len(self.all_coll_objs_s0) != len(self.participating_storm) + len(self.not_participating_storm):
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
-        if len(self.all_coll_objs_s0) > max_col_objs:
-            raise BadArgumentUsage(f"participating and non participating objects could be at most at length {max_col_objs}")
+        # if len(self.all_coll_objs_s0) > max_col_objs:
+        #     raise BadArgumentUsage(f"participating and non participating objects could be at most at length {max_col_objs}")
         self.max_col_objs = max_col_objs        
         self.col_obj_s0_flat_states:dict[str,np.ndarray]= self.flatten_coll_obj_states(self.all_coll_objs_s0) # {'obj name': flattened objected state in storm cs([5,1,3,0.4...])}
         self.col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
-        
+        self.max_horizon = self._get_max_h() # maximun horizon in action space
         # define every s(t) specifications
         self.st_componentes_ordered = ['robot_base_pos',
                                        'robot_dofs_positions',
                                        'robot_dofs_velocities', 
                                        'goal_pose',  
                                        'prev_action_idx',
-                                       'coll_objs'
+                                       'coll_objs',
+                                       'pi_mppi_means',
+                                       'pi_mppi_covs',
                                        ]
         
         self.st_componentes_ordered_dims = [3, # x,y,z pos of robot base (3)
@@ -62,7 +64,9 @@ class rlptAgent:
                                             7, # similarly to positions, an angular velocity on each dof 
                                             7, # position (3), orientation (4)
                                             1, # the index of the previous action which was taken
-                                            len(self.col_obj_s0_sorted_concat) # flatten state length (NN input length). 
+                                            len(self.col_obj_s0_sorted_concat), # flatten state length (NN input length).
+                                            7 * self.max_horizon, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
+                                            7 # # MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
                                             ]  
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t)
         self.st_legend = self.get_states_legend() # readable shape of the state 
@@ -88,7 +92,16 @@ class rlptAgent:
             stop = component_range[1]
             out[component_name] = st[start:stop+1]
         return out
+    def print_state(self,st):
         
+        st_parsed = self.parse_st(st)
+        print('s(t):')
+        for item_name, item_st  in st_parsed.items():
+            if 'mppi' in item_name:
+                print('skipped mppi policy printing')
+                continue
+            print(f'{item_name}: {item_st}')
+            
     def select_action(self, st:torch.Tensor,forbidden_action_indices):
         """Given state s(t) return action a(t) and its index
         
@@ -135,7 +148,7 @@ class rlptAgent:
             out= np.append(out, col_obj_st_flat_states[obj_name]) # np.append([1, 2, 3], [[4, 5, 6], [7, 8, 9]]) - >array([1, 2, 3, ..., 7, 8, 9])
         return out
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, prev_at_idx:Union[None, int]) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, prev_at_idx:Union[None, int], pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
@@ -145,13 +158,15 @@ class rlptAgent:
         if prev_at_idx is None:
             prev_at_idx = no_prev_action_code
         prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
-
+        pi_mppi_means_padded = self._pad_pi_with_zeros(pi_mppi_means).flatten() # pad inactivate horizon with zeros (for making input size fixed) and flatten 
         st = {'robot_base_pos': self.base_pos_gym_s0, 
               'robot_dofs_positions': robot_dof_positions_gym,
               'robot_dofs_velocities': robot_dof_velocities_gym, 
               'goal_pose': goal_pose_gym, # 
               'prev_action_idx': prev_at_idx_np,
-              'coll_objs': self.col_obj_s0_sorted_concat
+              'coll_objs': self.col_obj_s0_sorted_concat,
+              'pi_mppi_means': pi_mppi_means_padded,
+              'pi_mppi_covs': pi_mppi_covs
         }
         ordered_st_components = [st[key] for key in self.st_componentes_ordered]
         return np.concatenate(ordered_st_components)
@@ -253,8 +268,32 @@ class rlptAgent:
         different_params_by_action_inx:list = df_diffs.to_dict(orient='records') # l[i] a dict of the ith action, containing the unique assignment of this action to action features with 2 or more options  
         return shared_params_all_actions, different_params_by_action_inx 
     
-                
-                
+    def _pad_pi_with_zeros(self, mppi_pi_means_cur_h:np.ndarray) -> np.ndarray:
+        """ adding (max H - curr H) steps to policy with action = [0,0,0,0,0,0,0] (zero at each dof) for padding 
+
+        Args:
+            mppi_pi_means_cur_h (np.ndarray): 
+
+        Returns:
+            _type_: _description_
+        """
+        
+        cur_pi_horizon = mppi_pi_means_cur_h.shape[0]
+        rows_to_pad = self.max_horizon - cur_pi_horizon
+        result = mppi_pi_means_cur_h
+        if rows_to_pad > 0: # current policy is for H smaller than max H 
+            trailing_zeros = np.zeros((rows_to_pad, 7))
+            result = np.vstack((mppi_pi_means_cur_h, trailing_zeros))
+        else:
+            assert rows_to_pad == 0, 'bug'
+        
+        return result
+           
+    def _get_max_h(self):
+        cur_max = 0
+        for action in self.action_space:
+            cur_max = max(cur_max, action['mpc_params']['horizon'])
+        return cur_max
         
   
             

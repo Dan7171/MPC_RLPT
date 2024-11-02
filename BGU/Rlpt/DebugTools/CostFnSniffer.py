@@ -116,7 +116,8 @@ class CostFnSniffer:
             threading.Thread(target=self._cost_terms_reading_loop, daemon=True, kwargs={"real_world": False, "full_horizon": True}).start()
             
     def aquire_lock(self):
-        lock = lock1 if is_real_world() else lock2
+        # lock = lock1 if is_real_world() else lock2
+        lock = lock1
         return lock
     
     def set(self, ct_name: str, ct: CostTerm):
