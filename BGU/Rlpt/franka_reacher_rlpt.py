@@ -760,9 +760,9 @@ class MpcRobotInteractive:
                 ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
                 # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
                 # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
-                contacted_detected:bool = sniffer.is_contact_real_world
+                contact_detected:bool = sniffer.is_contact_real_world
                 # mppi_policy_t = sniffer.get_current_policy()
-                rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contacted_detected, step_duration)
+                rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
@@ -795,7 +795,7 @@ class MpcRobotInteractive:
                 
                 # row for etl
                 new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
-                        at_meta_data['q'], *st_at, step_duration, rt, contacted_detected, ee_pos_error, ee_rot_error, 
+                        at_meta_data['q'], *st_at, step_duration, rt, contact_detected, ee_pos_error, ee_rot_error, 
                         optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
                 
                 with open(etl_file_path, mode='a', newline='') as file:
