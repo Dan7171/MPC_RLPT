@@ -96,6 +96,21 @@ class RobotSelfCollisionCost(nn.Module):
         res = self.coll.check_self_collisions_nn(q)
         
         res = res.view(batch_size, horizon)
+        
+        sniffer = GLobalVars.cost_sniffer
+        safety_distance_rlpt = 0.005 # if getting too close to self collision - declare "collision"
+        self_contact_depth = res + safety_distance_rlpt
+        if res.shape == torch.Size([1,1]): # real world
+            contact = torch.any(self_contact_depth > 0)
+            sniffer.is_self_contact_real_world = True if contact else False # contact detected
+                
+            if contact: # real world and collision - print red 
+                print(f"'\033[91m'Self collision detected!!!\
+                    \nmaximum penetration depth into self (arm to itself penetration) , by link index:\
+                    \n{self_contact_depth}\
+                        \n'\033[0m'")
+        
+        
         res += self.distance_threshold
         res[res <= 0.0] = 0.0
 

@@ -760,8 +760,7 @@ class MpcRobotInteractive:
                 ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
                 # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
                 # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
-                contact_detected:bool = sniffer.is_contact_real_world
-                # mppi_policy_t = sniffer.get_current_policy()
+                contact_detected:bool = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
                 rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
@@ -1058,8 +1057,8 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     
     default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
     optional_goal_poses = [
-        # [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
-        # [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
+        [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
+        [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
         [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     #    [0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
     #    [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
@@ -1172,20 +1171,20 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
         
         # distance from goal pose (orientation err weight, position err weight).
         "goal_pose":  [
-            # (1.0, 100.0), # goal 100:1
-            (15.0, 100.0), # goal 100:15
-            # (100.0, 1.0)
+            (1.0, 100.0), # goal 100:1
+            # (15.0, 100.0), # goal 100:15
+            (100.0, 1.0)
             ], # orientation 100:15
         "zero_vel": [0.0], 
         "zero_acc": [0.0],
         "joint_l2": [0.0], 
-        "robot_self_collision": [5000], # collision with self (robot with itself)
-        
+        "robot_self_collision": [
+            100
+            ], # collision with self (robot with itself)
         # collision with environment (obstacles)
         "primitive_collision" : [
-            # 100, # low collison carefulness   
-            5000
-            ], # high collison carefulness
+            100, # low collison carefulness   
+            ], 
         "voxel_collision" : [0.0],
         "null_space": [1.0],
         "manipulability": [30], 
@@ -1202,8 +1201,8 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
         "horizon": [
             30, # myopic sight
-            # 75, # mid-level 
-            320 # long range observer
+            165, # mid-level 
+            300 # long range observer
             ],         
         "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "n_iters": [1] # Num of optimization steps 
@@ -1285,5 +1284,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
 
     
 if __name__ == '__main__':
-    train_loop(10000, 3000, generate_new_world, max_col_objs = 10)
+    train_loop(10000, 5000, generate_new_world, max_col_objs = 10)
     
