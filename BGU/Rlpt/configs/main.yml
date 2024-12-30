@@ -11,5 +11,13 @@ episode_plots:
   show: true
 
 agent:
+  model:
+    load_checkpoint: false
+    checkpoint_path: 'BGU/Rlpt/trained_models/Mon16:57:56/model.pth'
+    dst_dir: 'BGU/Rlpt/trained_models'
+    include_etl: true
+    # from_checkpoint: true
+    # checkpoint_path: 'BGU/Rlpt/trained_models/your_start_time/etl.pth'
+
   train_suit:
     gamma: 1

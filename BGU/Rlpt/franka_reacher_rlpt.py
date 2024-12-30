@@ -3,6 +3,7 @@
 Based on Elias's franka_reacher_for_comparison.py 
 """
 import copy
+import datetime
 from os import name
 import os
 import pickle
@@ -58,7 +59,7 @@ from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
 import matplotlib.pyplot as plt
 from BGU.Rlpt.experiments.experiment_utils import get_combinations
-from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
+# from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
 from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
@@ -68,7 +69,10 @@ np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
 ONE_CM = 0.01 # IN METERS
-etl_file_path = 'etl.csv'
+now = time.time()
+date_time = time.strftime('%Y:%m:%d(%a)%H:%M:%S')
+model_dir = os.path.join('BGU/Rlpt/trained_models') 
+# etl_file_path = 'etl.csv'
 
 
 
@@ -652,7 +656,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, steps_done:int=0, in_zone_threshold=10, moni=None):
+    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, include_etl:bool, steps_done:int=0, in_zone_threshold=10, moni=None,):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -796,10 +800,11 @@ class MpcRobotInteractive:
                 new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
                         at_meta_data['q'], *st_at, step_duration, rt, contact_detected, ee_pos_error, ee_rot_error, 
                         optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
-                
-                with open(etl_file_path, mode='a', newline='') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(new_row)
+                if include_etl:    
+                    
+                    with open(etl_file_path, mode='a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(new_row)
                 
                 # moni.update_data(x, ys)   
                         
@@ -1112,7 +1117,7 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     return participating, not_participatig, goal_pose                
                 
     
-def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_path=True, max_col_objs = 10):
+def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     """
 
     Args:
@@ -1127,6 +1132,181 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
         _type_: _description_
     """
     
+    
+    # # parse arguments to start simulation
+    # parser = argparse.ArgumentParser(description='pass args')
+    # parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
+    # parser.add_argument('--cuda', action='store_true', default=True, help='use cuda') # use cude
+    # parser.add_argument('--headless', action='store_true', default=False, help='headless gym') # False means use viewer (gui)
+    # parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
+    # parser.add_argument('--env_yml_relative', type=str, default='', help='asset specifications of environment. Relative path under storm/content/configs/gym')
+    # parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
+    # parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
+    # parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
+    
+
+    # args = parser.parse_args()
+    
+    # # simulation setup
+    # if args.physics_engine_yml_relative == '':
+    #     args.physics_engine_yml_relative = 'rlpt/experiments/experiment1/physx.yml'    
+    # if args.task_yml_relative == '':
+    #     args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'     
+    # if args.env_yml_relative == '':
+    #     # args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
+    #     args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_1.yml'
+    
+    # physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
+    # sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
+    # sim_params['headless'] = args.headless # run with no gym gui
+                    
+    # # rlpt setup
+    
+    # # load a checkpoint NN or start a new training 
+    # rlpt_cfg = GLobalVars.rlpt_cfg
+    # load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
+    # if load_checkpoint_model:
+    #     model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
+    #     assert os.path.exists(model_file_path)
+    # else:
+    #     model_file_path =  os.path.join(rlpt_cfg['agent']['model']['default_dst_dir'], training_start_time, 'model.pth')  
+
+    # include_etl = rlpt_cfg['agent']['model']['include_etl']
+    # if include_etl:
+    #     model_dir =  os.path.split(model_file_path)[0]
+    #     etl_file_path = model_dir + '/etl.csv'
+    #     if load_checkpoint_model:
+    #         assert os.path.exists(etl_file_path)
+        
+        
+    # sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
+    # GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
+    # profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
+    
+    # ##### main loop of episodes execution: #######
+    
+    # gym = Gym(**sim_params) # note - only one initiation is allowed per process
+    # env_file = args.env_yml_relative
+    # task_file = args.task_yml_relative
+    # mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
+
+
+    # # Init rlpt agent action space
+    # cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
+        
+    #     # distance from goal pose (orientation err weight, position err weight).
+    #     "goal_pose":  [
+    #         (1.0, 100.0), # goal 100:1
+    #         # (15.0, 100.0), # goal 100:15
+    #         (100.0, 1.0)
+    #         ], # orientation 100:15
+    #     "zero_vel": [0.0], 
+    #     "zero_acc": [0.0],
+    #     "joint_l2": [0.0], 
+    #     "robot_self_collision": [
+    #         100
+    #         ], # collision with self (robot with itself)
+    #     # collision with environment (obstacles)
+    #     "primitive_collision" : [
+    #         100, # low collison carefulness   
+    #         ], 
+    #     "voxel_collision" : [0.0],
+    #     "null_space": [1.0],
+    #     "manipulability": [30], 
+    #     "ee_vel": [0.0], 
+    #     # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration))
+    #     # "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
+    #     #               (1.0, 30.0)], # low charging (1), and high acceleration limit (10)
+    #     "stop_cost" : [(100.0, 1.5)],        
+    #     "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
+    #     "smooth": [1.0], # smoothness weight
+    #     "state_bound": [1000.0], # joint limit avoidance weight
+    #     }
+    # mppi_space = {
+    #     # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
+    #     "horizon": [
+    #         30, # myopic sight
+    #         165, # mid-level 
+    #         300 # long range observer
+    #         ],         
+    #     "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+    #     "n_iters": [1] # Num of optimization steps 
+    # } 
+    # # This op is aimed to save time when some parameters like horizon are too expansive to modify 
+    # rlpt_action_space:list = list(get_combinations({
+    #     'cost_weights': get_combinations(cost_fn_space),
+    #     'mpc_params': get_combinations(mppi_space)}))
+    
+    # moni = Monitor(x_label='t', y_labels = ['r(t)', 'mean dofs abs vel (s(t))', 'contact(r(t))','selection-duration(a(t))'])
+    # moni.start()
+    mpc = mpc_controller
+    ep = 0
+    steps_done = 0 # in total (throughout all training)    
+    # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
+    all_coll_objs_with_locs = {}
+    for obj_type in mpc.all_collision_objs:
+        for obj_name in mpc.all_collision_objs[obj_type]:
+            all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
+
+    try:
+        if profile_memory: # for debugging gpu if needed   
+            start_mem_profiling()   
+        while ep < n_episodes: # for each episode id with a unique combination of initial parameters
+            particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
+            # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
+            env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
+            if ep == 0:
+                # Initialize the rlpt agent, including a DQN/DDQN.
+                all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
+                all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
+                robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
+                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, rlpt_cfg['agent']) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
+                # load model if a saved one exists
+                # load_model_file = rlpt_cfg['agent']['model']['load']# ['file_path'] 
+                if load_checkpoint_model:
+                    checkpoint = torch.load(model_file_path)
+                    rlpt_agent.load(checkpoint)
+                    ep = checkpoint['episode']
+                    print(f"model loaded. episode modified to: {ep}")
+                else:
+                    # If no model file exists, initialize etl file (set etl labels)
+                    st_titles = rlpt_agent.get_states_legend()
+                    st_titles = ['st_' + pair[1] for pair in st_titles]
+                    at_titles_unique_features = []
+                    if len(rlpt_agent.unique_action_features_by_idx):
+                        at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
+                    at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
+                    at_titles_shared_features = []
+                    if len(rlpt_agent.shared_action_features):
+                        at_titles_shared_features = rlpt_agent.shared_action_features.keys()
+                    at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
+                    st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
+                    col_names = ['ep', 't','rand_at_p','rand_at', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'contact_s(t+1)', 'pos_er_s(t+1)','rot_er_s(t+1)','optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss', 'forced_stopping']
+                    if include_etl:    
+                        with open(etl_file_path, mode='a', newline='') as file:
+                            writer = csv.writer(file)
+                            writer.writerow(col_names)
+                        
+                
+            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl, steps_done=steps_done) 
+            rlpt_agent.save(ep, ts, steps_done, model_file_path)                
+            if keyboard_interupt:
+                raise KeyboardInterrupt()    
+            ep += 1
+            
+            
+                
+        if profile_memory:
+            finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
+
+        
+    except torch.cuda.OutOfMemoryError: 
+        if profile_memory:
+            finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
+            
+
+    
+if __name__ == '__main__':
     
     # parse arguments to start simulation
     parser = argparse.ArgumentParser(description='pass args')
@@ -1156,23 +1336,38 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
     sim_params['headless'] = args.headless # run with no gym gui
                     
     # rlpt setup
-    rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
-    GLobalVars.rlpt_cfg = rlpt_cfg
-
+    GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
+    rlpt_cfg = GLobalVars.rlpt_cfg
+    # load a checkpoint NN or start a new training 
+    load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
+    if load_checkpoint_model:
+        model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
+        assert os.path.exists(model_file_path)
+    else:
+        model_file_path =  os.path.join(rlpt_cfg['agent']['model']['dst_dir'], date_time, 'model.pth')  
+    
+    model_dir =  os.path.split(model_file_path)[0]
+    if not load_checkpoint_model:
+        os.mkdir(model_dir)
+    
+    include_etl = rlpt_cfg['agent']['model']['include_etl']
+    if include_etl:
+        etl_file_path = model_dir + '/etl.csv'
+        if load_checkpoint_model:
+            assert os.path.exists(etl_file_path)
+            
+        
+        
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
-    
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
-        
+    
     ##### main loop of episodes execution: #######
     
     gym = Gym(**sim_params) # note - only one initiation is allowed per process
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
-    output_file = f'BGU/Rlpt/experiments/experiments_results/experiment1_{make_date_time_str()}.pl'
-    mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
-
-
+    mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
     # Init rlpt agent action space
     cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
         
@@ -1219,77 +1414,5 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
         'cost_weights': get_combinations(cost_fn_space),
         'mpc_params': get_combinations(mppi_space)}))
     
-    # moni = Monitor(x_label='t', y_labels = ['r(t)', 'mean dofs abs vel (s(t))', 'contact(r(t))','selection-duration(a(t))'])
-    # moni.start()
-    
-    model_file_path = 'ddqn_model_checkpoint.pth'
-    ep = 0
-    steps_done = 0 # in total (throughout all training)    
-    # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
-    all_coll_objs_with_locs = {}
-    for obj_type in mpc.all_collision_objs:
-        for obj_name in mpc.all_collision_objs[obj_type]:
-            all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-
-    try:
-        if profile_memory: # for debugging gpu if needed   
-            start_mem_profiling()   
-        while ep < n_episodes: # for each episode id with a unique combination of initial parameters
-            particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
-            # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
-            env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
-            if ep == 0:
-                # Initialize the rlpt agent, including a DQN/DDQN.
-                all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
-                all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
-                robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
-                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, rlpt_cfg['agent']) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
-                # load model if a saved one exists
-                load_model_file = os.path.exists(model_file_path)
-                if load_model_file:
-                    # rlpt_agent.action_space = checkpoint['action_space']
-                    checkpoint = torch.load(model_file_path)
-                    rlpt_agent.load(checkpoint)
-                    ep = checkpoint['episode']
-                    print(f"model loaded. episode modified to: {ep}")
-                else:
-                    # If no model file exists, initialize etl file (set etl labels)
-                    st_titles = rlpt_agent.get_states_legend()
-                    st_titles = ['st_' + pair[1] for pair in st_titles]
-                    at_titles_unique_features = []
-                    if len(rlpt_agent.unique_action_features_by_idx):
-                        at_titles_unique_features = rlpt_agent.unique_action_features_by_idx[0].keys()
-                    at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
-                    at_titles_shared_features = []
-                    if len(rlpt_agent.shared_action_features):
-                        at_titles_shared_features = rlpt_agent.shared_action_features.keys()
-                    at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
-                    st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
-                    col_names = ['ep', 't','rand_at_p','rand_at', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'contact_s(t+1)', 'pos_er_s(t+1)','rot_er_s(t+1)','optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss', 'forced_stopping']
-                    if os.path.exists(etl_file_path):
-                        os.remove(etl_file_path)
-                    with open(etl_file_path, mode='a', newline='') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(col_names)
-                
-            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, steps_done=steps_done) 
-            rlpt_agent.save(ep, ts, steps_done, model_file_path)                
-            if keyboard_interupt:
-                raise KeyboardInterrupt()    
-            ep += 1
-            
-            
-                
-        if profile_memory:
-            finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-
-        
-    except torch.cuda.OutOfMemoryError: 
-        if profile_memory:
-            finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-            
-
-    
-if __name__ == '__main__':
-    train_loop(10000, 5000, generate_new_world, max_col_objs = 10)
+    train_loop(10000, 5000, generate_new_world)
     
