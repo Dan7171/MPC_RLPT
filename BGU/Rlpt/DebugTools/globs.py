@@ -9,3 +9,4 @@ from BGU.Rlpt.DebugTools.CostFnSniffer import CostFnSniffer
 class GLobalVars:
     cost_sniffer:CostFnSniffer # if using sniffer, will be changed from None to the sniffer
     print(f"\n\n\n\n\n\n\n SNIFFER \n\n\n\n\n\n\n\n\n")
+    rlpt_cfg:dict

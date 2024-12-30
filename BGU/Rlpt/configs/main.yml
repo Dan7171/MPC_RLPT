@@ -9,3 +9,7 @@ gui:
 
 episode_plots:
   show: true
+
+agent:
+  train_suit:
+    gamma: 1

@@ -20,6 +20,11 @@ default_settings = {
         },
     'episode_plots': {
         'show': False
+    },
+    'agent': {
+        'train_suit':{
+        'gamma': 1
+        }
     }
 }
 

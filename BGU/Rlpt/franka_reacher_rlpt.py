@@ -1138,7 +1138,10 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
     parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
     parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
+    
+
     args = parser.parse_args()
+    
     # simulation setup
     if args.physics_engine_yml_relative == '':
         args.physics_engine_yml_relative = 'rlpt/experiments/experiment1/physx.yml'    
@@ -1147,14 +1150,18 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
     if args.env_yml_relative == '':
         # args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
         args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_1.yml'
+    
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
                     
     # rlpt setup
     rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
+    GLobalVars.rlpt_cfg = rlpt_cfg
+
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
+    
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
         
     ##### main loop of episodes execution: #######
@@ -1236,7 +1243,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable, from_
                 all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
                 all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
                 robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
-                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
+                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, rlpt_cfg['agent']) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
                 # load model if a saved one exists
                 load_model_file = os.path.exists(model_file_path)
                 if load_model_file:

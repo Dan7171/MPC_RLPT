@@ -7,7 +7,10 @@ from click import BadArgumentUsage
 from networkx import union
 from storm_kit.mpc import task
 import torch
+# from BGU.Rlpt.drl.dqn_pack import train_suit
 from BGU.Rlpt.drl.dqn_pack.train_suit import trainSuit
+from BGU.Rlpt.configs.default_main import load_config_with_defaults
+
 import numpy as np
 import pandas as pd
 def get_obj_type(obj_properties):
@@ -230,10 +233,10 @@ class rlptAgent:
         postion_reward = pos_w * math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
         orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
         orientation_reward = orient_w * - ee_rot_error  
-        primitive_collision_reward = col_w * - int(contact_detected)
+        safety_reward = col_w * - int(contact_detected)
         step_duration_reward = step_dur_w * - step_duration
-        total_reward = postion_reward + orientation_reward + primitive_collision_reward + step_duration_reward
-        print(f"r(t) (term, reward):\nposition (ee to goal distance, r), orientation (ee to goal distance, r), prim-coll (was contact, r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
+        total_reward = postion_reward + orientation_reward + safety_reward + step_duration_reward
+        # print(f"r(t) (term, reward):\nposition (ee to goal distance, r), orientation (ee to goal distance, r), (is contact,r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
         
         return total_reward
 

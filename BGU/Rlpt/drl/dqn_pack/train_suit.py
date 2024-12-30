@@ -21,8 +21,10 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from itertools import count
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.drl.dqn_pack.replay_memory import ReplayMemory, Transition
 from BGU.Rlpt.drl.dqn_pack.dqn import DQN
+from BGU.Rlpt.configs.default_main import load_config_with_defaults
 
 from art import text2art 
 
@@ -34,8 +36,9 @@ class trainSuit:
     
     """
     
-    def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99, eps_start = 0.99, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
-                C=100,N=10000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
+    def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
+                eps_start = 0.99, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
+                C=100,N=100000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
         """Initializing a dqn/ddqn network 
 
         Args:
@@ -64,11 +67,11 @@ class trainSuit:
         # learning_rate is the learning rate of the  optimizer (aka alpha or step size)
         # C is the target network update frequenty (set it to be the Q network's weights every C steps)
         # T = Max step num in episode
-        
+        cfg = GLobalVars.rlpt_cfg['agent']['train_suit']
         self.ddqn = ddqn
         self.seed = seed
         self.batch_size = batch_size
-        self.gamma = gamma
+        self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
