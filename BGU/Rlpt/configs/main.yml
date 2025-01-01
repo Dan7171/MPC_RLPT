@@ -21,7 +21,10 @@ agent:
 
   train_suit:
     gamma: 1
+    batch_size: 128
   
   training:
+    n_episodes: 100
+    max_ts: 100
     disable_frequent_h_changing: false
 
