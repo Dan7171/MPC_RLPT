@@ -21,3 +21,7 @@ agent:
 
   train_suit:
     gamma: 1
+  
+  training:
+    disable_frequent_h_changing: false
+
