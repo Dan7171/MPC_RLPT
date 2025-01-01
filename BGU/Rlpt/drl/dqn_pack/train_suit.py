@@ -70,8 +70,8 @@ class trainSuit:
         cfg = GLobalVars.rlpt_cfg['agent']['train_suit']
         self.ddqn = ddqn
         self.seed = seed
-        self.batch_size = batch_size
         self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
+        self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay

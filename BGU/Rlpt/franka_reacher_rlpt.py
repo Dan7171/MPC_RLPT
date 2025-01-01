@@ -203,6 +203,7 @@ class MpcRobotInteractive:
         self.gym_instance = gym_instance
         robot_name: str = self.args.robot # franka
         # RL variables
+        self.initial_ee_pose_storm_cs = np.array([]) # initial end effector pose in storm coordinate system
         self.ee_pose_storm_cs = (np.zeros(3) ,np.zeros(4)) # position, quaternion
         self.goal_pose = [0,0,0,0,0,0,1]
         # self.arm_configuration = None
@@ -371,6 +372,23 @@ class MpcRobotInteractive:
         self.all_collision_objs = self.env_template['world_model']['coll_objs'] # in file
         self.non_coll_objs_actor_names = {'robot','ee_target_object', 'ee_current_as_mug'} # in file
         self.all_collision_objs_names = self.get_all_coll_obs_actor_names() # in file
+    
+    
+    # def get_current_ee_pose_storm_cs(self) -> gymapi.Transform:
+        
+    #     # Get current time-step's DOF state (name, position, velocity and acceleration) for each one of the 7 dofs
+    #     current_dofs_state_formatted = self.get_dofs_states_formatted() # updated dofs from environment. with dof names
+    #     current_dofs_state_formatted_ref = current_dofs_state_formatted # not sure why we need a reference 
+    #     current_dofs_state_tensor = torch.as_tensor(np.hstack((current_dofs_state_formatted_ref['position'], current_dofs_state_formatted_ref['velocity'], current_dofs_state_formatted_ref['acceleration'])),**self.tensor_args).unsqueeze(0)
+    #     current_ee_pose_storm_cs = self.mpc_control.controller.rollout_fn.get_ee_pose(current_dofs_state_tensor) # see updated docs
+    #     current_ee_pos_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_pos_seq'].cpu().numpy()) # end effector position in current state
+    #     current_ee_quat_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_quat_seq'].cpu().numpy()) # end effector quaternion in current state
+    #     return np.concatenate([current_ee_pos_storm_cs, current_ee_quat_storm_cs])
+    #     # # convert from storm coordinate system to gym coordinate system
+    #     # self.ee_pose_gym_cs.p = copy.deepcopy(gymapi.Vec3(current_ee_pos_storm_cs[0], current_ee_pos_storm_cs[1], current_ee_pos_storm_cs[2]))
+    #     # self.ee_pose_gym_cs.r = gymapi.Quat(current_ee_quat_storm_cs[1], current_ee_quat_storm_cs[2], current_ee_quat_storm_cs[3], current_ee_quat_storm_cs[0])
+    #     # self.ee_pose_gym_cs = copy.deepcopy(self.w_T_r) * copy.deepcopy(self.ee_pose_gym_cs) 
+
         
     def set_name_to_handle(self, item):
         self.name_to_handle = item
@@ -465,6 +483,7 @@ class MpcRobotInteractive:
         current_ee_pos_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_pos_seq'].cpu().numpy()) # end effector position in current state
         current_ee_quat_storm_cs = np.ravel(current_ee_pose_storm_cs['ee_quat_seq'].cpu().numpy()) # end effector quaternion in current state
         
+        
         # convert from storm coordinate system to gym coordinate system
         self.ee_pose_gym_cs.p = copy.deepcopy(gymapi.Vec3(current_ee_pos_storm_cs[0], current_ee_pos_storm_cs[1], current_ee_pos_storm_cs[2]))
         self.ee_pose_gym_cs.r = gymapi.Quat(current_ee_quat_storm_cs[1], current_ee_quat_storm_cs[2], current_ee_quat_storm_cs[3], current_ee_quat_storm_cs[0])
@@ -473,6 +492,7 @@ class MpcRobotInteractive:
         # Update gym when using gui settings
         if(self.vis_ee_target): # Sets Transform (pose - position and quaternion) for a Rigid Body (the ee) at the environment.
             self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, copy.deepcopy(self.ee_pose_gym_cs))
+        
         if self.gui_settings['render_trajectory_lines']:
             gui_draw_lines(self.gym_instance, self.mpc_control, self.w_robot_coord) # drawing trajectory lines on screen. Can comment out
         
@@ -481,9 +501,18 @@ class MpcRobotInteractive:
         
         # Don't miss (even if its commented out):
 
-        # # Get the new position of the end effector in storm's cs:         
-        # new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
-        # self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(new_dofs_state) # end effector position in storm cs  
+        # Get the new position of the end effector in storm's cs:         
+        new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
+        
+        
+        self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(current_dofs_state_formatted_ref) # end effector position in storm cs  
+        if not self._is_initialized(self.initial_ee_pose_storm_cs):
+            self.initial_ee_pose_storm_cs = copy.deepcopy(self.ee_pose_storm_cs)
+            
+    
+    def _is_initialized(self, var):
+        return var is not None and len(var)
+    
     def get_ee_pose_at_storm_cs_from_dofs_state(self, dofs_state):
         
         curr_state = np.hstack((dofs_state['position'], dofs_state['velocity'], dofs_state['acceleration']))
@@ -491,10 +520,14 @@ class MpcRobotInteractive:
         ee_pose_state_storm_cs = self.mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor) # end effector pose in storm coordinate system. see updated docs
         
         # get current pose:
-        e_pos = np.ravel(ee_pose_state_storm_cs['ee_pos_seq'].cpu().numpy())
-        e_quat = np.ravel(ee_pose_state_storm_cs['ee_quat_seq'].cpu().numpy())
+        ee_pos = np.ravel(ee_pose_state_storm_cs['ee_pos_seq'].cpu().numpy())
+        ee_rot = np.ravel(ee_pose_state_storm_cs['ee_quat_seq'].cpu().numpy())
         
-        return e_pos, e_quat 
+        ee_rot_storm = copy.deepcopy(ee_rot)
+        ee_rot_storm_shifted = np.array([ee_rot_storm[1], ee_rot_storm[2], ee_rot_storm[3], ee_rot_storm[0]])
+        storm_pose_final = np.concatenate([ee_pos, ee_rot_storm_shifted])
+     
+        return storm_pose_final 
     
     def get_actor_names_indexed_at_actor_handle_from_env(self):
         """
@@ -636,7 +669,7 @@ class MpcRobotInteractive:
          
         # curr_ee_pose_np: np.ndarray
         goal_ee_pose_np: np.ndarray
-
+        
         robot_handle = self.name_to_handle['robot'] # actor handle in current env
         goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
         
@@ -987,11 +1020,12 @@ def add_padding_to_objs(participating, not_participating):
     
     
 
-def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict) -> Tuple[dict, dict, list]:
+def generate_new_world(sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict,goal_pose_storm_cs:list=[]) -> Tuple[dict, dict, list]:
     
     """
 
-    Generating a wodld
+    generates a new world for each episode.must return a tuple of:
+    
     """
     
     def modify_coll_obj_inplace_rec(collision_obj):
@@ -1024,8 +1058,8 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     very_small = 1e-4 # in meters
     invisible_cube_dims = [very_small] * 3
     
-    default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
-    optional_goal_poses = [
+    # default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
+    optional_goal_poses = [ # in storm ccordinates
         [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
         [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
         [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
@@ -1041,10 +1075,10 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
 
     
     # retrieve and arbitrary goal pose from the optional collection (or stay with default)
-    if sample_goal_pose:
+    if goal_pose_storm_cs == []: # sample
         goal_pose = random.choice(optional_goal_poses)
-    else:
-        goal_pose = default_goal_pose
+    else: 
+        goal_pose = goal_pose_storm_cs
     
     # all collision objects which are available 
     all_obj_names = all_coll_objs_with_positions.keys()
@@ -1081,128 +1115,18 @@ def generate_new_world(sample_goal_pose:bool, sample_coll_objs:bool, sample_coll
     return participating, not_participatig, goal_pose                
                 
     
-def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
+def train_loop(n_episodes, episode_max_ts):
     """
 
     Args:
         n_episodes (_type_): number of 
         episode_max_ts (_type_): _description_
-        select_world_callback (Callable):a function which generates a new world for each episode.must return a tuple of:
-            1. participating objects storm cs: dict of {object name: object properties (location, shape)} (locations in storm coordinates)
-            2. not participating objects storm cs: dict of {object name: object properties (far away location, small shape so rlpt can learn to ignore it})} (in storm coordinates)
-            3. goal pose storm cs: list in length 7 of the goal pose (pose in storm coordinates)
-
+        
     Returns:
         _type_: _description_
     """
     
-    
-    # # parse arguments to start simulation
-    # parser = argparse.ArgumentParser(description='pass args')
-    # parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
-    # parser.add_argument('--cuda', action='store_true', default=True, help='use cuda') # use cude
-    # parser.add_argument('--headless', action='store_true', default=False, help='headless gym') # False means use viewer (gui)
-    # parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
-    # parser.add_argument('--env_yml_relative', type=str, default='', help='asset specifications of environment. Relative path under storm/content/configs/gym')
-    # parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
-    # parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
-    # parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
-    
-
-    # args = parser.parse_args()
-    
-    # # simulation setup
-    # if args.physics_engine_yml_relative == '':
-    #     args.physics_engine_yml_relative = 'rlpt/experiments/experiment1/physx.yml'    
-    # if args.task_yml_relative == '':
-    #     args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'     
-    # if args.env_yml_relative == '':
-    #     # args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
-    #     args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_1.yml'
-    
-    # physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
-    # sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
-    # sim_params['headless'] = args.headless # run with no gym gui
-                    
-    # # rlpt setup
-    
-    # # load a checkpoint NN or start a new training 
-    # rlpt_cfg = GLobalVars.rlpt_cfg
-    # load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
-    # if load_checkpoint_model:
-    #     model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
-    #     assert os.path.exists(model_file_path)
-    # else:
-    #     model_file_path =  os.path.join(rlpt_cfg['agent']['model']['default_dst_dir'], training_start_time, 'model.pth')  
-
-    # include_etl = rlpt_cfg['agent']['model']['include_etl']
-    # if include_etl:
-    #     model_dir =  os.path.split(model_file_path)[0]
-    #     etl_file_path = model_dir + '/etl.csv'
-    #     if load_checkpoint_model:
-    #         assert os.path.exists(etl_file_path)
-        
-        
-    # sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
-    # GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
-    # profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
-    
-    # ##### main loop of episodes execution: #######
-    
-    # gym = Gym(**sim_params) # note - only one initiation is allowed per process
-    # env_file = args.env_yml_relative
-    # task_file = args.task_yml_relative
-    # mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. TODO:  # run episode
-
-
-    # # Init rlpt agent action space
-    # cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
-        
-    #     # distance from goal pose (orientation err weight, position err weight).
-    #     "goal_pose":  [
-    #         (1.0, 100.0), # goal 100:1
-    #         # (15.0, 100.0), # goal 100:15
-    #         (100.0, 1.0)
-    #         ], # orientation 100:15
-    #     "zero_vel": [0.0], 
-    #     "zero_acc": [0.0],
-    #     "joint_l2": [0.0], 
-    #     "robot_self_collision": [
-    #         100
-    #         ], # collision with self (robot with itself)
-    #     # collision with environment (obstacles)
-    #     "primitive_collision" : [
-    #         100, # low collison carefulness   
-    #         ], 
-    #     "voxel_collision" : [0.0],
-    #     "null_space": [1.0],
-    #     "manipulability": [30], 
-    #     "ee_vel": [0.0], 
-    #     # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration))
-    #     # "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
-    #     #               (1.0, 30.0)], # low charging (1), and high acceleration limit (10)
-    #     "stop_cost" : [(100.0, 1.5)],        
-    #     "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
-    #     "smooth": [1.0], # smoothness weight
-    #     "state_bound": [1000.0], # joint limit avoidance weight
-    #     }
-    # mppi_space = {
-    #     # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
-    #     "horizon": [
-    #         30, # myopic sight
-    #         165, # mid-level 
-    #         300 # long range observer
-    #         ],         
-    #     "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-    #     "n_iters": [1] # Num of optimization steps 
-    # } 
-    # # This op is aimed to save time when some parameters like horizon are too expansive to modify 
-    # rlpt_action_space:list = list(get_combinations({
-    #     'cost_weights': get_combinations(cost_fn_space),
-    #     'mpc_params': get_combinations(mppi_space)}))
-    
-    # moni = Monitor(x_label='t', y_labels = ['r(t)', 'mean dofs abs vel (s(t))', 'contact(r(t))','selection-duration(a(t))'])
-    # moni.start()
+   
     mpc = mpc_controller
     ep = 0
     steps_done = 0 # in total (throughout all training)    
@@ -1215,8 +1139,9 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
     try:
         if profile_memory: # for debugging gpu if needed   
             start_mem_profiling()   
-        while ep < n_episodes: # for each episode id with a unique combination of initial parameters
-            particiating_storm, not_participatig_storm, goal_pose_storm = select_world_callback(True, False, False, all_coll_objs_with_locs) 
+        for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
+            goal_pose_storm_cs = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(mpc.initial_ee_pose_storm_cs) # in storm coordinates
+            particiating_storm, not_participatig_storm, goal_pose_storm = generate_new_world(False, False, all_coll_objs_with_locs, goal_pose_storm_cs) 
             # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
             env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
             if ep == 0:
@@ -1256,7 +1181,7 @@ def train_loop(n_episodes, episode_max_ts, select_world_callback:Callable):
             rlpt_agent.save(ep, ts, steps_done, model_file_path)                
             if keyboard_interupt:
                 raise KeyboardInterrupt()    
-            ep += 1
+            # ep += 1
             
             
                 
@@ -1302,6 +1227,7 @@ if __name__ == '__main__':
     # rlpt setup
     GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
     rlpt_cfg = GLobalVars.rlpt_cfg
+    
     # load a checkpoint NN or start a new training 
     load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
     if load_checkpoint_model:
@@ -1326,8 +1252,7 @@ if __name__ == '__main__':
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
     
-    ##### main loop of episodes execution: #######
-    
+
     gym = Gym(**sim_params) # note - only one initiation is allowed per process
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
@@ -1363,12 +1288,13 @@ if __name__ == '__main__':
         "smooth": [1.0], # smoothness weight
         "state_bound": [1000.0], # joint limit avoidance weight
         }
+    
     mppi_space = {
         # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
         "horizon": [
             30, # myopic sight
-            165, # mid-level 
-            300 # long range observer
+            # 165, # mid-level 
+            # 300 # long range observer
             ],         
         "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
         "n_iters": [1] # Num of optimization steps 
@@ -1377,6 +1303,9 @@ if __name__ == '__main__':
     rlpt_action_space:list = list(get_combinations({
         'cost_weights': get_combinations(cost_fn_space),
         'mpc_params': get_combinations(mppi_space)}))
+   
     
-    train_loop(10000, 500, generate_new_world)
+    ##### main loop of episodes execution: #######
+    # time.sleep(10)
+    train_loop(rlpt_cfg['agent']['training']['n_episodes'], rlpt_cfg['agent']['training']['max_ts'])
     
