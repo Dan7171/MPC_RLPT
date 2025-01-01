@@ -59,7 +59,6 @@ from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
 import matplotlib.pyplot as plt
 from BGU.Rlpt.experiments.experiment_utils import get_combinations
-# from BGU.Rlpt.experiments.experiment_utils import make_date_time_str
 from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
@@ -70,43 +69,8 @@ GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
 RED = gymapi.Vec3(0.8, 0.1, 0.1)
 ONE_CM = 0.01 # IN METERS
 now = time.time()
-date_time = time.strftime('%Y:%m:%d(%a)%H:%M:%S')
+training_starttime = time.strftime('%Y:%m:%d(%a)%H:%M:%S')
 model_dir = os.path.join('BGU/Rlpt/trained_models') 
-# etl_file_path = 'etl.csv'
-
-
-
-# Only as reference:
-# cost_fn_space_defaults = {
-#     "goal_pose": {'weight': [15.0, 100.0]# orientation, position.
-#                     }, 
-#     "zero_vel": {'weight': 0.0}, 
-#     "zero_acc": {'weight': 0.0},
-#     "joint_l2": {'weight': 0.0},
-#     "robot_self_collision": {'weight': 5000,
-#                                 'distance_threshold': 0.05
-#                                 },
-#     "primitive_collision" : {'weight': 5000,
-#                                 'distance_threshold': 0.05
-#                                 },
-#     "voxel_collision" :{'weight': 0.0},
-#     "null_space": {'weight': 1.0},
-#     "manipulability": {'weight': 30},
-#     "ee_vel": {'weight': 0.0}, 
-#     "stop_cost": {'weight': 100,
-#                     'max_nlimit': 1.5 # maximal joint speed acceleration on some a(t,h)
-#                     },         
-#     "stop_cost_acc": {'weight': 0.0,
-#                         'max_limit': 0.1}, # ? 
-#     "smooth": {'weight': 0.0}, # smoothness
-#     "state_bound": {'weight': 1000}, # joint limit avoidance
-# }
-# mppi_space_defaults = {'horizon': 30,
-#                         'n_iters': 1,
-#                         'num_particles': 500
-#                     }
-
-
 
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
@@ -694,7 +658,7 @@ class MpcRobotInteractive:
         convergence_threshold_pos, convergence_threshold_rot = ONE_CM, ONE_CM 
         prev_at:dict = {} # dict 
         h_sequence_len = 0
-        speedup_training = True
+        disable_frequent_h_changing = rlpt_cfg['agent']['training']['disable_frequent_h_changing']
         robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
@@ -721,14 +685,14 @@ class MpcRobotInteractive:
                 # rlpt - select action (a(t))
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
                 forbidden_action_indices:set = set() # empty set - all actions are allowed
-                if speedup_training: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
+                if disable_frequent_h_changing: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
                     prev_h = prev_at['mpc_params']['horizon'] if prev_at_idx is not None else -1 
                     if h_sequence_len < prev_h:  
                         different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
                         forbidden_action_indices = different_h_action_indices
                 at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
                 
-                if speedup_training: 
+                if disable_frequent_h_changing: 
                     new_h =  at['mpc_params']['horizon']
                     if new_h != prev_h:
                         h_sequence_len = 0
@@ -1344,7 +1308,7 @@ if __name__ == '__main__':
         model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
         assert os.path.exists(model_file_path)
     else:
-        model_file_path =  os.path.join(rlpt_cfg['agent']['model']['dst_dir'], date_time, 'model.pth')  
+        model_file_path =  os.path.join(rlpt_cfg['agent']['model']['dst_dir'], training_starttime, 'model.pth')  
     
     model_dir =  os.path.split(model_file_path)[0]
     if not load_checkpoint_model:
@@ -1414,5 +1378,5 @@ if __name__ == '__main__':
         'cost_weights': get_combinations(cost_fn_space),
         'mpc_params': get_combinations(mppi_space)}))
     
-    train_loop(10000, 5000, generate_new_world)
+    train_loop(10000, 500, generate_new_world)
     
