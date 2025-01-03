@@ -13,7 +13,7 @@ episode_plots:
 agent:
   model: # The Neural network 
     load_checkpoint: false
-    checkpoint_path: 'BGU/Rlpt/trained_models/Mon16:57:56/model.pth'
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:03(Fri)22:13:25/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -30,6 +30,7 @@ agent:
   train_suit:
     gamma: 1
     batch_size: 128
+    grad_clipping: false
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation radius. meters
@@ -46,10 +47,11 @@ agent:
 
 
 
+
   
   training:
     n_episodes: 100
-    max_ts: 100
+    max_ts: 1000
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
