@@ -7,7 +7,9 @@ from click import BadArgumentUsage
 from networkx import union
 from storm_kit.mpc import task
 import torch
+from yaml import compose
 # from BGU.Rlpt.drl.dqn_pack import train_suit
+from BGU.Rlpt.DebugTools.globs import GLobalVars
 from BGU.Rlpt.drl.dqn_pack.train_suit import trainSuit
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
 
@@ -36,42 +38,69 @@ class rlptAgent:
             col_obj_handles dict: a dict which keys are the names of collision objects (participating or not) and values are the object's handle (int)
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
         """
-        self.base_pos_gym_s0 = base_pos_gym
-        self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
-        self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
+        # self.base_pos_gym_s0 = base_pos_gym
+        # self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
+        # self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
         self.all_coll_obj_names_sorted:list = sorted(list(self.col_obj_handles.keys()), key=lambda x: self.col_obj_handles[x]) # sorted by obj handle
-        self.all_coll_objs_s0 = _merge_dict(self.participating_storm, self.not_participating_storm)
-        if len(self.all_coll_objs_s0) != len(self.participating_storm) + len(self.not_participating_storm):
+        # self.all_coll_objs_s0 = _merge_dict(participating_storm, not_participating_storm)
+        all_coll_objs_s0 = _merge_dict(participating_storm, not_participating_storm)
+        if len(all_coll_objs_s0) != len(participating_storm) + len(not_participating_storm):
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
-        # if len(self.all_coll_objs_s0) > max_col_objs:
-        #     raise BadArgumentUsage(f"participating and non participating objects could be at most at length {max_col_objs}")
-        self.max_col_objs = max_col_objs        
-        self.col_obj_s0_flat_states:dict[str,np.ndarray]= self.flatten_coll_obj_states(self.all_coll_objs_s0) # {'obj name': flattened objected state in storm cs([5,1,3,0.4...])}
-        self.col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
+        # self.max_col_objs = max_col_objs        
+        self.col_obj_s0_flat_states:dict[str,np.ndarray]= self.flatten_coll_obj_states(all_coll_objs_s0) # {'obj name': flattened objected state in storm cs([5,1,3,0.4...])}
+        col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
         self.max_horizon = self._get_max_h() # maximun horizon in action space
-        # define every s(t) specifications
-        self.st_componentes_ordered = ['robot_base_pos',
-                                       'robot_dofs_positions',
-                                       'robot_dofs_velocities', 
-                                       'goal_pose',  
-                                       'prev_action_idx',
-                                       'coll_objs',
-                                       'pi_mppi_means',
-                                       'pi_mppi_covs',
-                                       ]
         
-        self.st_componentes_ordered_dims = [3, # x,y,z pos of robot base (3)
-                                            7, # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs 
-                                            7, # similarly to positions, an angular velocity on each dof 
-                                            7, # position (3), orientation (4)
-                                            1, # the index of the previous action which was taken
-                                            len(self.col_obj_s0_sorted_concat), # flatten state length (NN input length).
-                                            7 * self.max_horizon, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
-                                            7 # # MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
-                                            ]  
-        self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t)
+        
+        
+        # all possible state representation components and their dimensions
+        state_var_to_dim =  {
+            'robot_dofs_positions': 7, # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs ,
+            'robot_dofs_velocities': 7, # similarly to positions, an angular velocity on each dof 
+            'goal_pose':  7, # position (3), orientation (4)
+            'coll_objs': 7 * len(col_obj_s0_sorted_concat), # obj size (7) times num of collision objs
+            'robot_base_pos': 3, # xyz (position only)
+            'prev_action_idx': 1, # the index of the previous action which was taken
+            'pi_mppi_means':  7 * self.max_horizon, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
+            'pi_mppi_covs': 7 # MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
+        }
+        
+        # define the state representation configuration
+        rlpt_cfg = GLobalVars.rlpt_cfg
+        state_represantation_config = rlpt_cfg['agent']['model']['state_representation'] 
+        self.st_componentes_ordered = []
+        for var in state_represantation_config.keys():    
+            if state_represantation_config[var]:
+                self.st_componentes_ordered.append(var)
+                
+        # define the current state s(t) (initially s0)
+        self.current_st = {component: np.array([]) for component in self.st_componentes_ordered} 
+        if 'robot_base_pos' in self.st_componentes_ordered:
+            self.current_st['robot_base_pos'] = base_pos_gym
+        if 'coll_objs' in self.st_componentes_ordered:
+            self.current_st['coll_objs'] = col_obj_s0_sorted_concat
+        if 'prev_action_idx' in self.st_componentes_ordered:
+            self.current_st['prev_action_idx'] = np.array([-1])
+            
+        
+        
+            
+        # {'robot_base_pos': self.base_pos_gym_s0, 
+        #       'robot_dofs_positions': robot_dof_positions_gym,
+        #       'robot_dofs_velocities': robot_dof_velocities_gym, 
+        #       'goal_pose': goal_pose_gym, # 
+        #       'prev_action_idx': prev_at_idx_np,
+        #       'coll_objs': self.col_obj_s0_sorted_concat,
+        #       'pi_mppi_means': pi_mppi_means_padded,
+        #       'pi_mppi_covs': pi_mppi_covs
+        # }
+        
+        
+        
+        self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
+        self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
         self.st_legend = self.get_states_legend() # readable shape of the state 
         self.train_suit = trainSuit(self.st_dim , len(action_space)) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
@@ -151,28 +180,35 @@ class rlptAgent:
             out= np.append(out, col_obj_st_flat_states[obj_name]) # np.append([1, 2, 3], [[4, 5, 6], [7, 8, 9]]) - >array([1, 2, 3, ..., 7, 8, 9])
         return out
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, prev_at_idx:Union[None, int], pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, prev_at_idx=-1) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
             st (_type_): _description_
         """
-        no_prev_action_code = -1
-        if prev_at_idx is None:
-            prev_at_idx = no_prev_action_code
-        prev_at_idx_np = np.array([prev_at_idx]) # a special code to represent n meaning
-        pi_mppi_means_padded = self._pad_pi_with_zeros(pi_mppi_means).flatten() # pad inactivate horizon with zeros (for making input size fixed) and flatten 
-        st = {'robot_base_pos': self.base_pos_gym_s0, 
-              'robot_dofs_positions': robot_dof_positions_gym,
-              'robot_dofs_velocities': robot_dof_velocities_gym, 
-              'goal_pose': goal_pose_gym, # 
-              'prev_action_idx': prev_at_idx_np,
-              'coll_objs': self.col_obj_s0_sorted_concat,
-              'pi_mppi_means': pi_mppi_means_padded,
-              'pi_mppi_covs': pi_mppi_covs
-        }
-        ordered_st_components = [st[key] for key in self.st_componentes_ordered]
-        return np.concatenate(ordered_st_components)
+        
+        
+        # Update the current state with the new components (only for components which can be changed)
+        if 'prev_action_idx' in self.st_componentes_ordered:
+            self.current_st['prev_action_idx'] = np.array([prev_at_idx]) 
+        if 'pi_mppi_means' in self.st_componentes_ordered:
+            self.current_st['pi_mppi_means'] = self._pad_pi_with_zeros(pi_mppi_means) # pi_mppi_means.flatten
+        if 'pi_mppi_covs' in self.st_componentes_ordered:
+            self.current_st['pi_mppi_covs'] = pi_mppi_covs # pi_mppi_means.flatten
+        if 'robot_dofs_positions' in self.st_componentes_ordered:
+            self.current_st['robot_dofs_positions'] = robot_dof_positions_gym
+        if 'robot_dofs_velocities' in self.st_componentes_ordered:
+            self.current_st['robot_dofs_velocities'] = robot_dof_velocities_gym
+        if 'goal_pose' in self.st_componentes_ordered:
+            self.current_st['goal_pose'] = goal_pose_gym
+        
+        # Vectorize the state components in the order of the state representation configuration
+        ordered_st_components = [self.current_st[key].flatten() for key in self.st_componentes_ordered]
+        current_st_vectorized = np.concatenate(ordered_st_components)    
+        return current_st_vectorized
+        
+    
+        
     
     def get_states_legend(self)->List[tuple]:
         

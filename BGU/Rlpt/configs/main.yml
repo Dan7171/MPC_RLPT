@@ -11,20 +11,44 @@ episode_plots:
   show: true
 
 agent:
-  model:
+  model: # The Neural network 
     load_checkpoint: false
     checkpoint_path: 'BGU/Rlpt/trained_models/Mon16:57:56/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
-    # from_checkpoint: true
-    # checkpoint_path: 'BGU/Rlpt/trained_models/your_start_time/etl.pth'
+    state_representation: # input layer 
+      robot_dofs_positions: true
+      robot_dofs_velocities: true
+      goal_pose: true
+      coll_objs: false
+      robot_base_pos: false
+      prev_action_idx: false
+      pi_mppi_means: true
+      pi_mppi_covs: true
 
+      
   train_suit:
     gamma: 1
     batch_size: 128
+
+  rewards:
+    goal_pos_thresh_dist: 0.01 # activation radius. meters
+    goal_rot_thresh_dist: 0.01 # meters
+    goal_shape: exp # (or sparse)
+    col_thresh_dist: 0.05 # meters
+    time_penalty: computation_time # (or fixed)
+    
   
   training:
     n_episodes: 100
     max_ts: 100
     disable_frequent_h_changing: false
+    sample_objs_every_episode: false
+    sample_obj_locs_every_episode: false
+    sample_goal_every_episode: true
+    default_goal_pose: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] # storm coordinates
+
+
+
+    
 
