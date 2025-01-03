@@ -499,16 +499,16 @@ class MpcRobotInteractive:
         # Send the command (the desired doffs position) to "controller" (to the simulator with the environment) to update the position of each dof to the desired ones (In RL terms, we could think of this like "action" here (At) is just telling the controller the next state (st+1) you want).  
         self.robot_sim.command_robot_position(desired_dofs_position, self.env_ptr, self.robot_ptr) # control dofs           
         
-        # Don't miss (even if its commented out):
-
-        # Get the new position of the end effector in storm's cs:         
-        new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
         
-        
+        # Save current pose in storm cs and initialize it if not initialized
         self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(current_dofs_state_formatted_ref) # end effector position in storm cs  
         if not self._is_initialized(self.initial_ee_pose_storm_cs):
             self.initial_ee_pose_storm_cs = copy.deepcopy(self.ee_pose_storm_cs)
-            
+    
+
+        # Get the new position of the end effector in storm cs:         
+        # new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
+                
     
     def _is_initialized(self, var):
         return var is not None and len(var)
@@ -577,23 +577,19 @@ class MpcRobotInteractive:
         def storm_pose_to_gym_pose(storm_pose):
             return self.transform_tensor(torch.tensor(storm_pose).unsqueeze(0), self.w_T_r)
 
-         
         cast_out_pose_storm = [-100] * 7 # Far away and almost invisible location. This is were we cast-out objects which we did not select by name
-        cast_out_pose_gym = storm_pose_to_gym_pose(cast_out_pose_storm)
+        cast_out_pose_gym = storm_pose_to_gym_pose(cast_out_pose_storm)    
         n_actors = self.gym.get_actor_count(self.env_ptr)
         actor_handle_to_name = [-1] * n_actors # at index i, the actor name, and i is the actor name
         actor_name_to_handle = {} # reverse map
         actor_handles = range(n_actors)
-        
+                
         # map handles to actors and vise versa
         for actor_handle in actor_handles:
             actor_name = self.gym.get_actor_name(self.env_ptr, actor_handle)
             actor_handle_to_name[actor_handle] = actor_name
             actor_name_to_handle[actor_name] = actor_handle         
-        
-        # if coll_obs_names == []: # if input list is empty, take all objets in file 
-        #     coll_obs_names = actor_handle_to_name                
- 
+
         
         # select objects to include by their names from input
         env_template = self.env_template
@@ -667,6 +663,7 @@ class MpcRobotInteractive:
         a tuple 
         """
          
+        state_representation = rlpt_cfg['agent']['model']['state_representation']
         # curr_ee_pose_np: np.ndarray
         goal_ee_pose_np: np.ndarray
         
@@ -688,7 +685,7 @@ class MpcRobotInteractive:
         in_zone_cntr = 0
         prev_at_idx = None # None or int
         at: dict
-        convergence_threshold_pos, convergence_threshold_rot = ONE_CM, ONE_CM 
+        convergence_threshold_pos, convergence_threshold_rot = rlpt_cfg['agent']['rewards']['goal_pos_thresh_dist'], rlpt_cfg['agent']['rewards']['goal_rot_thresh_dist'] 
         prev_at:dict = {} # dict 
         h_sequence_len = 0
         disable_frequent_h_changing = rlpt_cfg['agent']['training']['disable_frequent_h_changing']
@@ -700,11 +697,18 @@ class MpcRobotInteractive:
         
         # set initial mppi policy means and covariances at sniffer (empty policy)
         curr_pi_mppi_means = torch.zeros(rlpt_agent.max_horizon, 7)
-        curr_pi_mppi_covs = torch.zeros(7)
-        sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
         curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
+    
+        # set initial mppi policy means and covariances at sniffer (empty policy)
+        curr_pi_mppi_covs = torch.zeros(7)
         curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
-        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, prev_at_idx,curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
+    
+        # else:
+        #     curr_pi_mppi_covs = torch.empty([])
+        
+        # curr_pi_mppi_covs = torch.zeros(7)
+        sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
+        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
         ep_start_time = time.time()
         forced_stopping = False
         
@@ -753,7 +757,7 @@ class MpcRobotInteractive:
                 curr_pi_mppi_means, curr_pi_mppi_covs = sniffer.get_current_mppi_policy() 
                 curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
                 curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
-                s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, at_idx, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
+                s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
                 
                 
                 # rlpt - compute reward (r(t))  
@@ -856,14 +860,7 @@ class MpcRobotInteractive:
         return list(ans)
                 
     
-    # def rotate_pose(self, pose:gymapi.Transform, mode:str):
-        
-    #     if mode == 'gym_to_storm':
-    #         rotated_pose = copy.deepcopy(self.w_T_r.inverse() * pose)
-    #     elif mode == 'storm_to_gym':
-    #         rotated_pose = copy.deepcopy(self.w_T_r * pose)
-    #     return rotated_pose
-        
+
     
             
     # helper functions:    
@@ -1019,8 +1016,30 @@ def add_padding_to_objs(participating, not_participating):
     
     
     
+# def select_goal_pose(random=True):
+    
+    
+    
+#     # default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
+#     optional_goal_poses = [ # in storm ccordinates
+#         [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
+#         [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
+#         [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
+#     #    [0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
+#     #    [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
+#     #    [0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
+#     #    [0.25, 0.21, 0.4, 0.13, 0.4, 0.1, -0.1],
+#     #    [0.25, -0.11, 0.2, 0.33, -0.4, 0, 0.2],
+#     #    [0.35, -0.3, 0.5, -0.23, 1, 0.4, 0.2]
+#         ]
+    
+#     # retrieve an arbitrary goal pose from the optional collection (or stay with default)
+#     if random == []: # sample
+#         goal_pose = random.choice(optional_goal_poses)
+#     else: 
+#         goal_pose = goal_pose_storm_cs
 
-def generate_new_world(sample_coll_objs:bool, sample_coll_objs_locs:bool, all_coll_objs_with_positions:dict,goal_pose_storm_cs:list=[]) -> Tuple[dict, dict, list]:
+def select_obj_poses(participating, all_coll_objs_with_positions) -> Tuple[dict, dict]:
     
     """
 
@@ -1051,70 +1070,37 @@ def generate_new_world(sample_coll_objs:bool, sample_coll_objs_locs:bool, all_co
     def is_cube(obj):
         return 'dims' in obj
     
+    
+    
     very_large = 100 # in meters            
     far_away_position = [very_large] * 3
     default_orient = [0] * 4
     far_away_pose = far_away_position + default_orient
     very_small = 1e-4 # in meters
     invisible_cube_dims = [very_small] * 3
-    
-    # default_goal_pose = [0.67, 0.27, 0.3, 0, 2.5, 0, 1] # in storm ccordinates
-    optional_goal_poses = [ # in storm ccordinates
-        [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320)
-        [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose
-        [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
-    #    [0.20, 0.14, 0, 0.13, 0.4, 0, 0.4],
-    #    [0.16, 0.1, 0.2, 0.3, 0.4, 0.5, 0.3],
-    #    [0.25, 0.11, 0.2, 0.33, -0.4, 0, 0.2],
-    #    [0.25, 0.21, 0.4, 0.13, 0.4, 0.1, -0.1],
-    #    [0.25, -0.11, 0.2, 0.33, -0.4, 0, 0.2],
-    #    [0.35, -0.3, 0.5, -0.23, 1, 0.4, 0.2]
-        ]
     external_to_env_state_sphere = {'radius': very_small, 'position': far_away_position}
     external_to_env_state_cube = {'dims': invisible_cube_dims , 'pose': far_away_pose}
-
-    
-    # retrieve and arbitrary goal pose from the optional collection (or stay with default)
-    if goal_pose_storm_cs == []: # sample
-        goal_pose = random.choice(optional_goal_poses)
-    else: 
-        goal_pose = goal_pose_storm_cs
-    
-    # all collision objects which are available 
-    all_obj_names = all_coll_objs_with_positions.keys()
-    
-    # select a subset of objects from the available to participate in the environment (or stay with all)
-    if sample_coll_objs:
-        total_objs = len(all_coll_objs_with_positions)
-        participating_number = random.randint(1, total_objs)
-        # particiating = sorted(random.sample(all_obj_names, participating_number))
-        participating_names = random.sample(all_obj_names, participating_number)
-        participating = {obj_name: all_coll_objs_with_positions[obj_name] for obj_name in participating_names} # name to loc 
-    else:
-        participating = all_coll_objs_with_positions 
-    
-    # add noise to locations participating objects to modify the environment and add challenge to rlpt learning, 
-    # (or stay with default locations)
-    if sample_coll_objs_locs:
-        modify_coll_obj_inplace_rec(participating)
-    
-    # And always for the non-participating objects,
-    # set a very far away location and very small shapes of the object, 
-    # so rlpt will treat it liker its not a part of the environment    
+    modify_coll_obj_inplace_rec(participating)
     not_participatig = {} # name to loc
     for obj_name in all_coll_objs_with_positions:
         if obj_name not in participating:
             curr_obj = all_coll_objs_with_positions[obj_name]
             not_participatig[obj_name] = external_to_env_state_cube if is_cube(curr_obj) else external_to_env_state_sphere 
-
-    # return the chosen:
-    #   - participating objects and their noised/original locations,
-    #   - not participating objects (and their effectively far away locations so rlpt can learn to ignore them)
-    #   - goal pose
-    
-    return participating, not_participatig, goal_pose                
+    return participating, not_participatig                
                 
+def sample_obj_subset(all_coll_objs_with_positions):
     
+    # all collision objects which are available 
+    all_obj_names = all_coll_objs_with_positions.keys()
+    
+    # select a subset of objects from the available to participate in the environment (or stay with all)
+    total_objs = len(all_coll_objs_with_positions)
+    participating_number = random.randint(1, total_objs)
+    # particiating = sorted(random.sample(all_obj_names, participating_number))
+    participating_names = random.sample(all_obj_names, participating_number)
+    participating = {obj_name: all_coll_objs_with_positions[obj_name] for obj_name in participating_names} # name to loc 
+
+    return participating
 def train_loop(n_episodes, episode_max_ts):
     """
 
@@ -1126,24 +1112,42 @@ def train_loop(n_episodes, episode_max_ts):
         _type_: _description_
     """
     
-   
+    
+    # Initial values
     mpc = mpc_controller
     ep = 0
     steps_done = 0 # in total (throughout all training)    
-    # select a world for the episode and reset environment to use it, and update (reset) gym simulator and storm with the selection            
+    
+    # load configuration
+    sample_objs_every_episode = rlpt_cfg['agent']['training']['sample_objs_every_episode'] 
+    sample_obj_locs_every_episode = rlpt_cfg['agent']['training']['sample_obj_locs_every_episode']
+    sample_goal_every_episode = rlpt_cfg['agent']['training']['sample_goal_every_episode']
+    
+    
+    # Define initial default values for the episodes
     all_coll_objs_with_locs = {}
     for obj_type in mpc.all_collision_objs:
         for obj_name in mpc.all_collision_objs[obj_type]:
             all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-
+    particiating_storm = all_coll_objs_with_locs
+    not_participatig_storm = {}
+    goal_pose_storm = rlpt_cfg['agent']['training']['default_goal_pose'] # in storm coordinates
+    
+    # Start epoisde loop
     try:
-        if profile_memory: # for debugging gpu if needed   
-            start_mem_profiling()   
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
-            goal_pose_storm_cs = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(mpc.initial_ee_pose_storm_cs) # in storm coordinates
-            particiating_storm, not_participatig_storm, goal_pose_storm = generate_new_world(False, False, all_coll_objs_with_locs, goal_pose_storm_cs) 
+            if sample_objs_every_episode:
+                particiating_storm = sample_obj_subset(all_coll_objs_with_locs)
+            if sample_obj_locs_every_episode:
+                particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_coll_objs_with_locs) 
+            if sample_goal_every_episode:        
+                # select_goal_pose()
+                goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(mpc.initial_ee_pose_storm_cs) # in storm coordinates
+            
             # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
-            env_selected_storm = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
+            _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
+            
+            
             if ep == 0:
                 # Initialize the rlpt agent, including a DQN/DDQN.
                 all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
@@ -1251,6 +1255,8 @@ if __name__ == '__main__':
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
+    if profile_memory: # for debugging gpu if needed   
+        start_mem_profiling()   
     
 
     gym = Gym(**sim_params) # note - only one initiation is allowed per process
