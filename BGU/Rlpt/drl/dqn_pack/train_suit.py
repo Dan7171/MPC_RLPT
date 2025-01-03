@@ -37,7 +37,7 @@ class trainSuit:
     """
     
     def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
-                eps_start = 0.99, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
+                eps_start = 0.999, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
                 C=100,N=100000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
         """Initializing a dqn/ddqn network 
 
@@ -75,6 +75,7 @@ class trainSuit:
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
+        self.current_eps = eps_start
         self.learning_rate = learning_rate
         self.C = C
         self.N = N
@@ -82,7 +83,7 @@ class trainSuit:
         self.n_actions = n_actions
         self.action_indices = range(n_actions) # these are the action ids. Corresponding to Q networks output layers
         self.device = torch.device("cuda" if torch.cuda.is_available() else  "mps" if torch.backends.mps.is_available() else "cpu")
-
+        self.clipping = cfg['gradient_clipping'] if 'gradient_clipping' in cfg else False
         
         # criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
         self.criterion = criterion()
@@ -120,6 +121,13 @@ class trainSuit:
         total_grad_norm = total_grad_norm ** 0.5
         return total_grad_norm
 
+    def pick_greedy_no_grads(self, state):
+        with torch.no_grad():
+            Q_all_actions = self.current(state)
+            Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
+            max_allowed_q, max_allowed_q_idx = max(Q_all_actions_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
+            return max_allowed_q, max_allowed_q_idx
+        
     def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set()):
         """
         https://daiwk.github.io/assets/dqn.pdf alg 1
@@ -135,11 +143,11 @@ class trainSuit:
         # decide if selecting action greedily (best Q) for exploitation or select random action for exploration
         # current epsilon is the chance of selecting a random action
         sample = random.random()
-        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
-            math.exp(-1. * self.steps_done / self.eps_decay)
-        select_greedily = sample > eps_threshold
+        self.current_eps = self.eps_end + (self.eps_start - self.eps_end) * \
+            math.exp(-1. * self.steps_done / self.eps_decay)        
+        select_greedily = sample > self.current_eps
         random_at = not select_greedily  
-        print(f'random action chance: {eps_threshold:{.3}f}, random action: {random_at}')
+        # print(f'random action chance: {eps_threshold:{.3}f}, random action: {random_at}')
         
         with torch.no_grad():
             Q_all_actions = self.current(state)
@@ -164,18 +172,22 @@ class trainSuit:
                 action_idx = random.choice(list(allowed_actions_indices)) 
                 picked_q = Q_all_actions[action_idx]
                 
-        print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
+        # print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
+        # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
+        
         action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
         meta_data = {}
-        meta_data['eps']= eps_threshold
+        meta_data['eps']= self.current_eps
         meta_data['is_random'] = random_at
         meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
         
+        # if self.steps_done % 1000 == 0:
+        #     print(f'steps done {self.steps_done}, eps: {eps_threshold}, random action: {random_at}, q: {picked_q}')
      
         
         return action_idx_tensor, meta_data # that index is the id of the action 
     
-    def optimize(self, clipping=True, max_norm=1.0):
+    def optimize(self, max_norm=1.0):
         """
         Sample a random minibatch of transitions from the shape (s, a, s', r) from D, 
         compute error in Q^ w.r to target Q^s as the "true values",  and make a gradient step.
@@ -187,7 +199,7 @@ class trainSuit:
         We will use experience replay and optimize using 2 networks: Q network (updated) and targets network Q^ (older, fixed).
 
         """
-        meta_data = {'raw_grad_norm': 0, 'clipped_grad_norm':0.0, 'use_clipped':clipping, 'loss' :0}
+        meta_data = {'raw_grad_norm': 0, 'clipped_grad_norm':0.0, 'use_clipped':self.clipping, 'loss' :0}
 
         if len(self.memory) < self.batch_size:
             return meta_data # optimization starts only if we accumulated at leaset self.batch_size samples into the memory
@@ -226,13 +238,13 @@ class trainSuit:
         loss = self.criterion(input=q_values, target=y.unsqueeze(1)) # update current (Q network) weights in such way that we minimize the prediction error, w.r. to Q targets as our "y_real" with Q network predictiosn as "y_pred"
         loss.backward()
         meta_data['raw_grad_norm'] = self.compute_grad_norm()
-        if clipping:
+        if self.clipping:
             torch.nn.utils.clip_grad_norm_(self.current.parameters(), max_norm) 
         self.optimizer.step()
         
-        self.steps_done += 1
         if self.steps_done % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
             self.target.load_state_dict(self.current.state_dict())
+        
         meta_data['clipped_grad_norm'] = self.compute_grad_norm() # clipped gradient norm
         meta_data['loss'] = loss.item() 
         

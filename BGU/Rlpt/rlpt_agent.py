@@ -211,6 +211,13 @@ class rlptAgent:
         
     
         
+    def increase_t_total(self):
+        self.train_suit.steps_done += 1
+        return self.train_suit.steps_done
+    
+    def get_t_total(self):
+        return self.train_suit.steps_done
+
     
     def get_states_legend(self)->List[tuple]:
         

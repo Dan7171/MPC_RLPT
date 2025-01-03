@@ -206,6 +206,8 @@ class MpcRobotInteractive:
         self.initial_ee_pose_storm_cs = np.array([]) # initial end effector pose in storm coordinate system
         self.ee_pose_storm_cs = (np.zeros(3) ,np.zeros(4)) # position, quaternion
         self.goal_pose = [0,0,0,0,0,0,1]
+        self.benchmark_states = []
+        
         # self.arm_configuration = None
         self.objects_configuration = None
         self.vis_ee_target = self.gui_settings['render_ee_icons']   # Display "red cup" (the end goal state/effector target location) in gui. Not effecting algorithm (navigation to target), just its representation in gui.
@@ -273,7 +275,7 @@ class MpcRobotInteractive:
 
         # initiate world
         self.world_instance: World = World(self.gym, self.sim, self.env_ptr, self.world_params, w_T_r=self.w_T_r) 
-
+            
         # # define obstacles in world
         # self.table_dims = np.ravel([1.5,2.5,0.7])
         # self.cube_pose = np.ravel([0.35, -0.0,-0.35,0.0, 0.0, 0.0,1.0])
@@ -649,7 +651,7 @@ class MpcRobotInteractive:
     def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
         return pos_error < eps and rot_error < eps     
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, include_etl:bool, steps_done:int=0, in_zone_threshold=10, moni=None,):
+    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, include_etl:bool):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -662,13 +664,13 @@ class MpcRobotInteractive:
         Return:
         a tuple 
         """
-         
-        state_representation = rlpt_cfg['agent']['model']['state_representation']
+        t_total = rlpt_agent.get_t_total() # total time steps during training
+        
         # curr_ee_pose_np: np.ndarray
-        goal_ee_pose_np: np.ndarray
+        # goal_ee_pose_np: np.ndarray
         
         robot_handle = self.name_to_handle['robot'] # actor handle in current env
-        goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
+        # goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
         
         # rlpt state and action
         st: np.ndarray
@@ -703,30 +705,24 @@ class MpcRobotInteractive:
         curr_pi_mppi_covs = torch.zeros(7)
         curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
     
-        # else:
-        #     curr_pi_mppi_covs = torch.empty([])
-        
-        # curr_pi_mppi_covs = torch.zeros(7)
         sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
-        ep_start_time = time.time()
-        forced_stopping = False
-        
+
+        forced_stopping = False        
         try:
             for ts in range(episode_max_ts):
-                # rlpt - print status
-                print(f'\n')
-                print(f"episode: {ep_num} time step (t): {ts}, steps_done (total): {steps_done} ")     
-                rlpt_agent.print_state(st)
                 
                 # rlpt - select action (a(t))
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
                 forbidden_action_indices:set = set() # empty set - all actions are allowed
+                
                 if disable_frequent_h_changing: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
                     prev_h = prev_at['mpc_params']['horizon'] if prev_at_idx is not None else -1 
                     if h_sequence_len < prev_h:  
                         different_h_action_indices = set([i for i in range(len(rlpt_agent.action_space)) if rlpt_agent.action_space[i]['mpc_params']['horizon'] != prev_h])
                         forbidden_action_indices = different_h_action_indices
+                
+                # epsilon greedy action selection
                 at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
                 
                 if disable_frequent_h_changing: 
@@ -736,12 +732,14 @@ class MpcRobotInteractive:
                     else:
                         h_sequence_len += 1
                         
-                # print action unique features
-                if len(rlpt_agent.unique_action_features_by_idx):
-                    at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
-                    print(f'a(t): {at_unique_features}')
-                else:
-                    print(f'a(t): only one action allowed (fixed parameters)')
+                # # print action unique features
+                # if len(rlpt_agent.unique_action_features_by_idx):
+                #     at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
+                #     print(f'a(t): {at_unique_features}')
+                # else:
+                #     print(f'a(t): only one action allowed (fixed parameters)')
+                
+                
                 # rlpt and mpc planner - make steps
                 step_start_time = time.time()
                 self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -776,46 +774,55 @@ class MpcRobotInteractive:
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
                 at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
-                
-                print(f'a(t) index: {at_idx}')
-                print(f'r(t): {rt}')
-                
-                # rlpt- perform optimization step
+           
+                # rlpt- perform optimization (gradient) step
                 optim_meta_data = rlpt_agent.train_suit.optimize()
-                steps_done += 1
                 
-                # rlpt- update target network
-                if steps_done % rlpt_agent.train_suit.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-                    rlpt_agent.train_suit.target.load_state_dict(rlpt_agent.train_suit.current.state_dict())
+                # change pose until no contact
+                while contact_detected := (not sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
+                    self.step(at, prev_at)
+                if terminated: # terminal state reached
+                    break
                 
-                
-                st_parsed:list = list(rlpt_agent.parse_st(st).values()) 
-                at_unique_features = []
-                if len(rlpt_agent.unique_action_features_by_idx):
-                    at_unique_features = list(rlpt_agent.unique_action_features_by_idx[at_idx].values())
-                at_shared_features = []
-                if len(rlpt_agent.shared_action_features):
-                    at_shared_features = list(rlpt_agent.shared_action_features.values())
-                
-                st_at = st_parsed + at_unique_features + at_shared_features
-                
-                # row for etl
-                new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
-                        at_meta_data['q'], *st_at, step_duration, rt, contact_detected, ee_pos_error, ee_rot_error, 
-                        optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
-                if include_etl:        
+                # log to etl
+                if include_etl:            
+                    st_parsed:list = list(rlpt_agent.parse_st(st).values()) 
+                    at_unique_features = []
+                    if len(rlpt_agent.unique_action_features_by_idx):
+                        at_unique_features = list(rlpt_agent.unique_action_features_by_idx[at_idx].values())
+                    at_shared_features = []
+                    if len(rlpt_agent.shared_action_features):
+                        at_shared_features = list(rlpt_agent.shared_action_features.values())
+                    st_at = st_parsed + at_unique_features + at_shared_features                
+                    new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
+                            at_meta_data['q'], *st_at, step_duration, rt, contact_detected, ee_pos_error, ee_rot_error, 
+                            optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
                     with open(etl_file_path, mode='a', newline='') as file:
                         writer = csv.writer(file)
                         writer.writerow(new_row)
+                 
                 
+                if t_total % 100 == 0:
+                    print(f"t_total: {t_total}")
+                    print(f'current_eps: {rlpt_agent.train_suit.current_eps}')
+                    if len(self.benchmark_states) < 10:
+                        self.benchmark_states.append(st)
+                    else:
+                        current_q_vals = []
+                        for benchmark_st in self.benchmark_states:
+                            benchmark_st = torch.tensor(benchmark_st, device="cuda", dtype=torch.float64)
+                            current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(benchmark_st)[0])
+                        print(f"benchmark q values: {current_q_vals}")
                         
-                # rlpt - update state for next iter where ts t+1
+                # rlpt - update state for next iter where ts t+1 
+                t_total = rlpt_agent.increase_t_total() # increase total training time
                 st = s_next
                 prev_at_idx = at_idx
                 prev_at = at
                 
-                           
-            return ts, steps_done, forced_stopping
+                
+            return ts, t_total, forced_stopping 
+        
         
         except KeyboardInterrupt:
             forced_stopping = True
@@ -1101,9 +1108,7 @@ def train_loop(n_episodes, episode_max_ts):
     
     # Initial values
     mpc = mpc_controller
-    ep = 0
-    steps_done = 0 # in total (throughout all training)    
-    
+    ep = 0    
     # load configuration
     sample_objs_every_episode = rlpt_cfg['agent']['training']['sample_objs_every_episode'] 
     sample_obj_locs_every_episode = rlpt_cfg['agent']['training']['sample_obj_locs_every_episode']
@@ -1124,8 +1129,10 @@ def train_loop(n_episodes, episode_max_ts):
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
             if sample_objs_every_episode:
                 particiating_storm = sample_obj_subset(all_coll_objs_with_locs)
+            
             if sample_obj_locs_every_episode:
                 particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_coll_objs_with_locs) 
+            
             if sample_goal_every_episode:        
                 # select_goal_pose()
                 goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(mpc.initial_ee_pose_storm_cs) # in storm coordinates
@@ -1167,7 +1174,7 @@ def train_loop(n_episodes, episode_max_ts):
                             writer.writerow(col_names)
                         
                 
-            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl, steps_done=steps_done) 
+            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl) 
             rlpt_agent.save(ep, ts, steps_done, model_file_path)                
             if keyboard_interupt:
                 raise KeyboardInterrupt()    
