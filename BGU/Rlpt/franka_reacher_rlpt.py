@@ -120,17 +120,17 @@ def rot_as_ndarray(rot:gymapi.Quat) -> np.ndarray:
     return np.array([rot.x, rot.y, rot.z, rot.w])
 
 # Error measurment functions:
-def pose_error(curr_pose:gymapi.Transform, goal_pose:gymapi.Transform)-> np.float64:
+def pose_error(curr_pose:gymapi.Transform, goal_pose:gymapi.Transform)-> np.float32:
     """
     return l2 norm between current and desired poses (each pose is both positon and rotation)  
     """
     return np.linalg.norm(pose_as_ndarray(curr_pose) - pose_as_ndarray(goal_pose))  
-def pos_error(curr_pos:gymapi.Vec3, goal_pos:gymapi.Vec3)-> np.float64:
+def pos_error(curr_pos:gymapi.Vec3, goal_pos:gymapi.Vec3)-> np.float32:
     """
     return l2 norm between current and desired positions (position is only the spacial location in environment ("x,y,z" coordinates))
     """
     return np.linalg.norm(pos_as_ndarray(curr_pos) - pos_as_ndarray(goal_pos))     
-def rot_error(curr_rot:gymapi.Quat, goal_rot:gymapi.Quat)-> np.float64:
+def rot_error(curr_rot:gymapi.Quat, goal_rot:gymapi.Quat)-> np.float32:
     """
     return l2 norm between current and desired rotations (each rotation is the quaternion - a 4 length vector)  
     """
@@ -672,9 +672,9 @@ class MpcRobotInteractive:
         
         # rlpt state and action
         st: np.ndarray
-        rt: np.float64
-        ee_pos_error: np.float64
-        ee_rot_error: np.float64 
+        rt: np.float32
+        ee_pos_error: np.float32
+        ee_rot_error: np.float32 
         curr_pi_mppi_means: torch.Tensor
         curr_pi_mppi_covs: torch.Tensor
         sniffer = GLobalVars.cost_sniffer 
@@ -685,7 +685,7 @@ class MpcRobotInteractive:
         in_zone_cntr = 0
         prev_at_idx = None # None or int
         at: dict
-        convergence_threshold_pos, convergence_threshold_rot = rlpt_cfg['agent']['rewards']['goal_pos_thresh_dist'], rlpt_cfg['agent']['rewards']['goal_rot_thresh_dist'] 
+        convergence_threshold_pos, convergence_threshold_rot = rlpt_cfg['agent']['reward']['goal_pos_thresh_dist'], rlpt_cfg['agent']['reward']['goal_rot_thresh_dist'] 
         prev_at:dict = {} # dict 
         h_sequence_len = 0
         disable_frequent_h_changing = rlpt_cfg['agent']['training']['disable_frequent_h_changing']
@@ -761,16 +761,18 @@ class MpcRobotInteractive:
                 
                 
                 # rlpt - compute reward (r(t))  
-                ee_pos_error: np.float64 = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
-                ee_rot_error: np.float64 = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
+                ee_pos_error = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
+                ee_rot_error = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
                 # mpc_costs_current_step:dict = sniffer.get_current_costs() # current real world costs
                 # unweighted_cost_primitive_coll: np.float32 = np.ravel(mpc_costs_current_step['primitive_collision'].term.cpu().numpy())[0] # robot with objects in environment collision cost (unweighted)             
                 contact_detected:bool = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
-                rt = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
+                
+                # Get the reward and check if the episode is over by reaching a terminal state
+                rt, terminated = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not (ts == episode_max_ts - 1) else None
+                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not ((ts == episode_max_ts - 1 or terminated)) else None
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
                 at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
@@ -801,33 +803,17 @@ class MpcRobotInteractive:
                 new_row = [ep_num, ts, at_meta_data['eps'], at_meta_data['is_random'],
                         at_meta_data['q'], *st_at, step_duration, rt, contact_detected, ee_pos_error, ee_rot_error, 
                         optim_meta_data['raw_grad_norm'], optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss'], forced_stopping]
-                if include_etl:    
-                    
+                if include_etl:        
                     with open(etl_file_path, mode='a', newline='') as file:
                         writer = csv.writer(file)
                         writer.writerow(new_row)
                 
-                # moni.update_data(x, ys)   
                         
                 # rlpt - update state for next iter where ts t+1
                 st = s_next
                 prev_at_idx = at_idx
                 prev_at = at
                 
-                
-                
-
-                
-                # Perform goal test
-                # update counters
-                if in_target_pose := ee_pos_error < convergence_threshold_pos and ee_rot_error < convergence_threshold_rot: # in target (goal) pose 
-                    print(f"'\033[94m'In convergence zone'\033[0m'") # blue
-                    in_zone_cntr += 1
-                else:
-                    in_zone_cntr = 0
-                # required achievment is to reach goal pose (be in a very small zone of it) and hold there for convergence_threshold_pos time steps in a row                 
-                if passed_goal_test := in_zone_cntr >= in_zone_threshold: # steps in a row where ee was in target  
-                    break    
                            
             return ts, steps_done, forced_stopping
         

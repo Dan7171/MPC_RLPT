@@ -2,8 +2,10 @@ import copy
 from importlib import metadata
 import math
 from os import access
+from turtle import position
 from typing import Dict, List, Set, Tuple, Union
 from click import BadArgumentUsage
+# from examples.franka_osc import orientation_error
 from networkx import union
 from storm_kit.mpc import task
 import torch
@@ -234,47 +236,54 @@ class rlptAgent:
                     
                     
                 
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, pos_w=0.1, col_w=1000, step_dur_w=10, pos_r_radius=0.1, pos_r_sharpness=50)->np.float64:
-        """ A weighted sum of reward terms considering next terms.
-        Args:
-            ee_pos_error (float): l2 norm of the distance to target error (position error): {v = (x,y,z) = (current end effector location - goal end effector location)} of the transition from s(t) to s(t+1) 
-            ee_rot_error (float): l2 norm of the quaternion error (rotation error): {v = (r1,r2,r3,r4) = (current end effector rotation - goal end effector rotation)} of the transition from s(t) to s(t+1) 
-            contact_detected (bool): wether premitive (with obstacles) collision or self (with own arm parts) collision was detected. Based on safety distance and more accurate than the collision errors of STORM.
-            step_duration (float): the time it took to tune the params (perform action a(t) of rlpt) + the time it took to execute the step in robot
-            pos_w (int, optional): Defaults to 1. the weight of position reward in total reward calculation of the transition..
-            col_w (int, optional): Defaults to 1.the weight of premitive ("with obstacles") collision reward in total reward calculation of the transition.
-            step_dur_w (int, optional):. Defaults to 1.  the weight of step duration reward in total reward calculation of the transition.
-            
-            pos_r_radius (float, optional): Defaults to 0.05. "Radius of interest" of position error in centimeters. It affects position reward- the greater it is, the further from goal position (earlier in route) that the arm starts being aware to position error.  
-                This is the exponent sharpness. the greater it is, the sharper/faster the orientation reward weight (how much we care about orientation) is inceased when we cross the radius towards the exact goal position. 
-                Position reward logic:  
-                1. When ee position is at distance pos_r_radius (in cm) from goal- the reward is 1. If distance from goal is infinity, the reward is 0
-                2. The smaller the distance to goal gets, reward climbs
-                3. At distance is pos_r_radius ()"the radius of interest") or smaller, the reward starts to climb sharply. In other words, pos_r_radius represents 
-                a sphere in that shape around the goal position, which when the ee is entering that sphere, you start treating that entry as reaching close enough to the exact goal pose (and if the ee is outside that sphere, you don't really care or consider it as sucecss)).
-                Meaning: the smaller you set pos_r_radius, the more precise you want ee to reach, and you consider a smaller sphere around goal positio as success.
-                4. The greater pos_r_sharpness is, the faster the reward climbs when you get close to the goal position (it mostly gets when you cross the "pos_r_radius")
-            pos_r_sharpness (int, optional): Defaults to 50. the weight of position reward in total reward calculation of the transition..
-            
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)->Tuple[np.float32, bool]:
+        """ A weighted sum of reward terms
         Returns:
-            np.float64: total reward of the transition from s(t) to s(t+1).
+            a. np.float64: total reward of the transition from s(t) to s(t+1).
+            b. is terminal state (contact_detected or goal_test)
         """
-       
-        
-        assert_positive = [pos_w, col_w, step_dur_w, pos_r_radius, pos_r_sharpness]
+        rlpt_cfg = GLobalVars.rlpt_cfg
+        reward_config = rlpt_cfg['agent']['reward']
+        goal_pos_thresh_dist =  reward_config['goal_pos_thresh_dist']
+        goal_rot_thresh_dist =  reward_config['goal_rot_thresh_dist']
+        step_dur_w = reward_config['step_dur_w']
+        safety_w = reward_config['safety_w']
+        pose_w = reward_config['pose_w']
+
+        assert_positive = [pose_w, safety_w, step_dur_w, goal_pos_thresh_dist,goal_rot_thresh_dist]
         for arg in assert_positive:
             arg_name = f'{arg=}'.split('=')[0]
-            assert arg > 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
-         
-        postion_reward = pos_w * math.exp(pos_r_sharpness *(-ee_pos_error + pos_r_radius)) # e^(sharp*(-pos_err + rad))
-        orient_w = postion_reward # We use the position reward as the weight for the orientation reward, as we want the orientation reward to be more significant (either good or bad) as we get closer to goal in terms of position.    
-        orientation_reward = orient_w * - ee_rot_error  
-        safety_reward = col_w * - int(contact_detected)
-        step_duration_reward = step_dur_w * - step_duration
-        total_reward = postion_reward + orientation_reward + safety_reward + step_duration_reward
-        # print(f"r(t) (term, reward):\nposition (ee to goal distance, r), orientation (ee to goal distance, r), (is contact,r), step duration (duration, r)\n({ee_pos_error:{.3}f}, {postion_reward:{.3}f}), ({ee_rot_error:{.3}f}, {orientation_reward:{.3}f}), ({contact_detected}, {primitive_collision_reward:{.3}f}),({step_duration:{.3}f}, {step_duration_reward:{.3}f})")
+            assert arg >= 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
+
+        # checking if the goal is reached (if the ee is close enough to the goal position and orientation)
+        goal_test = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
         
-        return total_reward
+        if reward_config['pose_reward']:
+            # positive rewards for position  and orientation when close enough to goal position        
+            possition_reward =  max(0, goal_pos_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0, never negative)
+            orientation_reward = max(0, goal_rot_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0,  never negative)
+            
+            # pose reward logic: we compute a positive reward for pose, only if both position and orientation are close enough to the goal
+            # the pose reward is the sum of the position and orientation rewards,  
+            pose_reward = (possition_reward + orientation_reward) * int(goal_test)         
+            pose_reward *= pose_w
+        else:
+            pose_reward = 0   
+            
+        safety_reward = safety_w * - int(contact_detected)
+        
+        
+        if  goal_test:
+            step_duration_reward = 0 # no time penalty when goal is reached
+        
+        else:
+            if reward_config['time_reward'] == 'linear':
+                step_duration_reward = step_dur_w * - step_duration
+            else: # binary, penalty of 1 for every step
+                step_duration_reward = -1
+
+        total_reward = pose_reward + safety_reward + step_duration_reward
+        return np.float32(total_reward), contact_detected or goal_test
 
     def action_space_info(self):
         
