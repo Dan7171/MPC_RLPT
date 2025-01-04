@@ -1195,11 +1195,11 @@ if __name__ == '__main__':
     
     # make dir for model checkpoints and etl file
     
-    model_dir = os.path.split(model_file_path)[0]
-    if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
-        os.mkdir(model_dir)    
-    if include_etl:
-        etl_file_path = model_dir + '/etl.csv'
+    # model_dir = os.path.split(model_file_path)[0]
+    # if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
+    #     os.mkdir(model_dir)    
+    # if include_etl:
+    #     etl_file_path = model_dir + '/etl.csv'
             
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
@@ -1290,9 +1290,8 @@ if __name__ == '__main__':
     #     episode_loop_cfg = rlpt_cfg['agent']['testing']
     
     
-    
-    if rlpt_cfg['agent']['training']['run']:
-        episode_cfg = rlpt_cfg['agent']['training']
+    episode_cfg = rlpt_cfg['agent']['training']
+    if episode_cfg['run']:
         reset_state = episode_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
             save_checkpoints_every_episode = True
@@ -1309,8 +1308,8 @@ if __name__ == '__main__':
         episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'], episode_cfg)
 
     
-    
-    if rlpt_cfg['agent']['testing']['run']:
+    episodes_cfg = rlpt_cfg['agent']['testing']
+    if episodes_cfg['run']:
         save_checkpoints_every_episode = False
         episodes_cfg = rlpt_cfg['agent']['testing']
         reset_state = episode_cfg['reset_to_initial_state_every_episode']
