@@ -54,7 +54,8 @@ agent:
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
-    sample_goal_every_episode: false
+    sample_goal_every_episode: true
+    reset_to_initial_state_every_episode: false
     default_goal_pose: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] # storm coordinates
 
 

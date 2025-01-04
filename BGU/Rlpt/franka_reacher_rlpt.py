@@ -192,6 +192,8 @@ class MpcRobotInteractive:
     Operations to control the simulation
     TODO: Don't really like this class. This class should be called "Controller" or "Actions for simulation" since thats what it is
     """
+    initial_ee_pose_storm_cs = np.array([]) # initial end effector pose in storm coordinate system
+
     def __init__(self, args, gym_instance: Gym, rlpt_cfg:dict, env_yml_relative_path:str,task_yml_relative_path:str):
         """ 
 
@@ -206,7 +208,6 @@ class MpcRobotInteractive:
         self.gym_instance = gym_instance
         robot_name: str = self.args.robot # franka
         # RL variables
-        self.initial_ee_pose_storm_cs = np.array([]) # initial end effector pose in storm coordinate system
         self.ee_pose_storm_cs = (np.zeros(3) ,np.zeros(4)) # position, quaternion
         self.goal_pose = [0,0,0,0,0,0,1]
         self.benchmark_states = []
@@ -507,15 +508,15 @@ class MpcRobotInteractive:
         
         # Save current pose in storm cs and initialize it if not initialized
         self.ee_pose_storm_cs = self.get_ee_pose_at_storm_cs_from_dofs_state(current_dofs_state_formatted_ref) # end effector position in storm cs  
-        if not self._is_initialized(self.initial_ee_pose_storm_cs):
-            self.initial_ee_pose_storm_cs = copy.deepcopy(self.ee_pose_storm_cs)
+        if not MpcRobotInteractive._is_initialized(MpcRobotInteractive.initial_ee_pose_storm_cs):
+            MpcRobotInteractive.initial_ee_pose_storm_cs = copy.deepcopy(self.ee_pose_storm_cs)
     
 
         # Get the new position of the end effector in storm cs:         
         # new_dofs_state = desired_dofs_state # environment is deterministic. So next state is 100% known- (exactly the state we desired).
                 
-    
-    def _is_initialized(self, var):
+    @staticmethod
+    def _is_initialized(var):
         return var is not None and len(var)
     
     def get_ee_pose_at_storm_cs_from_dofs_state(self, dofs_state):
@@ -1129,9 +1130,10 @@ def train_loop(n_episodes, episode_max_ts):
     try:
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
             print('Episode:', ep)
-            gym = Gym(**sim_params) # note - only one initiation is allowed per process
-            mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
-            mpc = mpc_controller
+            
+            if ep == 0 or rlpt_cfg['agent']['training']['reset_to_initial_state_every_episode']:
+                gym = Gym(**sim_params) # note - only one initiation is allowed per process
+                mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming.             
             
             all_coll_objs_with_locs = {}
             for obj_type in mpc.all_collision_objs:
@@ -1148,8 +1150,8 @@ def train_loop(n_episodes, episode_max_ts):
             
             if sample_goal_every_episode:        
                 # select_goal_pose()
-                goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(mpc.initial_ee_pose_storm_cs) # in storm coordinates
-            
+                goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(MpcRobotInteractive.initial_ee_pose_storm_cs / 2)  # in storm coordinates
+
             # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
             _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
             
@@ -1188,9 +1190,10 @@ def train_loop(n_episodes, episode_max_ts):
                         
                 
             ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl) 
-  
-            mpc.gym.destroy_viewer(mpc.gym_instance.viewer)
-            mpc.gym.destroy_sim(mpc.gym_instance.sim)
+            
+            if rlpt_cfg['agent']['training']['reset_to_initial_state_every_episode']:
+                mpc.gym.destroy_viewer(mpc.gym_instance.viewer)
+                mpc.gym.destroy_sim(mpc.gym_instance.sim)
             
             
             if rlpt_cfg['agent']['model']['save_checkpoints']:
