@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+import GPUtil
 import numpy as np
 try:
     from  isaacgym import gymapi
@@ -79,13 +80,23 @@ class Gym(object):
         # find params in kwargs and fill up here:
         sim_engine_params = load_struct_from_dict(sim_engine_params, sim_params)
         self.headless = headless
-
+        print('start')
+        GPUtil.showUtilization()
+        
         self.gym = gymapi.acquire_gym() # All of the Gym API functions can be accessed as methods of a singleton Gym object acquired on startup. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
+        print('after aquire')
+        GPUtil.showUtilization()
+        
         self.sim = self.gym.create_sim(compute_device_id, graphics_device_id, physics_engine, sim_engine_params) # The sim object contains physics and graphics contexts that will allow you to load assets, create environments, and interact with the simulation. https://drive.google.com/file/d/1zNXDHUs0Z4bHZkF-uTPzhQn7OI3y88ha/view?usp=sharing
-
+        print('after create sim')
+        GPUtil.showUtilization()
+        
         self.env_list = []#None
         self.viewer = None
         self._create_envs(num_envs, num_per_row=int(np.sqrt(num_envs)))
+        print('after create envs')
+        GPUtil.showUtilization()
+        
         if(not headless):
             self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
             cam_pos = gymapi.Vec3(-1.5, 1.8, 1.2)
@@ -94,8 +105,12 @@ class Gym(object):
             #cam_target = gymapi.Vec3(-6, 0.0,6)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
         #self.gym.add_ground(self.sim, gymapi.PlaneParams())
-
         self.dt = sim_engine_params.dt
+        
+        print('after headless check')
+        GPUtil.showUtilization()
+        
+        
     def step(self):
         """
         Advances the simulation by one time step, updates the viewer (if not in headless mode), 

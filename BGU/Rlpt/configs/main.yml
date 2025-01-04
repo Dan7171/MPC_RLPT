@@ -1,6 +1,6 @@
 
 cost_sniffer:
-  gui: true
+  gui: false
   save_costs: false
 
 gui:
@@ -9,6 +9,9 @@ gui:
 
 episode_plots:
   show: true
+
+profile_memory:
+  include: true
 
 agent:
   model: # The Neural network 
@@ -51,10 +54,10 @@ agent:
 
   training:
     run: true
-    load_checkpoint: true
+    load_checkpoint: false
     save_checkpoints: true
-    n_episodes: 1000
-    max_ts: 1500
+    n_episodes: 20
+    max_ts: 150
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
@@ -63,7 +66,7 @@ agent:
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
   
   testing:
-    run: true
+    run: false
     n_episodes: 100
     max_ts: 1500
     disable_frequent_h_changing: false

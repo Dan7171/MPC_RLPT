@@ -251,7 +251,6 @@ class trainSuit:
         if self.steps_done % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
             self.target.load_state_dict(self.current.state_dict())
         
-        print('debug target vs current: ', self.target == self.current)
         
         meta_data['loss'] = loss.item() 
         
