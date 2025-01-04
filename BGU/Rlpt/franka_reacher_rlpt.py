@@ -683,7 +683,6 @@ class MpcRobotInteractive:
         ee_rot_error: np.float32 
         curr_pi_mppi_means: torch.Tensor
         curr_pi_mppi_covs: torch.Tensor
-        sniffer = GLobalVars.cost_sniffer 
         
         # -- start episode control loop --
         
@@ -715,10 +714,6 @@ class MpcRobotInteractive:
         forced_stopping = False        
         try:
             for ts in range(episode_max_ts):
-                print(f"debug episode: {ep_num}, ts: {ts}")
-
-                
-                # rlpt - select action (a(t))
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
                 forbidden_action_indices:set = set() # empty set - all actions are allowed
                 
@@ -1108,30 +1103,20 @@ def train_loop(n_episodes, episode_max_ts):
     """
     
     
-    # Initial values
-
-    ep = 0    
+    
+    
     # load configuration
     sample_objs_every_episode = rlpt_cfg['agent']['training']['sample_objs_every_episode'] 
     sample_obj_locs_every_episode = rlpt_cfg['agent']['training']['sample_obj_locs_every_episode']
     sample_goal_every_episode = rlpt_cfg['agent']['training']['sample_goal_every_episode']
-    
-    
-    # Define initial default values for the episodes
-    # all_coll_objs_with_locs = {}
-    # for obj_type in mpc.all_collision_objs:
-    #     for obj_name in mpc.all_collision_objs[obj_type]:
-    #         all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-    # particiating_storm = all_coll_objs_with_locs
-    # not_participatig_storm = {}
     goal_pose_storm = rlpt_cfg['agent']['training']['default_goal_pose'] # in storm coordinates
-    
-    # Start epoisde loop
+    reset_to_initial = rlpt_cfg['agent']['training']['reset_to_initial_state_every_episode']
+
     try:
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
             print('Episode:', ep)
             
-            if ep == 0 or rlpt_cfg['agent']['training']['reset_to_initial_state_every_episode']:
+            if ep == 0 or reset_to_initial:
                 gym = Gym(**sim_params) # note - only one initiation is allowed per process
                 mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming.             
             
@@ -1289,6 +1274,8 @@ if __name__ == '__main__':
         
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
+    sniffer = GLobalVars.cost_sniffer 
+
     profile_memory = rlpt_cfg['profile_memory']['include'] # activate memory profiling
     if profile_memory: # for debugging gpu if needed   
         start_mem_profiling()   
