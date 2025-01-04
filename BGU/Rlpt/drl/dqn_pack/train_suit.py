@@ -75,7 +75,7 @@ class trainSuit:
         self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
         self.eps_start = eps_start
         self.eps_end = eps_end
-        self.eps_decay = eps_decay
+        self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
         self.current_eps = eps_start
         self.learning_rate = learning_rate
         self.C = C
@@ -129,7 +129,7 @@ class trainSuit:
             max_allowed_q, max_allowed_q_idx = max(Q_all_actions_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
             return max_allowed_q, max_allowed_q_idx
         
-    def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set()):
+    def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set(), training:bool=True) -> Union[torch.Tensor, dict]:
         """
         https://daiwk.github.io/assets/dqn.pdf alg 1
         Select an action from an epsilon greedy policy.
@@ -146,13 +146,15 @@ class trainSuit:
         sample = random.random()
         self.current_eps = self.eps_end + (self.eps_start - self.eps_end) * \
             math.exp(-1. * self.steps_done / self.eps_decay)        
-        select_greedily = sample > self.current_eps
-        random_at = not select_greedily  
-        # print(f'random action chance: {eps_threshold:{.3}f}, random action: {random_at}')
         
+        if training:
+            greedy_choice = sample > self.current_eps
+        else: # deployment mode, taking the best action
+            greedy_choice = True
+                    
         with torch.no_grad():
             Q_all_actions = self.current(state)
-            if select_greedily: # best a (which maximizes current Q)
+            if greedy_choice: # best a (which maximizes current Q)
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
@@ -178,13 +180,10 @@ class trainSuit:
         
         action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
         meta_data = {}
-        meta_data['eps']= self.current_eps
-        meta_data['is_random'] = random_at
         meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
-        
-        # if self.steps_done % 1000 == 0:
-        #     print(f'steps done {self.steps_done}, eps: {eps_threshold}, random action: {random_at}, q: {picked_q}')
-     
+        if training:
+            meta_data['eps']= self.current_eps
+            meta_data['is_random'] = not greedy_choice 
         
         return action_idx_tensor, meta_data # that index is the id of the action 
     
@@ -235,19 +234,25 @@ class trainSuit:
         # y = the targets vector = (y_1,...,y_batchsize)
         y = rewards +  self.gamma * qs_for_target_with_final_states # targtes. expected q values given. our "labeled" data     
         
-        # loss calculation and greadient step
+        # compute loss
         loss = self.criterion(input=q_values, target=y.unsqueeze(1)) # update current (Q network) weights in such way that we minimize the prediction error, w.r. to Q targets as our "y_real" with Q network predictiosn as "y_pred"
-        loss.backward()
+        # compute grads
+        loss.backward() 
         meta_data['raw_grad_norm'] = self.compute_grad_norm()
         
         if self.clipping:
             torch.nn.utils.clip_grad_norm_(self.current.parameters(), max_norm) 
+            meta_data['clipped_grad_norm'] = self.compute_grad_norm() # clipped gradient norm
+
+        # gradient step
         self.optimizer.step()
+        
         
         if self.steps_done % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
             self.target.load_state_dict(self.current.state_dict())
         
-        meta_data['clipped_grad_norm'] = self.compute_grad_norm() # clipped gradient norm
+        print('debug target vs current: ', self.target == self.current)
+        
         meta_data['loss'] = loss.item() 
         
         return meta_data

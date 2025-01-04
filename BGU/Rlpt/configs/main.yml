@@ -12,9 +12,8 @@ episode_plots:
 
 agent:
   model: # The Neural network 
-    load_checkpoint: false
-    save_checkpoints: true
-    checkpoint_path: None # 'BGU/Rlpt/trained_models/2025:01:03(Fri)22:13:25/model.pth'
+  
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:04(Sat)14:27:25/model.pth' # None
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -31,13 +30,15 @@ agent:
   train_suit:
     gamma: 1
     batch_size: 128
+    eps_decay: 1000
     grad_clipping: false
+    
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation radius. meters
     goal_rot_thresh_dist: 0.01 # meters
     col_thresh_dist: 0.05 # meters
-    time_reward: linear # (or fixed)
+    time_reward: fixed # (or fixed)
     pose_reward: false # false means no direct reward on goal state, learning just from time to goal and collisions
     safety_w: 100
     pose_w: 10
@@ -49,16 +50,36 @@ agent:
 
 
   training:
+    run: true
+    load_checkpoint: true
+    save_checkpoints: true
     n_episodes: 1000
-    max_ts: 150
+    max_ts: 1500
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
-    sample_goal_every_episode: true
-    reset_to_initial_state_every_episode: false
-    default_goal_pose: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] # storm coordinates
-
-
-
+    sample_goal_every_episode: false
+    reset_to_initial_state_every_episode: true
+    default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
+  
+  testing:
+    run: true
+    n_episodes: 100
+    max_ts: 1500
+    disable_frequent_h_changing: false
+    sample_objs_every_episode: false
+    sample_obj_locs_every_episode: false
+    sample_goal_every_episode: false
+    reset_to_initial_state_every_episode: true
+    default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision).
     
+    # load_model: true # if false, taking the trained model from the training phase
+    # model: 'BGU/Rlpt/trained_models/2025:01:04(Sat)14:27:25/model.pth'
+
+  action_space:
+    use_original_storm_params: false
+
+  running_mode:
+    train: true
+    test: true    
 

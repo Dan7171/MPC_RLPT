@@ -40,7 +40,7 @@ def generate_random_quaternion():
 def open_yaml(world_yml):
     with open(world_yml) as file:
         world_params = yaml.load(file, Loader=yaml.FullLoader)
-    print(f"world_params: {world_params}")
+    # print(f"world_params: {world_params}")
     return world_params
 
 def get_objects_by_indexes(world_params, indexes):

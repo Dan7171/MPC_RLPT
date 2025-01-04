@@ -1,4 +1,5 @@
 import copy
+import csv
 from importlib import metadata
 import math
 from os import access
@@ -8,6 +9,7 @@ from click import BadArgumentUsage
 # from examples.franka_osc import orientation_error
 from networkx import union
 from storm_kit.mpc import task
+from sympy import epath
 import torch
 from yaml import compose
 # from BGU.Rlpt.drl.dqn_pack import train_suit
@@ -29,7 +31,7 @@ def _merge_dict(original, update):
     return new
     
 class rlptAgent:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_col_objs=10):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_col_objs=10, training_mode=True):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -40,14 +42,18 @@ class rlptAgent:
             col_obj_handles dict: a dict which keys are the names of collision objects (participating or not) and values are the object's handle (int)
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
         """
+        
         # self.base_pos_gym_s0 = base_pos_gym
         # self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
         # self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
+        self.training_mode = training_mode
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
         self.all_coll_obj_names_sorted:list = sorted(list(self.col_obj_handles.keys()), key=lambda x: self.col_obj_handles[x]) # sorted by obj handle
+        
         # self.all_coll_objs_s0 = _merge_dict(participating_storm, not_participating_storm)
         all_coll_objs_s0 = _merge_dict(participating_storm, not_participating_storm)
+        
         if len(all_coll_objs_s0) != len(participating_storm) + len(not_participating_storm):
             raise BadArgumentUsage("participating and non participating objects must contain objects with unique names") 
         # self.max_col_objs = max_col_objs        
@@ -92,7 +98,48 @@ class rlptAgent:
         self.train_suit = trainSuit(self.st_dim , len(action_space)) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
- 
+    
+    def initialize_etl(self,etl_file_path):
+        st_titles = self.get_states_legend()
+        st_titles = ['st_' + pair[1] for pair in st_titles]
+        at_titles_unique_features = []
+        if len(self.unique_action_features_by_idx):
+            at_titles_unique_features = self.unique_action_features_by_idx[0].keys()
+        at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
+        at_titles_shared_features = []
+        if len(self.shared_action_features):
+            at_titles_shared_features = self.shared_action_features.keys()
+        at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
+        st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
+        col_names = ['ep', 't', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
+        if self.training_mode:
+            col_names.extend(['at_epsilon','rand_at', 'optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss'])
+        with open(etl_file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(col_names)
+        print(f'new etl file was initialized: {etl_file_path}')    
+        
+    
+    def update_etl(self, st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_reached):
+        
+        st_parsed:list = list(self.parse_st(st).values()) 
+        at_unique_features = []
+        if len(self.unique_action_features_by_idx):
+            at_unique_features = list(self.unique_action_features_by_idx[at_idx].values())
+        at_shared_features = []
+        if len(self.shared_action_features):
+            at_shared_features = list(self.shared_action_features.values())
+        st_at = st_parsed + at_unique_features + at_shared_features                
+        
+        new_row = [ep_num, ts, at_meta_data['q'], *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
+        
+        if self.training_mode:
+            new_row.extend([at_meta_data['eps'], at_meta_data['is_random'],optim_meta_data['raw_grad_norm'],optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss']])
+        
+        with open(etl_file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(new_row)
+        
     
     def flatten_coll_obj_states(self, all_coll_objs_st):
         
@@ -122,7 +169,8 @@ class rlptAgent:
             print(f'{item_name}: {item_st}')
             
     def select_action(self, st:torch.Tensor,forbidden_action_indices):
-        """Given state s(t) return action a(t) and its index
+        """Given state s(t) return action a(t) and its index.
+        If training: select epsilon greedy. Else: select greedy action.
         
         Args:
             st (torch.Tensor): s(t)
@@ -132,17 +180,24 @@ class rlptAgent:
         """
         action_idx_tensor: torch.Tensor
         action_idx:int
-        action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices)
+        action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices, self.training_mode)
         action_idx = int(action_idx_tensor.item()) # action's index
         return action_idx, self.action_space[action_idx], meta_data # the action itself 
     
     def load(self, checkpoint):
+        episodes_done = 0 
+    
         self.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
-        self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
-        self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.train_suit.memory = checkpoint['memory']
-        self.train_suit.steps_done = checkpoint['steps_done']
-        pass
+        
+        if self.training_mode:
+            self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
+            self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            self.train_suit.memory = checkpoint['memory']
+            self.train_suit.steps_done = checkpoint['steps_done']
+            episodes_done = checkpoint['episode'] # can shorten the training by loading the last episode of model
+            print(f"Curretn episode was reset to: {episodes_done}")
+        
+        return episodes_done
         
     def save(self, ep, model_file_path):
         # save model with relevant info to start the next episode
