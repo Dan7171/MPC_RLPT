@@ -4,6 +4,7 @@ Based on Elias's franka_reacher_for_comparison.py
 """
 import copy
 import datetime
+from json import load
 from os import name
 import os
 import pickle
@@ -63,6 +64,8 @@ from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
 from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray
+from BGU.Rlpt.utils.utils import make_model_path
+
 
 np.set_printoptions(precision=2)
 GREEN = gymapi.Vec3(0.0, 0.8, 0.0)
@@ -711,6 +714,8 @@ class MpcRobotInteractive:
         forced_stopping = False        
         try:
             for ts in range(episode_max_ts):
+                print(f"debug episode: {ep_num}, ts: {ts}")
+
                 
                 # rlpt - select action (a(t))
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
@@ -731,14 +736,7 @@ class MpcRobotInteractive:
                         h_sequence_len = 0
                     else:
                         h_sequence_len += 1
-                        
-                # # print action unique features
-                # if len(rlpt_agent.unique_action_features_by_idx):
-                #     at_unique_features = rlpt_agent.unique_action_features_by_idx[at_idx]
-                #     print(f'a(t): {at_unique_features}')
-                # else:
-                #     print(f'a(t): only one action allowed (fixed parameters)')
-                
+          
                 
                 # rlpt and mpc planner - make steps
                 step_start_time = time.time()
@@ -766,8 +764,8 @@ class MpcRobotInteractive:
                 contact_detected:bool = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
                 
                 # Get the reward and check if the episode is over by reaching a terminal state
-                rt, terminated = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
-
+                rt, goal_state = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
+                terminated = goal_state or contact_detected
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
                 s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not ((ts == episode_max_ts - 1 or terminated)) else None
@@ -779,8 +777,10 @@ class MpcRobotInteractive:
                 optim_meta_data = rlpt_agent.train_suit.optimize()
                 
                 # change pose until no contact
-                while contact_detected := (not sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
+                while contact_detected := (sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
+                    print("contact detected, escaping contact before learning continues")
                     self.step(at, prev_at)
+                
                 if terminated: # terminal state reached
                     break
                 
@@ -813,7 +813,7 @@ class MpcRobotInteractive:
                             benchmark_st = torch.tensor(benchmark_st, device="cuda", dtype=torch.float64)
                             current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(benchmark_st)[0])
                         print(f"benchmark q values: {current_q_vals}")
-                        
+                        print(f"raw grad norm minibatch: {optim_meta_data['raw_grad_norm']}")
                 # rlpt - update state for next iter where ts t+1 
                 t_total = rlpt_agent.increase_t_total() # increase total training time
                 st = s_next
@@ -821,7 +821,7 @@ class MpcRobotInteractive:
                 prev_at = at
                 
                 
-            return ts, t_total, forced_stopping 
+            return ts, forced_stopping 
         
         
         except KeyboardInterrupt:
@@ -836,7 +836,7 @@ class MpcRobotInteractive:
                     writer = csv.writer(file)
                     writer.writerow(new_row)
                 
-            return ts, steps_done, forced_stopping
+            return ts, forced_stopping
         
         
             
@@ -1094,6 +1094,7 @@ def sample_obj_subset(all_coll_objs_with_positions):
     participating = {obj_name: all_coll_objs_with_positions[obj_name] for obj_name in participating_names} # name to loc 
 
     return participating
+
 def train_loop(n_episodes, episode_max_ts):
     """
 
@@ -1107,7 +1108,7 @@ def train_loop(n_episodes, episode_max_ts):
     
     
     # Initial values
-    mpc = mpc_controller
+
     ep = 0    
     # load configuration
     sample_objs_every_episode = rlpt_cfg['agent']['training']['sample_objs_every_episode'] 
@@ -1116,17 +1117,29 @@ def train_loop(n_episodes, episode_max_ts):
     
     
     # Define initial default values for the episodes
-    all_coll_objs_with_locs = {}
-    for obj_type in mpc.all_collision_objs:
-        for obj_name in mpc.all_collision_objs[obj_type]:
-            all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-    particiating_storm = all_coll_objs_with_locs
-    not_participatig_storm = {}
+    # all_coll_objs_with_locs = {}
+    # for obj_type in mpc.all_collision_objs:
+    #     for obj_name in mpc.all_collision_objs[obj_type]:
+    #         all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
+    # particiating_storm = all_coll_objs_with_locs
+    # not_participatig_storm = {}
     goal_pose_storm = rlpt_cfg['agent']['training']['default_goal_pose'] # in storm coordinates
     
     # Start epoisde loop
     try:
         for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
+            print('Episode:', ep)
+            gym = Gym(**sim_params) # note - only one initiation is allowed per process
+            mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
+            mpc = mpc_controller
+            
+            all_coll_objs_with_locs = {}
+            for obj_type in mpc.all_collision_objs:
+                for obj_name in mpc.all_collision_objs[obj_type]:
+                    all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
+            particiating_storm = all_coll_objs_with_locs
+            not_participatig_storm = {}
+            
             if sample_objs_every_episode:
                 particiating_storm = sample_obj_subset(all_coll_objs_with_locs)
             
@@ -1152,7 +1165,7 @@ def train_loop(n_episodes, episode_max_ts):
                 if load_checkpoint_model:
                     checkpoint = torch.load(model_file_path)
                     rlpt_agent.load(checkpoint)
-                    ep = checkpoint['episode']
+                    ep = checkpoint['episode'] # can shorten the training by loading the last episode of model
                     print(f"model loaded. episode modified to: {ep}")
                 else:
                     # If no model file exists, initialize etl file (set etl labels)
@@ -1174,26 +1187,37 @@ def train_loop(n_episodes, episode_max_ts):
                             writer.writerow(col_names)
                         
                 
-            ts, steps_done, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl) 
-            rlpt_agent.save(ep, ts, steps_done, model_file_path)                
+            ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl) 
+  
+            mpc.gym.destroy_viewer(mpc.gym_instance.viewer)
+            mpc.gym.destroy_sim(mpc.gym_instance.sim)
+            
+            
+            if rlpt_cfg['agent']['model']['save_checkpoints']:
+                rlpt_agent.save(ep, model_file_path)                
             if keyboard_interupt:
-                raise KeyboardInterrupt()    
-            # ep += 1
+                raise KeyboardInterrupt()             
             
             
-                
+            
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
 
+        
         
     except torch.cuda.OutOfMemoryError: 
         if profile_memory:
             finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
             
-
+    # finally:
+    #     mpc.gym.destroy_viewer(mpc.gym_instance.viewer)
+    #     mpc.gym.destroy_sim(mpc.gym_instance.sim)
+        
+def main(n_episodes):
+    pass
     
 if __name__ == '__main__':
-    
+
     # parse arguments to start simulation
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
@@ -1204,7 +1228,8 @@ if __name__ == '__main__':
     parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
     parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
-    
+    parser.add_argument('--external_mode', type=bool, default=False, help= 'if running from external runner or not')
+    parser.add_argument('--model_path_external_mode', type=str, default='', help= 'model file path')
 
     args = parser.parse_args()
     
@@ -1222,26 +1247,40 @@ if __name__ == '__main__':
     sim_params['headless'] = args.headless # run with no gym gui
                     
     # rlpt setup
-    GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
-    rlpt_cfg = GLobalVars.rlpt_cfg
+    if not GLobalVars.is_defined('rlpt_cfg'):
+        GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
+        rlpt_cfg = GLobalVars.rlpt_cfg
     
     # load a checkpoint NN or start a new training 
-    load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
-    if load_checkpoint_model:
-        model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
-        assert os.path.exists(model_file_path)
-    else:
-        model_file_path =  os.path.join(rlpt_cfg['agent']['model']['dst_dir'], training_starttime, 'model.pth')  
-    
-    model_dir =  os.path.split(model_file_path)[0]
-    if not load_checkpoint_model:
-        os.mkdir(model_dir)
-    
+    # load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
+    # save_checkpoints_every_episode = rlpt_cfg['agent']['model']['save_checkpoints']
     include_etl = rlpt_cfg['agent']['model']['include_etl']
+    
+    
+    if args.external_mode:
+        n_episodes = 1
+        save_checkpoints_every_episode = True
+        load_checkpoint_model = args.model_file_exists_external_mode
+        model_file_path = args.model_path_external_mode
+    
+    else:
+        n_episodes = rlpt_cfg['agent']['training']['n_episodes']
+        load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
+        save_checkpoints_every_episode = rlpt_cfg['agent']['model']['save_checkpoints']
+        if load_checkpoint_model:
+            model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
+            assert os.path.exists(model_file_path)
+        else:
+            # model_file_path = os.path.join(rlpt_cfg['agent']['model']['dst_dir'], training_starttime, 'model.pth')  
+            model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
+            model_dir =  os.path.split(model_file_path)[0]    
+            if save_checkpoints_every_episode or include_etl:
+                os.mkdir(model_dir)
+    
     if include_etl:
         etl_file_path = model_dir + '/etl.csv'
-        if load_checkpoint_model:
-            assert os.path.exists(etl_file_path)
+        # if load_checkpoint_model:
+        #     assert os.path.exists(etl_file_path)
             
         
         
@@ -1251,12 +1290,11 @@ if __name__ == '__main__':
     if profile_memory: # for debugging gpu if needed   
         start_mem_profiling()   
     
-
-    gym = Gym(**sim_params) # note - only one initiation is allowed per process
     env_file = args.env_yml_relative
     task_file = args.task_yml_relative
-    mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
-    # Init rlpt agent action space
+    # gym = Gym(**sim_params) # note - only one initiation is allowed per process
+    # mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
+    # # Init rlpt agent action space
     cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
         
         # distance from goal pose (orientation err weight, position err weight).
@@ -1302,9 +1340,8 @@ if __name__ == '__main__':
     rlpt_action_space:list = list(get_combinations({
         'cost_weights': get_combinations(cost_fn_space),
         'mpc_params': get_combinations(mppi_space)}))
-   
-    
+
+ 
     ##### main loop of episodes execution: #######
-    # time.sleep(10)
-    train_loop(rlpt_cfg['agent']['training']['n_episodes'], rlpt_cfg['agent']['training']['max_ts'])
-    
+    train_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'])
+    exit(0)

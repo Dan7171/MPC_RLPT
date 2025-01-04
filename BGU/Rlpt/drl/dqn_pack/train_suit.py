@@ -36,6 +36,7 @@ class trainSuit:
     
     """
     
+    
     def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
                 eps_start = 0.999, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
                 C=100,N=100000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
@@ -104,7 +105,7 @@ class trainSuit:
             self.optimizer = optimizer(self.current.parameters(), lr=self.learning_rate) # original paper
 
 
-
+    
     def set_seed(self, env, seed=1):
         random.seed(seed)
         torch.random.manual_seed(seed)
@@ -238,6 +239,7 @@ class trainSuit:
         loss = self.criterion(input=q_values, target=y.unsqueeze(1)) # update current (Q network) weights in such way that we minimize the prediction error, w.r. to Q targets as our "y_real" with Q network predictiosn as "y_pred"
         loss.backward()
         meta_data['raw_grad_norm'] = self.compute_grad_norm()
+        
         if self.clipping:
             torch.nn.utils.clip_grad_norm_(self.current.parameters(), max_norm) 
         self.optimizer.step()

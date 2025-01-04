@@ -13,7 +13,8 @@ episode_plots:
 agent:
   model: # The Neural network 
     load_checkpoint: false
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:03(Fri)22:13:25/model.pth'
+    save_checkpoints: true
+    checkpoint_path: None # 'BGU/Rlpt/trained_models/2025:01:03(Fri)22:13:25/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -47,15 +48,13 @@ agent:
 
 
 
-
-  
   training:
-    n_episodes: 100
-    max_ts: 1000
+    n_episodes: 1000
+    max_ts: 150
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
-    sample_goal_every_episode: true
+    sample_goal_every_episode: false
     default_goal_pose: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] # storm coordinates
 
 

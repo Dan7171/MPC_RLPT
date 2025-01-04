@@ -85,21 +85,6 @@ class rlptAgent:
             self.current_st['coll_objs'] = col_obj_s0_sorted_concat
         if 'prev_action_idx' in self.st_componentes_ordered:
             self.current_st['prev_action_idx'] = np.array([-1])
-            
-        
-        
-            
-        # {'robot_base_pos': self.base_pos_gym_s0, 
-        #       'robot_dofs_positions': robot_dof_positions_gym,
-        #       'robot_dofs_velocities': robot_dof_velocities_gym, 
-        #       'goal_pose': goal_pose_gym, # 
-        #       'prev_action_idx': prev_at_idx_np,
-        #       'coll_objs': self.col_obj_s0_sorted_concat,
-        #       'pi_mppi_means': pi_mppi_means_padded,
-        #       'pi_mppi_covs': pi_mppi_covs
-        # }
-        
-        
         
         self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
@@ -157,17 +142,17 @@ class rlptAgent:
         self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.train_suit.memory = checkpoint['memory']
         self.train_suit.steps_done = checkpoint['steps_done']
+        pass
         
-    def save(self, ep, ts, steps_done, model_file_path):
+    def save(self, ep, model_file_path):
         # save model with relevant info to start the next episode
         torch.save({
             'current_state_dict': self.train_suit.current.state_dict(),
             'target_state_dict': self.train_suit.target.state_dict(),
             'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
             'memory':self.train_suit.memory,
-            'episode': ep,  # Optional: if you want to save the current epoch number
-            'ts': ts,
-            'steps_done': steps_done,
+            'episode': ep,  
+            'steps_done': self.get_t_total(),
             
         }, model_file_path)
         
@@ -247,7 +232,7 @@ class rlptAgent:
         """ A weighted sum of reward terms
         Returns:
             a. np.float64: total reward of the transition from s(t) to s(t+1).
-            b. is terminal state (contact_detected or goal_test)
+            b. is goal_test
         """
         rlpt_cfg = GLobalVars.rlpt_cfg
         reward_config = rlpt_cfg['agent']['reward']
@@ -290,7 +275,7 @@ class rlptAgent:
                 step_duration_reward = -1
 
         total_reward = pose_reward + safety_reward + step_duration_reward
-        return np.float32(total_reward), contact_detected or goal_test
+        return np.float32(total_reward), goal_test
 
     def action_space_info(self):
         
