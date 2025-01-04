@@ -428,6 +428,15 @@ class MpcRobotInteractive:
     
         self.mpc_control.update_params(goal_ee_pos=self.prev_mpc_goal_pos,
                                     goal_ee_quat=self.prev_mpc_goal_quat)    
+    
+    
+    def get_all_objs_with_locs(self):     
+        all_coll_objs_with_locs = {}
+        for obj_type in self.all_collision_objs:
+            for obj_name in self.all_collision_objs[obj_type]:
+                all_coll_objs_with_locs[obj_name] = self.all_collision_objs[obj_type][obj_name]
+        return all_coll_objs_with_locs
+    
     def step(self, at:dict, prev_at: dict):
         """
         Update arm parameters. cost_weights are the parameters for the mpc cost function.
@@ -1055,7 +1064,7 @@ def sample_obj_subset(all_coll_objs_with_positions):
 
     return participating
 
-def episode_loop(n_episodes, episode_max_ts,training=True):
+def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
     """
     Running episodes in a loop.
     Args:
@@ -1066,65 +1075,27 @@ def episode_loop(n_episodes, episode_max_ts,training=True):
         _type_: _description_
     """
     
-    
-    
-    
     # load configuration
+    mpc = mpc_ri     
     
-    if training:
-        cfg = rlpt_cfg['agent']['training']
-    else:
-        cfg = rlpt_cfg['agent']['testing']
-    
+ 
     sample_objs_every_episode = cfg['sample_objs_every_episode'] 
     sample_obj_locs_every_episode = cfg['sample_obj_locs_every_episode']
     sample_goal_every_episode = cfg['sample_goal_every_episode']
     goal_pose_storm = cfg['default_goal_pose'] # in storm coordinates
-    reset_state = cfg['reset_to_initial_state_every_episode']
-
+    
+    
+    
+    all_col_objs_with_locs = mpc.get_all_objs_with_locs() # all collision objects (participating or not) with their locations
     
     for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
-        print('Episode:', ep)
-        
-        # print(torch.cuda.memory_summary(device=torch.device('cuda'), abbreviated=False))
-        # kill_zombie_processes() # apparently, this is the only solution I have now for cleaning cuda memory and avoid memory leaks.
-        print('before killing subprocesses')
-        GPUtil.showUtilization()
-        # kill_subprocesses()
-        print('after killing subprocesses')
-        GPUtil.showUtilization()
-        # torch.cuda.empty_cache()
-        # torch.cuda.reset_accumulated_memory_stats()
-        # torch.cuda.reset_peak_memory_stats()
-        
-        # GPUtil.showUtilization(all=True)
-        # print('---1')
-        # GPUtil.showUtilization()
-        
-        if ep == 0 or reset_state:
-            if ep > 0:
-            #     print('before destroying viewer and sim')
-            #     GPUtil.showUtilization(all=True)
-            #     print('after destroying viewer and sim')
-            #     GPUtil.showUtilization(all=True)
-                pass
-            
-            gym = Gym(**sim_params) # note - only one initiation is allowed per process
-            mpc = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming.             
-            
-            
-            all_coll_objs_with_locs = {}
-            for obj_type in mpc.all_collision_objs:
-                for obj_name in mpc.all_collision_objs[obj_type]:
-                    all_coll_objs_with_locs[obj_name] = mpc.all_collision_objs[obj_type][obj_name]
-        
-        particiating_storm = all_coll_objs_with_locs
+        particiating_storm = all_col_objs_with_locs
         not_participatig_storm = {}
         if sample_objs_every_episode:
-            particiating_storm = sample_obj_subset(all_coll_objs_with_locs)
+            particiating_storm = sample_obj_subset(all_col_objs_with_locs)
         
         if sample_obj_locs_every_episode:
-            particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_coll_objs_with_locs) 
+            particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_col_objs_with_locs) 
         
         if sample_goal_every_episode:        
             goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(MpcRobotInteractive.initial_ee_pose_storm_cs / 2)  # in storm coordinates
@@ -1144,11 +1115,11 @@ def episode_loop(n_episodes, episode_max_ts,training=True):
             if load_checkpoint_model:
                 checkpoint = torch.load(model_file_path)
                 ep = rlpt_agent.load(checkpoint)
-                
+            
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
         
-      
+        print(f"episode {ep} started")
                     
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
         if keyboard_interupt:
@@ -1157,18 +1128,13 @@ def episode_loop(n_episodes, episode_max_ts,training=True):
         if training:
             rlpt_agent.save(ep, model_file_path)                
         
-        if reset_state:
-            mpc.gym.destroy_viewer(mpc.gym_instance.viewer)
-            mpc.gym.destroy_sim(mpc.gym_instance.sim)
-        
+       
+            
     
     if profile_memory:
         finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
 
-    # except KeyboardInterrupt or torch.cuda.OutOfMemoryError:
-    #      if profile_memory:
-    #         finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
-        
+
     
 if __name__ == '__main__':
 
@@ -1182,7 +1148,10 @@ if __name__ == '__main__':
     parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
     parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
-
+    
+    # external run params:
+    parser.add_argument('--external_run', type=bool, default='False', help= 'run from external script')
+    parser.add_argument('--model_path', type=str, default='', help= 'path to model file')    
     args = parser.parse_args()
     
     # simulation setup
@@ -1209,17 +1178,26 @@ if __name__ == '__main__':
     # load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
     # save_checkpoints_every_episode = rlpt_cfg['agent']['model']['save_checkpoints']
     include_etl = rlpt_cfg['agent']['model']['include_etl']
-    load_checkpoint_model = rlpt_cfg['agent']['training']['load_checkpoint']
-    save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
-    if load_checkpoint_model:
-        model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
-        assert os.path.exists(model_file_path)
-    else:
-        model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
-        model_dir =  os.path.split(model_file_path)[0]    
-        if save_checkpoints_every_episode or include_etl:
-            os.mkdir(model_dir)
     
+    # if args.external_run:
+    #     model_file_path = args.model_path
+    #     load_checkpoint_model = os.path.exists(model_file_path) # if the model file exists, load it. Else, we'll make one
+    #     save_checkpoints_every_episode = True        
+    
+    # else: # internal run 
+    #     save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
+    #     load_checkpoint_model = rlpt_cfg['agent']['training']['load_checkpoint']
+    #     if load_checkpoint_model:  
+    #         model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
+    #         assert os.path.exists(model_file_path)        
+    #     else:
+    #         model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
+    
+    # make dir for model checkpoints and etl file
+    
+    model_dir = os.path.split(model_file_path)[0]
+    if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
+        os.mkdir(model_dir)    
     if include_etl:
         etl_file_path = model_dir + '/etl.csv'
             
@@ -1231,10 +1209,8 @@ if __name__ == '__main__':
     if profile_memory: # for debugging gpu if needed   
         start_mem_profiling()   
     
-    # gym = Gym(**sim_params) # note - only one initiation is allowed per process
-    # mpc_controller = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming. 
-    # # Init rlpt agent action space
     
+    # define rlpt action space
     if rlpt_cfg['agent']['action_space']['use_original_storm_params']:
         cost_fn_space = cost_fn_space_default
         mppi_space = mppi_space_default    
@@ -1285,17 +1261,75 @@ if __name__ == '__main__':
         'mpc_params': get_combinations(mppi_space)}))
 
     
-    total_steps_in_session = 0
+    gym = Gym(**sim_params) # note - only one initiation is allowed per process
+    mpc_ri = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming.             
+    
+    
+    if args.external_run:
+        model_file_path = args.model_path
+        load_checkpoint_model = os.path.exists(model_file_path) # if the model file exists, load it. Else, we'll make one
+        
+    else:
+        load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
+        if load_checkpoint_model:  
+            model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
+            assert os.path.exists(model_file_path)        
+        else:
+            model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
+    
+    model_dir = os.path.split(model_file_path)[0]
+    if include_etl:
+        etl_file_path = model_dir + '/etl.csv'
+    
 
+        
+        
+    # if training:
+    #     episode_loop_cfg = rlpt_cfg['agent']['training']
+    # else:
+    #     episode_loop_cfg = rlpt_cfg['agent']['testing']
+    
+    
+    
     if rlpt_cfg['agent']['training']['run']:
-        n_episodes = rlpt_cfg['agent']['training']['n_episodes']
-        episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'])
+        episode_cfg = rlpt_cfg['agent']['training']
+        reset_state = episode_cfg['reset_to_initial_state_every_episode']
+        if args.external_run:
+            save_checkpoints_every_episode = True
+            if reset_state:
+                n_episodes = 1        
+        else: # internal run 
+            save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
+            n_episodes = rlpt_cfg['agent']['training']['n_episodes']
+            assert not reset_state, 'must run from external'
+                
+        if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
+            os.mkdir(model_dir)    
+            
+        episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'], episode_cfg)
+
+    
     
     if rlpt_cfg['agent']['testing']['run']:
-        start = time.time()
-        n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
-        episode_loop(n_episodes, rlpt_cfg['agent']['testing']['max_ts'], training=False)
-        end = time.time()
-        # print(f"total time benchmark : {end - start}")
+        save_checkpoints_every_episode = False
+        episodes_cfg = rlpt_cfg['agent']['testing']
+        reset_state = episode_cfg['reset_to_initial_state_every_episode']
+        if args.external_run:
+            if reset_state:
+                n_episodes = 1     
+                assert os.path.exists(model_file_path), 'model path must exist'
+        else:
+            n_episodes = episodes_cfg['n_episodes']
+        
+        if include_etl and not os.path.exists(model_dir):
+            os.mkdir(model_dir)    
+            
+        # start = time.time()
+        # n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
+        
+        episode_loop(n_episodes, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
+        
+        # end = time.time()
+        # print(f"total test time benchmark : {end - start}")
     
     exit(0)
