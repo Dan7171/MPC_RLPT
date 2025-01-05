@@ -23,7 +23,7 @@ if __name__ == '__main__':
     if training:    
         n_episodes = agent_cfg['training']['n_episodes'] # total for the whole training
         if load_model_file:
-            ep = torch.load(model_file_path)['episode'] + 1 # first episode index to start from is last completed episode index + 1 
+            ep = torch.load(model_file_path)['episode']  # episode to start from 
             print(f'using existing model: {model_file_path}')
             print(f'ep was updated to {ep}')
             

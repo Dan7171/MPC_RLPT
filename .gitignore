@@ -180,3 +180,4 @@ docs/setup.rst
 *.etl
 etl*
 *.csv
+*.pickle
