@@ -702,7 +702,6 @@ class MpcRobotInteractive:
         # -- start episode control loop --
         
         # s0
-        global total_steps_in_session
 
         in_zone_cntr = 0
         prev_at_idx = None # None or int
@@ -803,10 +802,10 @@ class MpcRobotInteractive:
                 break
             
             
-            if total_steps_in_session % 100 == 0:
+            if rlpt_agent.get_t_total() % 100 == 0:
                 print('episode: ', ep_num)
                 print('episode ts: ', ts)
-                print(f"total steps in this session: {total_steps_in_session}")
+                print(f"total steps all episodes: {rlpt_agent.get_t_total()}")
                 if training:
                     print(f'current epsilon: {rlpt_agent.train_suit.current_eps}')
                     if len(self.benchmark_states) < 10:
@@ -825,7 +824,6 @@ class MpcRobotInteractive:
             if training:
                 rlpt_agent.increase_t_total() # increase total training time
             
-            total_steps_in_session += 1
             st = s_next
             prev_at_idx = at_idx
             prev_at = at
@@ -1089,44 +1087,51 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
     all_col_objs_with_locs = mpc.get_all_objs_with_locs() # all collision objects (participating or not) with their locations
     
     for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
+        
+        # re-define participating and non-participating objects 
         particiating_storm = all_col_objs_with_locs
         not_participatig_storm = {}
         if sample_objs_every_episode:
             particiating_storm = sample_obj_subset(all_col_objs_with_locs)
-        
         if sample_obj_locs_every_episode:
             particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_col_objs_with_locs) 
-        
+        # re-define ee goal pose
         if sample_goal_every_episode:        
             goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(MpcRobotInteractive.initial_ee_pose_storm_cs / 2)  # in storm coordinates
-
-        # particiating_storm, not_participatig_storm = add_padding_to_objs(particiating_storm, not_participatig_storm)
+        # reset environment with selections
         _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
        
-        
         if ep == 0:
-            # Initialize the rlpt agent, including a DQN/DDQN.
+            
+            # Initialize the rlpt agent
             all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
             all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
             robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
             rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, training) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
             
-            # load model from checkpoint 
+            # load model from checkpoint
+            print(f'debug internal after reset: loaded = {load_checkpoint_model}, n_episodes = {n_episodes}, ep = {ep}')
             if load_checkpoint_model:
                 checkpoint = torch.load(model_file_path)
-                ep = rlpt_agent.load(checkpoint)
-            
+                ep = rlpt_agent.load(checkpoint) + 1 # current true episode number is the last finished + 1
+                print(f'episode {ep} loaded')
+                
+            # initialize etl if required
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
         
-        print(f"episode {ep} started")
-                    
+ 
+        
+        print(f"episode {ep} started")       
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
+        print(f'debug internal episode {ep} over')
+
         if keyboard_interupt:
             raise KeyboardInterrupt()  
         
         if training:
-            rlpt_agent.save(ep, model_file_path)                
+            print(f'debug saving ep = {ep}') # save last finished episode num
+            rlpt_agent.save(ep, model_file_path)           
         
        
             
@@ -1174,33 +1179,8 @@ if __name__ == '__main__':
         GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
         rlpt_cfg = GLobalVars.rlpt_cfg
     
-    # load a checkpoint NN or start a new training 
-    # load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
-    # save_checkpoints_every_episode = rlpt_cfg['agent']['model']['save_checkpoints']
     include_etl = rlpt_cfg['agent']['model']['include_etl']
-    
-    # if args.external_run:
-    #     model_file_path = args.model_path
-    #     load_checkpoint_model = os.path.exists(model_file_path) # if the model file exists, load it. Else, we'll make one
-    #     save_checkpoints_every_episode = True        
-    
-    # else: # internal run 
-    #     save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
-    #     load_checkpoint_model = rlpt_cfg['agent']['training']['load_checkpoint']
-    #     if load_checkpoint_model:  
-    #         model_file_path = rlpt_cfg['agent']['model']['checkpoint_path']
-    #         assert os.path.exists(model_file_path)        
-    #     else:
-    #         model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
-    
-    # make dir for model checkpoints and etl file
-    
-    # model_dir = os.path.split(model_file_path)[0]
-    # if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
-    #     os.mkdir(model_dir)    
-    # if include_etl:
-    #     etl_file_path = model_dir + '/etl.csv'
-            
+                
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)
     sniffer = GLobalVars.cost_sniffer 
@@ -1268,7 +1248,6 @@ if __name__ == '__main__':
     if args.external_run:
         model_file_path = args.model_path
         load_checkpoint_model = os.path.exists(model_file_path) # if the model file exists, load it. Else, we'll make one
-        
     else:
         load_checkpoint_model = rlpt_cfg['agent']['model']['load_checkpoint']
         if load_checkpoint_model:  
@@ -1281,18 +1260,10 @@ if __name__ == '__main__':
     if include_etl:
         etl_file_path = model_dir + '/etl.csv'
     
-
-        
-        
-    # if training:
-    #     episode_loop_cfg = rlpt_cfg['agent']['training']
-    # else:
-    #     episode_loop_cfg = rlpt_cfg['agent']['testing']
     
-    
-    episode_cfg = rlpt_cfg['agent']['training']
-    if episode_cfg['run']:
-        reset_state = episode_cfg['reset_to_initial_state_every_episode']
+    ep_loop_cfg = rlpt_cfg['agent']['training']
+    if ep_loop_cfg['run']:
+        reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
             save_checkpoints_every_episode = True
             if reset_state:
@@ -1305,14 +1276,14 @@ if __name__ == '__main__':
         if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
             os.mkdir(model_dir)    
             
-        episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'], episode_cfg)
+        episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'], ep_loop_cfg)
 
     
-    episodes_cfg = rlpt_cfg['agent']['testing']
-    if episodes_cfg['run']:
+    ep_loop_cfg = rlpt_cfg['agent']['testing']
+    if ep_loop_cfg['run']:
         save_checkpoints_every_episode = False
         episodes_cfg = rlpt_cfg['agent']['testing']
-        reset_state = episode_cfg['reset_to_initial_state_every_episode']
+        reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
             if reset_state:
                 n_episodes = 1     
@@ -1325,7 +1296,7 @@ if __name__ == '__main__':
             
         # start = time.time()
         # n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
-        
+        print(f'debug internal: load = {load_checkpoint_model}, n_eps = {n_episodes}')
         episode_loop(n_episodes, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
         
         # end = time.time()
