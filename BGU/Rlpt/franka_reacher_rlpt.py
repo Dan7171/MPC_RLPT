@@ -69,9 +69,8 @@ from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
 from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray
-from BGU.Rlpt.utils.utils import kill_zombie_processes, make_model_path
+from BGU.Rlpt.utils.utils import make_model_path, color_print
 import GPUtil
-
 import psutil
 import os
 import signal
@@ -727,9 +726,13 @@ class MpcRobotInteractive:
         sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
 
-        forced_stopping = False        
+        forced_stopping = False
+        initial_state = None    
         for ts in range(episode_max_ts):
             st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+            if initial_state is None:
+                initial_state = st_tensor
+                 
             forbidden_action_indices:set = set() # empty set - all actions are allowed
             
             if disable_frequent_h_changing: # fix H for at leaset H time steps. Makes training go smoother since H switch takes longer than any other parameter 
@@ -784,7 +787,7 @@ class MpcRobotInteractive:
                 at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
                 # rlpt- perform optimization (gradient) step
-                optim_meta_data = rlpt_agent.train_suit.optimize()
+                optim_meta_data = rlpt_agent.optimize()
             
             # log to etl
             if include_etl:             
@@ -796,39 +799,36 @@ class MpcRobotInteractive:
                 self.step(at, prev_at)
             
             if terminated: # terminal state reached
-                print('terminal state reached')
-                print(f'ts = {ts}')
-                print('goal_state:', goal_state, 'contact_detected:', contact_detected)
                 break
             
-            
-            if rlpt_agent.get_t_total() % 100 == 0:
-                print('episode: ', ep_num)
-                print('episode ts: ', ts)
-                print(f"total steps all episodes: {rlpt_agent.get_t_total()}")
-                if training:
-                    print(f'current epsilon: {rlpt_agent.train_suit.current_eps}')
-                    if len(self.benchmark_states) < 10:
-                        self.benchmark_states.append(st)
-                    else:
-                        current_q_vals = []
-                        for benchmark_st in self.benchmark_states:
-                            current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(benchmark_st, device="cuda", dtype=torch.float64))[0])
-                        
-                        print(f"benchmark states: current q* values: {current_q_vals}")
-                        print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}',)
-                        print(f"averge raw gradient norms of minibatch in size: {np.sum(optim_meta_data['raw_grad_norm']) / rlpt_agent.train_suit.batch_size}")
-                        print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
-                
-            # rlpt - update state for next iter where ts t+1 
-            if training:
-                rlpt_agent.increase_t_total() # increase total training time
-            
+            # fill the benchmark states buffer until full
+            if not_full := len(self.benchmark_states) < 10:
+                if random.uniform(0,1) < 0.01:
+                    self.benchmark_states.append(st)
+                    
             st = s_next
             prev_at_idx = at_idx
             prev_at = at
             
-            
+        ########## end of episode ###########            
+        color_print(f'episode: {ep_num} finished')
+        color_print(f'episode duration: {ts}')
+        if terminated:
+            color_print('terminal state reached')
+            color_print(f'goal_state: {goal_state} contact_detected: {contact_detected}')
+        
+        if training:
+            color_print(f'current epsilon: {rlpt_agent.train_suit.current_eps}')
+            if len(self.benchmark_states):
+                current_q_vals = []
+                for benchmark_st in self.benchmark_states:
+                    current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(benchmark_st, device="cuda", dtype=torch.float64))[0])
+                color_print(f'initial state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(initial_state)[0]}')
+                color_print(f"benchmark states: current q* values: {current_q_vals}")
+                color_print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}')
+                color_print(f"averge raw gradient norms of minibatch in size: {np.sum(optim_meta_data['raw_grad_norm']) / rlpt_agent.train_suit.batch_size}")
+                color_print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
+
         return ts, forced_stopping 
             
         
@@ -1085,9 +1085,8 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
     
     
     all_col_objs_with_locs = mpc.get_all_objs_with_locs() # all collision objects (participating or not) with their locations
-    
-    for ep in range(n_episodes): # for each episode id with a unique combination of initial parameters
-        
+    ep = 0
+    while ep < n_episodes:
         # re-define participating and non-participating objects 
         particiating_storm = all_col_objs_with_locs
         not_participatig_storm = {}
@@ -1102,37 +1101,39 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
         _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
        
         if ep == 0:
-            
+
             # Initialize the rlpt agent
             all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
             all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
             robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
-            rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, training) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
-            
+            rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, episode_idx=ep, max_episode=n_episodes_real,training_mode=training) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
+
             # load model from checkpoint
-            print(f'debug internal after reset: loaded = {load_checkpoint_model}, n_episodes = {n_episodes}, ep = {ep}')
             if load_checkpoint_model:
                 checkpoint = torch.load(model_file_path)
-                ep = rlpt_agent.load(checkpoint) + 1 # current true episode number is the last finished + 1
+                ep = rlpt_agent.load(checkpoint) # current true episode index to start from
                 print(f'episode {ep} loaded')
                 
             # initialize etl if required
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
+
+            
         
- 
+
         
         print(f"episode {ep} started")       
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
         print(f'debug internal episode {ep} over')
 
         if keyboard_interupt:
-            raise KeyboardInterrupt()  
-        
+            raise KeyboardInterrupt() 
+        ep += 1 # update index of the next episode to start from 
+        rlpt_agent.set_episode(ep) 
         if training:
             print(f'debug saving ep = {ep}') # save last finished episode num
             rlpt_agent.save(ep, model_file_path)           
-        
+
        
             
     
@@ -1142,7 +1143,7 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
 
     
 if __name__ == '__main__':
-
+    # color_print(f"test",'black','green')
     # parse arguments to start simulation
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
@@ -1200,25 +1201,18 @@ if __name__ == '__main__':
             # distance from goal pose (orientation err weight, position err weight).
             "goal_pose":  [
                 (1.0, 100.0), # goal 100:1
-                # (15.0, 100.0), # goal 100:15
                 (100.0, 1.0)
                 ], # orientation 100:15
             "zero_vel": [0.0], 
             "zero_acc": [0.0],
             "joint_l2": [0.0], 
-            "robot_self_collision": [100], # collision with self (robot with itself)
-            # collision with environment (obstacles)
-            "primitive_collision" : [
-                100, # low collison carefulness   
-                ], 
+            "robot_self_collision": [100], 
+            "primitive_collision" : [100],  
             "voxel_collision" : [0.0],
             "null_space": [1.0],
             "manipulability": [30], 
             "ee_vel": [0.0], 
-            # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration))
-            # "stop_cost": [(100.0, 1.5), # high charging (100), and low acceleration limit (1.5) 
-            #               (1.0, 30.0)], # low charging (1), and high acceleration limit (10)
-            "stop_cost" : [(100.0, 1.5)],        
+            "stop_cost" : [(100.0, 1.5),(50.0, 3)], # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration)). idx 0 = cost weight (the greather, the higher the charging for crossing max vel), idx 1 = acceleration limit (the higher, the greater max vel)        
             "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
             "smooth": [1.0], # smoothness weight
             "state_bound": [1000.0], # joint limit avoidance weight
@@ -1262,44 +1256,44 @@ if __name__ == '__main__':
     
     
     ep_loop_cfg = rlpt_cfg['agent']['training']
+    n_episodes_real = ep_loop_cfg['n_episodes']  
     if ep_loop_cfg['run']:
         reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
             save_checkpoints_every_episode = True
             if reset_state:
-                n_episodes = 1        
+                n_episodes_loop = 1
         else: # internal run 
             save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
-            n_episodes = rlpt_cfg['agent']['training']['n_episodes']
+            n_episodes_loop = n_episodes_real 
             assert not reset_state, 'must run from external'
                 
         if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
             os.mkdir(model_dir)    
             
-        episode_loop(n_episodes, rlpt_cfg['agent']['training']['max_ts'], ep_loop_cfg)
+        episode_loop(n_episodes_loop, rlpt_cfg['agent']['training']['max_ts'], ep_loop_cfg)
 
     
     ep_loop_cfg = rlpt_cfg['agent']['testing']
+    n_episodes_real = ep_loop_cfg['n_episodes']  
     if ep_loop_cfg['run']:
         save_checkpoints_every_episode = False
         episodes_cfg = rlpt_cfg['agent']['testing']
         reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
+            assert os.path.exists(model_file_path), 'model path must exist'
             if reset_state:
-                n_episodes = 1     
-                assert os.path.exists(model_file_path), 'model path must exist'
+                n_episodes_loop = 1     
         else:
-            n_episodes = episodes_cfg['n_episodes']
+            n_episodes_loop = n_episodes_real 
         
         if include_etl and not os.path.exists(model_dir):
             os.mkdir(model_dir)    
             
         # start = time.time()
         # n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
-        print(f'debug internal: load = {load_checkpoint_model}, n_eps = {n_episodes}')
-        episode_loop(n_episodes, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
+        episode_loop(n_episodes_loop, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
         
-        # end = time.time()
-        # print(f"total test time benchmark : {end - start}")
+     
     
     exit(0)

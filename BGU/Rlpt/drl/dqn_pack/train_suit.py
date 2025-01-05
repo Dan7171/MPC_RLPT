@@ -37,7 +37,7 @@ class trainSuit:
     """
     
     
-    def __init__(self, state_dim_flatten, n_actions,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
+    def __init__(self, state_dim_flatten, n_actions, episode_idx, max_episode,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
                 eps_start = 0.999, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
                 C=100,N=100000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
         """Initializing a dqn/ddqn network 
@@ -49,9 +49,9 @@ class trainSuit:
             seed (int, optional): _description_. Defaults to 42.
             batch_size (int, optional): _description_. Defaults to 128.
             gamma (float, optional): _description_. Defaults to 0.99.
-            eps_start (float, optional): _description_. Defaults to 0.9.
-            eps_end (float, optional): _description_. Defaults to 0.05.
-            eps_decay (int, optional): _description_. Defaults to 1000.
+            # eps_start (float, optional): _description_. Defaults to 0.9.
+            # eps_end (float, optional): _description_. Defaults to 0.05.
+            # eps_decay (int, optional): _description_. Defaults to 1000.
             learning_rate (_type_, optional): _description_. Defaults to 1e-4.
             C (int, optional): _description_. Defaults to 100.
             N (int, optional): _description_. Defaults to 10000.
@@ -61,9 +61,9 @@ class trainSuit:
         """
         # BATCH_SIZE is the number of transitions sampled from the replay buffer
         # GAMMA is the discount factor as mentioned in the previous section
-        # EPS_START is the starting value of epsilon
-        # EPS_END is the final value of epsilon
-        # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
+        ## EPS_START is the starting value of epsilon
+        ## EPS_END is the final value of epsilon
+        ## EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
         # TAU is the update rate of the target network
         # learning_rate is the learning rate of the  optimizer (aka alpha or step size)
         # C is the target network update frequenty (set it to be the Q network's weights every C steps)
@@ -73,10 +73,12 @@ class trainSuit:
         self.seed = seed
         self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
         self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
-        self.eps_start = eps_start
-        self.eps_end = eps_end
-        self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
-        self.current_eps = eps_start
+        # self.eps_start = eps_start
+        # self.eps_end = eps_end
+        # self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
+        # self.current_eps = eps_start
+        self.episode_idx = episode_idx
+        self.max_episode = max_episode
         self.learning_rate = learning_rate
         self.C = C
         self.N = N
@@ -105,6 +107,8 @@ class trainSuit:
             self.optimizer = optimizer(self.current.parameters(), lr=self.learning_rate) # original paper
 
 
+    # def set_episode_idx(self,  episode_idx):
+    #     self.episode_idx = episode_idx
     
     def set_seed(self, env, seed=1):
         random.seed(seed)
@@ -144,9 +148,9 @@ class trainSuit:
         # decide if selecting action greedily (best Q) for exploitation or select random action for exploration
         # current epsilon is the chance of selecting a random action
         sample = random.random()
-        self.current_eps = self.eps_end + (self.eps_start - self.eps_end) * \
-            math.exp(-1. * self.steps_done / self.eps_decay)        
-        
+        # self.current_eps = self.eps_end + (self.eps_start - self.eps_end) * \
+        #     math.exp(-1. * self.steps_done / self.eps_decay)        
+        self.current_eps = max(0.001, (self.max_episode - self.episode_idx) / self.max_episode) 
         if training:
             greedy_choice = sample > self.current_eps
         else: # deployment mode, taking the best action
@@ -199,6 +203,8 @@ class trainSuit:
         We will use experience replay and optimize using 2 networks: Q network (updated) and targets network Q^ (older, fixed).
 
         """
+        
+        
         meta_data = {'raw_grad_norm': 0, 'clipped_grad_norm':0.0, 'use_clipped':self.clipping, 'loss' :0}
 
         if len(self.memory) < self.batch_size:

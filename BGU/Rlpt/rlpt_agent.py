@@ -31,7 +31,7 @@ def _merge_dict(original, update):
     return new
     
 class rlptAgent:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_col_objs=10, training_mode=True):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_episode, episode_idx, training_mode=True):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -95,10 +95,12 @@ class rlptAgent:
         self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
         self.st_legend = self.get_states_legend() # readable shape of the state 
-        self.train_suit = trainSuit(self.st_dim , len(action_space)) # bulding the DQN (state dim is input dim,len action space is  output dim)
+        self.train_suit = trainSuit(self.st_dim , len(action_space),episode_idx=episode_idx, max_episode=max_episode) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
-    
+        # if training_mode:
+        #     self.train_suit.set_episode_idx(episode_idx)  
+
     def initialize_etl(self,etl_file_path):
         st_titles = self.get_states_legend()
         st_titles = ['st_' + pair[1] for pair in st_titles]
@@ -185,7 +187,8 @@ class rlptAgent:
         return action_idx, self.action_space[action_idx], meta_data # the action itself 
     
     def load(self, checkpoint):
-        episodes_done = 0 
+        
+        # episodes_done = 0 
     
         self.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
         
@@ -194,11 +197,12 @@ class rlptAgent:
             self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.train_suit.memory = checkpoint['memory']
             self.train_suit.steps_done = checkpoint['steps_done']
-            episodes_done = checkpoint['episode'] # can shorten the training by loading the last episode of model
-            print(f"Curretn episode was reset to: {episodes_done}")
+            episode_idx_to_start_from = checkpoint['episode'] 
+            self.train_suit.episode_idx = episode_idx_to_start_from
+            print(f"Curretn episode was reset to: {episode_idx_to_start_from}")
         
-        return episodes_done
-        
+        return episode_idx_to_start_from
+    
     def save(self, ep, model_file_path):
         # save model with relevant info to start the next episode
         torch.save({
@@ -210,6 +214,17 @@ class rlptAgent:
             'steps_done': self.get_t_total(),
             
         }, model_file_path)
+        
+    def optimize(self):
+        return self.train_suit.optimize()
+    
+    def set_episode(self, ep_idx):
+        self.train_suit.episode_idx = ep_idx
+        
+        
+        
+        
+        
         
     def flatten_sorted_coll_objs_states(self, col_obj_st_flat_states):
         """ 
