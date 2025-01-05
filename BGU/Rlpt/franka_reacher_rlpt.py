@@ -794,7 +794,7 @@ class MpcRobotInteractive:
                 rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
             
             # change pose until no contact
-            while contact_detected := (sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
+            while still_in_contact := (sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
                 print("contact detected, escaping contact before learning continues")
                 self.step(at, prev_at)
             

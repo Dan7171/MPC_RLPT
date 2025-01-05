@@ -42,7 +42,7 @@ agent:
     goal_pos_thresh_dist: 0.01 # activation radius. meters
     goal_rot_thresh_dist: 0.01 # meters
     col_thresh_dist: 0.05 # meters
-    time_reward: fixed # (or fixed)
+    time_reward: fixed # (linear or fixed)
     pose_reward: false # false means no direct reward on goal state, learning just from time to goal and collisions
     safety_w: 100
     pose_w: 10
@@ -56,8 +56,8 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 20
-    max_ts: 150
+    n_episodes: 240
+    max_ts: 1000
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
