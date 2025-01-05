@@ -177,6 +177,6 @@ docs/setup.rst
 *swp
 *swo
 
-
+*.etl
 etl*
 *.csv
