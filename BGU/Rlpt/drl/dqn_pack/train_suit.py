@@ -77,7 +77,7 @@ class trainSuit:
         self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
         self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
         # self.eps_start = eps_start
-        # self.eps_end = eps_end
+        self.eps_end = eps_end
         # self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
         
         self.eps_decay = cfg['eps_decay']
@@ -151,8 +151,8 @@ class trainSuit:
         all_action_indices:set = set(range(self.n_actions))
         allowed_actions_indices = all_action_indices - indices_to_filter_out
         sample = random.random()
-        if self.eps_decay:
-            self.current_eps = max(0.001, (self.max_episode - self.episode_idx) / self.max_episode) 
+        if self.eps_decay: 
+            self.current_eps = max(self.eps_end, (self.max_episode - self.episode_idx) / self.max_episode) 
         if training:
             greedy_choice = sample > self.current_eps
         else: # deployment mode, taking the best action
@@ -256,7 +256,7 @@ class trainSuit:
         
         
         if episode_ts % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-            color_print(f'debug episodes time step= {episode_ts}')
+            # color_print(f'debug episodes time step= {episode_ts}')
             self.target.load_state_dict(self.current.state_dict())
         
         

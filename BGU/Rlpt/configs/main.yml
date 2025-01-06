@@ -32,7 +32,7 @@ agent:
       
   train_suit:
     gamma: 1
-    batch_size: 128
+    batch_size: g
     eps_decay: true 
     grad_clipping: false
     
