@@ -8,15 +8,15 @@ gui:
   render_trajectory_lines: true
 
 episode_plots:
-  show: true
+  show: true 
 
 profile_memory:
-  include: true
+  include: false # true means use this tool to profile https://pytorch.org/blog/understanding-gpu-memory-1/ 
 
 agent:
   model: # The Neural network 
-    load_checkpoint: false
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:05(Sun)10:14:27/model.pth' # None
+    load_checkpoint: true
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/model.pth' # None
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -33,8 +33,7 @@ agent:
   train_suit:
     gamma: 1
     batch_size: 128
-    # eps_decay: 1000
-
+    eps_decay: false 
     grad_clipping: false
     
 
@@ -56,7 +55,7 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 240
+    n_episodes: 760
     max_ts: 1000
     disable_frequent_h_changing: false
     sample_objs_every_episode: false

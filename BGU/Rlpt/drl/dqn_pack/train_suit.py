@@ -76,7 +76,10 @@ class trainSuit:
         # self.eps_start = eps_start
         # self.eps_end = eps_end
         # self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
-        # self.current_eps = eps_start
+        
+        self.eps_decay = cfg['eps_decay']
+        if not self.eps_decay:
+            self.current_eps = 0.1 
         self.episode_idx = episode_idx
         self.max_episode = max_episode
         self.learning_rate = learning_rate
@@ -144,18 +147,13 @@ class trainSuit:
         
         all_action_indices:set = set(range(self.n_actions))
         allowed_actions_indices = all_action_indices - indices_to_filter_out
-        
-        # decide if selecting action greedily (best Q) for exploitation or select random action for exploration
-        # current epsilon is the chance of selecting a random action
         sample = random.random()
-        # self.current_eps = self.eps_end + (self.eps_start - self.eps_end) * \
-        #     math.exp(-1. * self.steps_done / self.eps_decay)        
-        self.current_eps = max(0.001, (self.max_episode - self.episode_idx) / self.max_episode) 
+        if self.eps_decay:
+            self.current_eps = max(0.001, (self.max_episode - self.episode_idx) / self.max_episode) 
         if training:
             greedy_choice = sample > self.current_eps
         else: # deployment mode, taking the best action
             greedy_choice = True
-                    
         with torch.no_grad():
             Q_all_actions = self.current(state)
             if greedy_choice: # best a (which maximizes current Q)

@@ -1124,14 +1124,13 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
         
         print(f"episode {ep} started")       
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
-        print(f'debug internal episode {ep} over')
+        print(f'internal episode {ep} over')
 
         if keyboard_interupt:
             raise KeyboardInterrupt() 
         ep += 1 # update index of the next episode to start from 
         rlpt_agent.set_episode(ep) 
         if training:
-            print(f'debug saving ep = {ep}') # save last finished episode num
             rlpt_agent.save(ep, model_file_path)           
 
        
@@ -1283,14 +1282,13 @@ if __name__ == '__main__':
         if args.external_run:
             assert os.path.exists(model_file_path), 'model path must exist'
             if reset_state:
-                n_episodes_loop = 1     
+                n_episodes_loop = 1 # to perform a beginning from the same initial state every time, we'll run many episode-loops of one episode at a time in each loop.      
         else:
             n_episodes_loop = n_episodes_real 
         
         if include_etl and not os.path.exists(model_dir):
             os.mkdir(model_dir)    
             
-        # start = time.time()
         # n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
         episode_loop(n_episodes_loop, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
         
