@@ -777,8 +777,9 @@ class MpcRobotInteractive:
             # Get the reward and check if the episode is over by reaching a terminal state
             rt, goal_state = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
             terminated = goal_state or contact_detected # reached a terminal state (of environment)
-            truncated = ts == episode_max_ts - 1 # reached time limit (external to environment)
-            if training and not truncated: # https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
+            # truncated = ts == episode_max_ts - 1 # reached time limit (external to environment)
+            if training:
+            # if training and not truncated: # https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
                 optim_meta_data = {}
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)

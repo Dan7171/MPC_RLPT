@@ -38,7 +38,7 @@ class trainSuit:
     
     
     def __init__(self, state_dim_flatten, n_actions, episode_idx, max_episode,  ddqn=True, seed=42, batch_size=256,gamma=0.99,
-                eps_start = 0.999, eps_end=0.05, eps_decay=100000,learning_rate=1e-4,
+                eps_start = 0.999, eps_end=0.05, eps_decay=100000,learning_rate=0.01,
                 C=100,N=100000, T=10000, criterion=nn.MSELoss, optimizer=optim.AdamW):
         """Initializing a dqn/ddqn network 
 

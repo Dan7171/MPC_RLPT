@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # matplotlib.use('Agg')  # Use a non-interactive backend
-df = pd.read_csv('/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/etl.csv')
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/etl.csv' 760 episodes, with pushing truncated into buffer
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
+df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
 # plt.show()
@@ -11,6 +13,8 @@ df = pd.read_csv('/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:1
 print(df.head)
 print('columns:')
 print(df.columns)
+print(df.nunique())
+# df['rt'].value_counts()
 #########
 max_episode = 800
 episodes = df.groupby('ep')
@@ -29,7 +33,7 @@ for i, ng in enumerate(episodes):
         goal_reached_q[:] = 0
         goal_reached_q.loc[group['goal_reached_s(t+1)'], 'q_if_goal_reached'] = group['q(w,st,at)']
         goal_reached_q = goal_reached_q[goal_reached_q['q_if_goal_reached'] !=0 ]
-        plt.plot(goal_reached_q['q_if_goal_reached'],'+',linewidth='2.0')
+        plt.plot(goal_reached_q['q_if_goal_reached'], '+') # linewidth='2.0')
         
         if len(contact_q):
             q_color='red'
