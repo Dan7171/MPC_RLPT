@@ -15,7 +15,7 @@ profile_memory:
 
 agent:
   model: # The Neural network 
-    load_checkpoint: true
+    load_checkpoint: false
     checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/model.pth' # None
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
@@ -33,7 +33,7 @@ agent:
   train_suit:
     gamma: 1
     batch_size: 128
-    eps_decay: false 
+    eps_decay: true 
     grad_clipping: false
     
 
@@ -55,7 +55,7 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 760
+    n_episodes: 300
     max_ts: 1000
     disable_frequent_h_changing: false
     sample_objs_every_episode: false

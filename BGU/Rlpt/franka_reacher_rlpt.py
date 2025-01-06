@@ -782,7 +782,7 @@ class MpcRobotInteractive:
                 optim_meta_data = {}
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not ((ts == episode_max_ts - 1 or terminated)) else None
+                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
                 at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
@@ -793,14 +793,16 @@ class MpcRobotInteractive:
             if include_etl:             
                 rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
             
-            # change pose until no contact
-            while still_in_contact := (sniffer.is_contact_real_world or sniffer.is_self_contact_real_world):
-                print("contact detected, escaping contact before learning continues")
-                self.step(at, prev_at)
+            
+            # escape collision if necessary (change pose until no contact)
+            if not (reset_state or sample_goal_every_episode):    
+                while sniffer.is_contact_real_world or sniffer.is_self_contact_real_world: # while still colliding
+                    print("contact detected, escaping contact before learning continues")
+                    self.step(at, prev_at)
+                
             
             if terminated: # terminal state reached
                 break
-            
             # fill the benchmark states buffer until full
             if not_full := len(self.benchmark_states) < 10:
                 if random.uniform(0,1) < 0.01:
@@ -1079,7 +1081,6 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
  
     sample_objs_every_episode = cfg['sample_objs_every_episode'] 
     sample_obj_locs_every_episode = cfg['sample_obj_locs_every_episode']
-    sample_goal_every_episode = cfg['sample_goal_every_episode']
     goal_pose_storm = cfg['default_goal_pose'] # in storm coordinates
     
     
@@ -1255,7 +1256,9 @@ if __name__ == '__main__':
     
     
     ep_loop_cfg = rlpt_cfg['agent']['training']
-    n_episodes_real = ep_loop_cfg['n_episodes']  
+    n_episodes_real = ep_loop_cfg['n_episodes']
+    sample_goal_every_episode = ep_loop_cfg['sample_goal_every_episode']
+  
     if ep_loop_cfg['run']:
         reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
@@ -1275,6 +1278,8 @@ if __name__ == '__main__':
     
     ep_loop_cfg = rlpt_cfg['agent']['testing']
     n_episodes_real = ep_loop_cfg['n_episodes']  
+    sample_goal_every_episode = ep_loop_cfg['sample_goal_every_episode']
+
     if ep_loop_cfg['run']:
         save_checkpoints_every_episode = False
         episodes_cfg = rlpt_cfg['agent']['testing']
