@@ -196,7 +196,7 @@ class rlptAgent:
             self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
             self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.train_suit.memory = checkpoint['memory']
-            self.train_suit.steps_done = checkpoint['steps_done']
+            # self.train_suit.steps_done = checkpoint['steps_done']
             episode_idx_to_start_from = checkpoint['episode'] 
             self.train_suit.episode_idx = episode_idx_to_start_from
             print(f"Curretn episode was reset to: {episode_idx_to_start_from}")
@@ -211,12 +211,12 @@ class rlptAgent:
             'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
             'memory':self.train_suit.memory,
             'episode': ep,  
-            'steps_done': self.get_t_total(),
+            # 'steps_done': self.get_t_total(),
             
         }, model_file_path)
         
-    def optimize(self):
-        return self.train_suit.optimize()
+    def optimize(self,episode_ts):
+        return self.train_suit.optimize(episode_ts)
     
     def set_episode(self, ep_idx):
         self.train_suit.episode_idx = ep_idx
@@ -266,12 +266,12 @@ class rlptAgent:
         
     
         
-    def increase_t_total(self):
-        self.train_suit.steps_done += 1
-        return self.train_suit.steps_done
+    # def increase_t_total(self):
+    #     self.train_suit.steps_done += 1
+    #     return self.train_suit.steps_done
     
-    def get_t_total(self):
-        return self.train_suit.steps_done
+    # def get_t_total(self):
+    #     return self.train_suit.steps_done
 
     
     def get_states_legend(self)->List[tuple]:

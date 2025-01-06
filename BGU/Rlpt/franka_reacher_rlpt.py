@@ -779,7 +779,7 @@ class MpcRobotInteractive:
             terminated = goal_state or contact_detected # reached a terminal state (of environment)
             # truncated = ts == episode_max_ts - 1 # reached time limit (external to environment)
             if training:
-            # if training and not truncated: # https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
+            # if training and not truncated: #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
                 optim_meta_data = {}
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
                 st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
@@ -788,7 +788,7 @@ class MpcRobotInteractive:
                 at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
                 # rlpt- perform optimization (gradient) step
-                optim_meta_data = rlpt_agent.optimize()
+                optim_meta_data = rlpt_agent.optimize(ts)
             
             # log to etl
             if include_etl:             

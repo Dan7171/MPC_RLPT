@@ -9,6 +9,7 @@ https://youtu.be/UoPei5o4fps?si=BQdBcYCl60NGhGtJ
 https://arxiv.org/pdf/1312.5602
 
 """
+from curses import color_pair
 from typing import Union
 from graphviz import render
 import gymnasium as gym
@@ -26,7 +27,9 @@ from BGU.Rlpt.drl.dqn_pack.replay_memory import ReplayMemory, Transition
 from BGU.Rlpt.drl.dqn_pack.dqn import DQN
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
 
-from art import text2art 
+from art import text2art
+
+from BGU.Rlpt.utils.utils import color_print 
 
 
 class trainSuit:
@@ -94,7 +97,7 @@ class trainSuit:
         # criterion = nn.SmoothL1Loss() # huber loss. Not in the original paper
         self.criterion = criterion()
         self.memory = ReplayMemory(self.N, self.seed) # Initialize replay memory D to capacity N
-        self.steps_done = 0 # in total, over all episodes    
+        # self.steps_done = 0 # in total, over all episodes    
         
         # Initialize first Q network with random weights θ ("current"/ "online" network)
         self.current:DQN = DQN(state_dim_flatten, self.n_actions).to(self.device) # Q(θ)
@@ -189,7 +192,7 @@ class trainSuit:
         
         return action_idx_tensor, meta_data # that index is the id of the action 
     
-    def optimize(self, max_norm=1.0):
+    def optimize(self, episode_ts, max_norm=1.0):
         """
         Sample a random minibatch of transitions from the shape (s, a, s', r) from D, 
         compute error in Q^ w.r to target Q^s as the "true values",  and make a gradient step.
@@ -252,7 +255,8 @@ class trainSuit:
         self.optimizer.step()
         
         
-        if self.steps_done % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
+        if episode_ts % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
+            color_print(f'debug episodes time step= {episode_ts}')
             self.target.load_state_dict(self.current.state_dict())
         
         
