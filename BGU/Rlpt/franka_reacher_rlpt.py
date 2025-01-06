@@ -827,10 +827,10 @@ class MpcRobotInteractive:
                 for benchmark_st in self.benchmark_states:
                     current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(benchmark_st, device="cuda", dtype=torch.float64))[0])
                 color_print(f'initial state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(initial_state)[0]}')
-                color_print(f"benchmark states: current q* values: {current_q_vals}")
-                color_print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}')
+                # color_print(f"benchmark states: current q* values: {current_q_vals}")
+                # color_print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}')
                 color_print(f"averge raw gradient norms of minibatch in size: {np.sum(optim_meta_data['raw_grad_norm']) / rlpt_agent.train_suit.batch_size}")
-                color_print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
+                # color_print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
 
         return ts, forced_stopping 
             

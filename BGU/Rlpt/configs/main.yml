@@ -32,7 +32,7 @@ agent:
       
   train_suit:
     gamma: 1
-    batch_size: g
+    batch_size: 128
     eps_decay: true 
     grad_clipping: false
     
@@ -55,7 +55,7 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 50
+    n_episodes: 700
     max_ts: 1000
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
