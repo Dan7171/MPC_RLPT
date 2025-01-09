@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # matplotlib.use('Agg')  # Use a non-interactive backend
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/etl.csv' 760 episodes, with pushing truncated into buffer
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
+path = "/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/etl.csv"# '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -16,7 +16,7 @@ print(df.columns)
 print(df.nunique())
 # df['rt'].value_counts()
 #########
-max_episode = 800
+max_episode = 1500
 episodes = df.groupby('ep')
 base_color = 'orange'
 for i, ng in enumerate(episodes):

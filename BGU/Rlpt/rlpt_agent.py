@@ -206,8 +206,8 @@ class rlptAgent:
     def save(self, ep, model_file_path):
         # save model with relevant info to start the next episode
         torch.save({
-            'current_state_dict': self.train_suit.current.state_dict(),
-            'target_state_dict': self.train_suit.target.state_dict(),
+            'current_state_dict': self.train_suit.current.state_dict(), # Q network
+            'target_state_dict': self.train_suit.target.state_dict(), # Targets network
             'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
             'memory':self.train_suit.memory,
             'episode': ep,  

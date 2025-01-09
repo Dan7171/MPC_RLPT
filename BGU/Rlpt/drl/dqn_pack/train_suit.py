@@ -82,7 +82,7 @@ class trainSuit:
         
         self.eps_decay = cfg['eps_decay']
         if not self.eps_decay:
-            self.current_eps = 0.1 
+            self.current_eps = cfg['default_eps']
         self.episode_idx = episode_idx
         self.max_episode = max_episode
         self.learning_rate = learning_rate
