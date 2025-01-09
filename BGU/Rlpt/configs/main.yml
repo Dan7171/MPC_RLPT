@@ -33,8 +33,8 @@ agent:
   train_suit:
     gamma: 0.999
     batch_size: 128
-    eps_decay: false
-    default_eps: 0.000001
+    eps_decay: true
+    default_eps: 0.01
     grad_clipping: false
     N: 100000 # replay buffer size 
 
