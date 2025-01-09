@@ -1201,19 +1201,19 @@ if __name__ == '__main__':
         cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
             # distance from goal pose (orientation err weight, position err weight).
             "goal_pose":  [
-                (1.0, 100.0), # goal 100:1
-                (100.0, 1.0)
+                (1.0, 300.0), # goal 100:1
+                (300.0, 1.0),
                 ], # orientation 100:15
             "zero_vel": [0.0], 
             "zero_acc": [0.0],
             "joint_l2": [0.0], 
-            "robot_self_collision": [100], 
-            "primitive_collision" : [100],  
+            "robot_self_collision": [100, 1000], 
+            "primitive_collision" : [100, 1000],  
             "voxel_collision" : [0.0],
             "null_space": [1.0],
             "manipulability": [30], 
             "ee_vel": [0.0], 
-            "stop_cost" : [(100.0, 1.5),(50.0, 3)], # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration)). idx 0 = cost weight (the greather, the higher the charging for crossing max vel), idx 1 = acceleration limit (the higher, the greater max vel)        
+            "stop_cost" : [(120.0, 1.5),(20.0, 4)], # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration)). idx 0 = cost weight (the greather, the higher the charging for crossing max vel), idx 1 = acceleration limit (the higher, the greater max vel)        
             "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
             "smooth": [1.0], # smoothness weight
             "state_bound": [1000.0], # joint limit avoidance weight
@@ -1226,8 +1226,8 @@ if __name__ == '__main__':
                 # 165, # mid-level 
                 # 300 # long range observer
                 ],         
-            "particles": [500], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-            "n_iters": [1] # Num of optimization steps 
+            "particles": [500, 1000], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+            "n_iters": [1, 2] # Num of optimization steps 
         } 
     
     # This op is aimed to save time when some parameters like horizon are too expansive to modify 

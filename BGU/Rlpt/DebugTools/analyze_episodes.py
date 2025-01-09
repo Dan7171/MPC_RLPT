@@ -58,6 +58,7 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) q start
 
 ###########
 fig = plt.figure()
+
 last_episode = episodes.get_group(episodes.ngroups-1) # last episode
 q = last_episode['q(w,st,at)']
 pos_err = last_episode['pos_er_s(t+1)']
@@ -100,7 +101,24 @@ for i, ng in enumerate(episodes):
         plt.plot(group['at_epsilon'])
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random action chance')
 
+#######3
+tfig = plt.figure()
 
+# last_episode = episodes.get_group(episodes.ngroups-1) # last episode
+q = last_episode['q(w,st,at)']
+pos_err = last_episode['pos_er_s(t+1)']
+rot_err = last_episode['rot_er_s(t+1)']
+# defining axes
+ax = plt.axes(projection ='3d') 
+z = q
+x = pos_err
+y = rot_err
+# ax.scatter(x, y, z) # also works (but one color)
+c = x + y # changes color, but not a must
+ax.scatter(x, y, z, c = c)
+ax.set_title('q(pos_err, rot_err) in last episode')
+ax.set_xlabel('pos_err', fontsize=12)
+ax.set_ylabel('rot_err', fontsize=12)
 
 
 

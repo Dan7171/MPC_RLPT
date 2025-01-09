@@ -15,28 +15,28 @@ profile_memory:
 
 agent:
   model: # The Neural network 
-    load_checkpoint: true
+    load_checkpoint: false
     checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/model.pth' # None
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
       robot_dofs_positions: true
       robot_dofs_velocities: true
-      goal_pose: true
+      goal_pose: false 
       coll_objs: false
       robot_base_pos: false
       prev_action_idx: false
       pi_mppi_means: true
-      pi_mppi_covs: true
+      pi_mppi_covs: false # currently disabled since it doesent change
 
       
   train_suit:
     gamma: 0.999
     batch_size: 128
     eps_decay: false
-    default_eps: 0.03
+    default_eps: 0.000001
     grad_clipping: false
-    
+    N: 1000000 # replay buffer size 
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation radius. meters
@@ -56,8 +56,8 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 1500
-    max_ts: 1000
+    n_episodes: 1200
+    max_ts: 1200
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
@@ -68,7 +68,7 @@ agent:
   testing:
     run: false
     n_episodes: 100
-    max_ts: 1500
+    max_ts: 10
     disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false

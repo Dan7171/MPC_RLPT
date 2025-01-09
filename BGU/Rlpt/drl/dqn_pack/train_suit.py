@@ -87,7 +87,7 @@ class trainSuit:
         self.max_episode = max_episode
         self.learning_rate = learning_rate
         self.C = C
-        self.N = N
+        self.N = cfg['N'] if N in cfg else N
         self.T = T
         self.n_actions = n_actions
         self.action_indices = range(n_actions) # these are the action ids. Corresponding to Q networks output layers
@@ -179,6 +179,7 @@ class trainSuit:
                 # action_idx = random.randint(0, self.n_actions -1)
                 action_idx = random.choice(list(allowed_actions_indices)) 
                 picked_q = Q_all_actions[action_idx]
+            color_print(f'Q(s,a) = {picked_q}, a = {action_idx}')
                 
         # print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
         # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
