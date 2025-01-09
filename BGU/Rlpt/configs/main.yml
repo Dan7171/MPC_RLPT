@@ -36,13 +36,13 @@ agent:
     eps_decay: false
     default_eps: 0.000001
     grad_clipping: false
-    N: 1000000 # replay buffer size 
+    N: 100000 # replay buffer size 
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation radius. meters
     goal_rot_thresh_dist: 0.01 # meters
     col_thresh_dist: 0.05 # meters
-    time_reward: fixed # (linear or fixed)
+    time_reward: linear # fixed # (linear or fixed)
     pose_reward: false # false means no direct reward on goal state, learning just from time to goal and collisions
     safety_w: 100
     pose_w: 10
