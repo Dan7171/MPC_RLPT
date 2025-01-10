@@ -305,9 +305,8 @@ def mpc_robot_interactive(args, gym_instance):
             robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
             current_state = command
-            # debug
-            if i < 100: 
-                print(f'current_state: {current_state}')
+            # if i < 100:  # debug
+            #     print(f'current_state: {current_state}')
             
             i += 1
 

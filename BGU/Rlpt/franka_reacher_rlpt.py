@@ -1157,7 +1157,7 @@ if __name__ == '__main__':
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
     
     # external run params:
-    parser.add_argument('--external_run', type=bool, default='False', help= 'run from external script')
+    parser.add_argument('--external_run', type=bool, default=False, help= 'run from external script')
     parser.add_argument('--model_path', type=str, default='', help= 'path to model file')    
     args = parser.parse_args()
     

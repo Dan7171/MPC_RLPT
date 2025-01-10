@@ -121,7 +121,7 @@ class OLGaussianMPC(Controller):
             self.sample_lib = RandomSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args,
                                               **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
-        elif sample_params['type'] == 'multiple':
+        elif sample_params['type'] == 'multiple': # this one is used now
             self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
 
@@ -144,6 +144,8 @@ class OLGaussianMPC(Controller):
     def _get_action_seq(self, mode='mean'):
         if mode == 'mean':
             act_seq = self.mean_action.clone()
+            # print(act_seq) # debug >>>> 
+
         elif mode == 'sample':
             delta = self.generate_noise(shape=torch.Size((1, self.horizon)),
                                         base_seed=self.seed_val + 123 * self.num_steps)
@@ -163,9 +165,10 @@ class OLGaussianMPC(Controller):
         return delta
         
     def sample_actions(self, state=None):
+        print(f'debug - seed to send: {self.seed_val + self.num_steps}')
 
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
-
+      
 
         #add zero-noise seq so mean is always a part of samples
         delta = torch.cat((delta, self.Z_seq), dim=0)

@@ -62,7 +62,7 @@ agent:
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: true
+    reset_to_initial_state_every_episode: false
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
   
   testing:
@@ -80,7 +80,7 @@ agent:
     # model: 'BGU/Rlpt/trained_models/2025:01:04(Sat)14:27:25/model.pth'
 
   action_space:
-    use_original_storm_params: false
+    use_original_storm_params: true
 
 
 

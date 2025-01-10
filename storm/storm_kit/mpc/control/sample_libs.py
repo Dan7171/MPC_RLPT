@@ -308,6 +308,7 @@ class MultipleSampleLib(SampleLib):
         self.fixed_samples = fixed_samples
         self.samples = None
     def get_samples(self, sample_shape, base_seed=None, **kwargs):
+        
         if(self.fixed_samples and self.samples is None):
             cat_list = []
             sample_shape = list(sample_shape)
