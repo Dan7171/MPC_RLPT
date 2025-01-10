@@ -179,7 +179,7 @@ class trainSuit:
                 # action_idx = random.randint(0, self.n_actions -1)
                 action_idx = random.choice(list(allowed_actions_indices)) 
                 picked_q = Q_all_actions[action_idx]
-            color_print(f'Q(s,a) = {picked_q}, a = {action_idx}')
+            # color_print(f'Q(s,a) = {picked_q}, a = {action_idx}')
                 
         # print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
         # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')

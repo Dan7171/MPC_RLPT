@@ -64,8 +64,9 @@ class ManipulabilityCost(nn.Module):
         cost = w1 * t1
         
         sniffer = GLobalVars.cost_sniffer
-        # if sniffer.is_initialized():          
-        sniffer.set('manipulability', CostTerm(w1, t1))        
+        # if sniffer.is_initialized():
+        if sniffer is not None:           
+            sniffer.set('manipulability', CostTerm(w1, t1))        
             
         return cost.to(inp_device)
     

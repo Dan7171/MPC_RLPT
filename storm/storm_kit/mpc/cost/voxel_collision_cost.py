@@ -147,7 +147,8 @@ class VoxelCollisionCost(nn.Module):
         
         sniffer = GLobalVars.cost_sniffer
         # if sniffer.is_initialized():
-        sniffer.set( 'voxel', CostTerm(w1, t1))
+        if sniffer is not None:     
+            sniffer.set( 'voxel', CostTerm(w1, t1))
 
         return cost
     def update_weight(self, weight):

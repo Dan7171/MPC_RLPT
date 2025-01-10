@@ -269,7 +269,7 @@ def mpc_robot_interactive(args, gym_instance):
             qd_des = copy.deepcopy(command['velocity']) #* 0.5
             qdd_des = copy.deepcopy(command['acceleration'])
             
-            ee_error = mpc_control.get_current_error(filtered_state_mpc)
+            # ee_error = mpc_control.get_current_error(filtered_state_mpc)
              
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
             
@@ -284,8 +284,8 @@ def mpc_robot_interactive(args, gym_instance):
             if(vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
 
-            print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(mpc_control.opt_dt),
-                  "{:.3f}".format(mpc_control.mpc_dt))
+            # print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(mpc_control.opt_dt),
+            #       "{:.3f}".format(mpc_control.mpc_dt))
         
             
             gym_instance.clear_lines()
@@ -305,6 +305,9 @@ def mpc_robot_interactive(args, gym_instance):
             robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
             current_state = command
+            # debug
+            if i < 100: 
+                print(f'current_state: {current_state}')
             
             i += 1
 

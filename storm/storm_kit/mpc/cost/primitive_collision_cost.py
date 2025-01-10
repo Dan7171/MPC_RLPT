@@ -107,7 +107,8 @@ class PrimitiveCollisionCost(nn.Module):
         
         # sniffer = GLobalVars.cost_sniffer
         # if sniffer.is_initialized():
-        sniffer.set('primitive_collision', CostTerm(w1, t1))
+        if sniffer is not None:     
+            sniffer.set('primitive_collision', CostTerm(w1, t1))
             
         return cost.to(inp_device)
     def update_weight(self, weight):

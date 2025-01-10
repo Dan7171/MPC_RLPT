@@ -130,8 +130,9 @@ class PoseCost(nn.Module):
         
         sniffer = GLobalVars.cost_sniffer
         # if sniffer.is_initialized():
-        sniffer.set('goal_orientation', CostTerm(w1, t1))
-        sniffer.set('goal_position', CostTerm(w2, t2))
+        if sniffer is not None:     
+            sniffer.set('goal_orientation', CostTerm(w1, t1))
+            sniffer.set('goal_position', CostTerm(w2, t2))
         return cost.to(inp_device), rot_err_norm, goal_dist
     
     def update_weight(self, new_weights):

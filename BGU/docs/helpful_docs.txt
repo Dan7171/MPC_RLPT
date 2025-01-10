@@ -1,0 +1,313 @@
+
+###### actors general ###############
+1. mpc.gym.get_actor_name(mpc.env_ptr, actor_handle) # get the name of an actor based on the handle (index)
+
+	examples: (in environment with only one sphere and n=4 actors in total)
+	mpc.gym.get_actor_name(mpc.env_ptr, 0) 
+	'robot' (fixed, always 0)
+	mpc.gym.get_actor_name(mpc.env_ptr, 1)
+	'sphere1'
+	mpc.gym.get_actor_name(mpc.env_ptr, 2) (fixed, always n-2)
+	'ee_target_object'
+	mpc.gym.get_actor_name(mpc.env_ptr, 3) (fixed, always n-1)
+	'ee_current_as_mug'
+	mpc.gym.get_actor_name(mpc.env_ptr, 4) # returns None, no more actors
+	
+	
+2.  mpc.gym.get_actor_count(mpc.env_ptr) # get number of actors in environment
+
+example: (assume environment with 4 actors (robot, sphere1, goal pose, ee_target_object (the red cup), ee_current_as_mug (the green cup))
+	mpc.gym.get_actor_count(mpc.env_ptr)
+	4
+
+######## actors rigid bodies ############3
+1. mpc.gym.get_actor_rigid_body_states(mpc.env_ptr, actor_handle, flag of state filtering) #Maybe the most important function in this file. Gets the states of all rigid bodies of actor, given its handle 
+
+examples:
+	mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,0,gymapi.STATE_ALL) # 0 is the handler of robot, which has 8 rigid bodies (8 rows in total).
+	
+array([(((-1.30e-08, 1.  , -1.12e-08), (-1.49e-08, -0.71, -0.71, -1.12e-08)), ((0., 0., 0.), (0., 0., 0.))), # posi
+       ((( 2.05e-08, 1.33,  3.73e-09), (-3.39e-01, -0.62, -0.62,  3.39e-01)), ((0., 0., 0.), (0., 0., 0.))),
+       ((( 2.24e-08, 1.33,  1.12e-08), (-4.21e-01, -0.23, -0.77, -4.21e-01)), ((0., 0., 0.), (0., 0., 0.))),
+       ((( 1.44e-01, 1.5 , -2.24e-01), (-5.95e-01, -0.71, -0.38, -8.57e-08)), ((0., 0., 0.), (0., 0., 0.))),
+       ((( 1.20e-01, 1.57, -1.86e-01), ( 4.21e-01, -0.77, -0.23,  4.21e-01)), ((0., 0., 0.), (0., 0., 0.))),
+       (((-3.09e-02, 1.85,  4.81e-02), (-3.17e-08, -0.38, -0.71,  5.95e-01)), ((0., 0., 0.), (0., 0., 0.))),
+       (((-3.09e-02, 1.85,  4.81e-02), (-2.47e-01, -0.84,  0.13,  4.60e-01)), ((0., 0., 0.), (0., 0., 0.))),
+       (((-7.09e-02, 1.9 ,  1.10e-01), (-5.06e-02, -0.52,  0.83,  2.00e-01)), ((0., 0., 0.), (0., 0., 0.)))],
+      dtype=[('pose', [('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])]), ('vel', [('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])])
+      
+	# more precisely - the state of the j'th rigid body of the i'th actor (in this example 0 and 0)
+	# i = 0 # robot
+	## mpc.gym.get_actor_name(mpc.env_ptr,i)
+	## 'robot' 
+
+	# j = 0 # base_link
+	### mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,j)
+	### {'base_link': 0, 'panda_link1': 1, 'panda_link2': 2, 'panda_link3': 3, 'panda_link4': 4, 'panda_link5': 5, 'panda_link6': 6, 'panda_link7': 7}
+
+	# first_rigid_body_state = mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,i,gymapi.STATE_ALL)[j]
+	# first_rigid_body_state
+	# (((-1.3e-08, 1., -1.12e-08), (-1.49e-08, -0.71, -0.71, -1.12e-08)), ((0., 0., 0.), (0., 0., 0.))) # (pose: position and rotation, velocity: linear and angular) 
+	## (-1.3e-08, 1., -1.12e-08) # position
+	## (-1.49e-08, -0.71, -0.71, -1.12e-08) # rotation
+	## (0., 0., 0.) linear velocity
+	## (0., 0., 0.) angular velocity
+
+
+	mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,1,gymapi.STATE_ALL) # 1 is a sphere
+	array([(((-100., 101., 100.35), (0., -0.71, -0.71, 0.)), ((0., 0., 0.), (0., 0., 0.)))],
+	      dtype=[('pose', [('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])]), ('vel', [('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])])
+
+	mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,2,gymapi.STATE_ALL) # 2 is ee_target_object (I don't know why they gave it 7 rigid bodies, but they did.
+	array([(((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.))),
+	       (((-0.62, 1.22, -0.06), (0.6, -0.33, 0.28, 0.67)), ((0., 0., 0.), (0., 0., 0.)))],
+	      dtype=[('pose', [('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])]), ('vel', [('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])])
+
+
+	mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,3,gymapi.STATE_ALL) # 3 is ee_current_as_mug
+	array([(((0., 0., 0.), (0., 0., 0., 1.)), ((0., 0., 0.), (0., 0., 0.)))],
+	      dtype=[('pose', [('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])]), ('vel', [('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])])
+	      
+	      
+	 # Bonus
+	 we can also "vectorize" the results directly, by calling the relevant items 'pose' or 'vel' as keys dicts:
+	 mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,0,gymapi.STATE_ALL)['pose']
+	 array([((-1.30e-08, 1.  , -1.12e-08), (-1.49e-08, -0.71, -0.71, -1.12e-08)),
+       (( 2.05e-08, 1.33,  3.73e-09), (-3.39e-01, -0.62, -0.62,  3.39e-01)),
+       (( 2.24e-08, 1.33,  1.12e-08), (-4.21e-01, -0.23, -0.77, -4.21e-01)),
+       (( 1.44e-01, 1.5 , -2.24e-01), (-5.95e-01, -0.71, -0.38, -8.57e-08)),
+       (( 1.20e-01, 1.57, -1.86e-01), ( 4.21e-01, -0.77, -0.23,  4.21e-01)),
+       ((-3.09e-02, 1.85,  4.81e-02), (-3.17e-08, -0.38, -0.71,  5.95e-01)),
+       ((-3.09e-02, 1.85,  4.81e-02), (-2.47e-01, -0.84,  0.13,  4.60e-01)),
+       ((-7.09e-02, 1.9 ,  1.10e-01), (-5.06e-02, -0.52,  0.83,  2.00e-01))],
+      dtype=[('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])])
+	 
+	 mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,0,gymapi.STATE_ALL)['vel']
+array([((0., 0., 0.), (0., 0., 0.)), ((0., 0., 0.), (0., 0., 0.)),
+       ((0., 0., 0.), (0., 0., 0.)), ((0., 0., 0.), (0., 0., 0.)),
+       ((0., 0., 0.), (0., 0., 0.)), ((0., 0., 0.), (0., 0., 0.)),
+       ((0., 0., 0.), (0., 0., 0.)), ((0., 0., 0.), (0., 0., 0.))],
+      dtype=[('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])
+      
+	 mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,3,gymapi.STATE_ALL)['pose']
+array([((0., 0., 0.), (0., 0., 0., 1.))],
+      dtype=[('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])])
+mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,3,gymapi.STATE_ALL)['vel']
+array([((0., 0., 0.), (0., 0., 0.))],
+      dtype=[('linear', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('angular', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')])])
+	     
+2. mpc.get_actor_rigid_body_names(mpc.env_ptr, actor_handle) # get the name of all rigid bodies of actor 
+ 
+	example:
+	robot_handle = 0
+
+	mpc.gym.get_actor_rigid_body_names(mpc.env_ptr, 0) 
+	['base_link', 'panda_link1', 'panda_link2', 'panda_link3', 'panda_link4', 'panda_link5', 'panda_link6', 'panda_link7']
+	mpc.gym.get_actor_rigid_body_names(mpc.env_ptr, 1) 
+	['sphere']
+	mpc.gym.get_actor_rigid_body_names(mpc.env_ptr, 2) 
+	['base', 'base1', 'base2', 'base3', 'base4', 'base5', 'mug']
+	mpc.gym.get_actor_rigid_body_names(mpc.env_ptr, 3) 
+	['mug']
+
+3. mpc.gym.get_actor_rigid_body_properties(mpc.env_ptr, actor_handle) # returns some properties but not sure if they useful
+	example:
+	mpc.gym.get_actor_rigid_body_properties(mpc.env_ptr, 0)
+	[<isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e508eaabb0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086f6870>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086c5bb0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086f12b0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086f1bb0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086f1270>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086cbfb0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidBodyProperties object at 0x75e5086e65b0>]
+
+4. mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,actor_handle) # get the rigid bodies each actor in environment has
+
+	example:
+
+	mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,0)
+	{'base_link': 0, 'panda_link1': 1, 'panda_link2': 2, 'panda_link3': 3, 'panda_link4': 4, 'panda_link5': 5, 'panda_link6': 6, 'panda_link7': 7}
+	mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,1)
+	{'sphere': 0}
+	mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,2)
+	{'base': 0, 'base1': 1, 'base2': 2, 'base3': 3, 'base4': 4, 'base5': 5, 'mug': 6}
+	mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,3)
+	{'mug': 0}
+	
+5. mpc.gym.get_actor_root_rigid_body_handle(mpc.env_ptr,actor_handle) # this is an important one. Every environment has k  "actors" a0,...a(k-1) and each actor i has "ri" rigid bodies: (ai0,...,ai(ri-1)).
+And  assuming the environment rigid bodies are:
+a00...,ar0, a10,....ar1, ...a(k-1)0,....,a(k-1)(r(k-1)-1)
+
+So the "root rigid body handle" is the first handle of this ith actor, assuming all handles of all actors are *sequenced*. 
+example:
+
+mpc.gym.get_actor_root_rigid_body_handle(mpc.env_ptr,0) #actor 0 is the first, so it will always start with 0 
+0
+
+mpc.gym.get_actor_root_rigid_body_handle(mpc.env_ptr,1) # actor had 8 rigid bodies (indexes 0 to 7) so actor at index 1 will start its rigid bodies (that its root index) from index 8. 
+8
+# len(mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,0))
+# 8 
+
+mpc.gym.get_actor_root_rigid_body_handle(mpc.env_ptr,2) # actor 1 had only one rigid body and its root index was 8. So the root rigid body index of actor 2 is only one index after it (so its 9) 
+9
+# len(mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,1)) 
+# 1
+
+mpc.gym.get_actor_root_rigid_body_handle(mpc.env_ptr,3) # actor 2 had 7 ridid bodies (16-9) so actor 3's root handle will be 16.
+16
+# len(mpc.gym.get_actor_rigid_body_dict(mpc.env_ptr,2))
+# 7
+
+###### actors rigid shape ######### (what is this? not like rigid bodies)
+1. mpc.gym.get_actor_rigid_shape_count(mpc.env_ptr, actor_handle) # return how many rigid shapes an actor has 
+
+	example: (assume environment with 4 actors)
+	mpc.gym.get_actor_rigid_shape_count(mpc.env_ptr, 0) 
+	10
+	mpc.gym.get_actor_rigid_shape_count(mpc.env_ptr, 1) 
+	1
+	mpc.gym.get_actor_rigid_shape_count(mpc.env_ptr, 2) 
+	1
+	mpc.gym.get_actor_rigid_shape_count(mpc.env_ptr, 4) 
+	0
+
+
+2. mpc.gym.get_actor_rigid_shape_properties(mpc.env_ptr, actor_handle) # returns some list of RigidShapeProperties. Not sure how useful.
+
+	example: 
+	mpc.gym.get_actor_rigid_shape_properties(mpc.env_ptr, 0) # of robot
+	[<isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e508ef39f0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77470>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77b70>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77f70>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77bf0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77fb0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77cf0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e778f0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e77ab0>, <isaacgym._bindings.linux-x86_64.gym_38.RigidShapeProperties object at 0x75e505e775f0>]
+
+################### actor soft bodies (what are those) #######################3
+1. mpc.gym.get_actor_soft_body_count(mpc.env_ptr, actor_handle) # return count of soft bodies for some actor.
+
+	#Example:
+	In storm there are no soft bodies as we can see:
+
+	 mpc.gym.get_actor_soft_body_count(mpc.env_ptr, 0) 
+	0
+	 mpc.gym.get_actor_soft_body_count(mpc.env_ptr, 1) 
+	0
+	 mpc.gym.get_actor_soft_body_count(mpc.env_ptr, 2) 
+	0
+	mpc.gym.get_actor_soft_body_count(mpc.env_ptr, 3) 
+	0
+######## actor joints ###############3
+1. mpc.gym.get_actor_joint_dict(mpc.env_ptr, actor_handle) # return the name:handle of each joint 
+
+# example:
+mpc.gym.get_actor_joint_dict(mpc.env_ptr,0)
+{'panda_joint1': 0, 'panda_joint2': 1, 'panda_joint3': 2, 'panda_joint4': 3, 'panda_joint5': 4, 'panda_joint6': 5, 'panda_joint7': 6}
+
+
+2.mpc.gym.get_actor_joint_transforms(mpc.env_ptr,0) # don't know what this one returns, but this function returns something only for actors with joints (robot and ee_target_pose)
+
+mpc.gym.get_actor_joint_transforms(mpc.env_ptr,0) # 0 is the robot in this env
+array([(( 1.10e-09, 1.33,  1.38e-07), (-0.5 , -5.00e-01, -0.5 , -5.00e-01)),
+       (( 3.93e-08, 1.33,  1.58e-08), (-0.96, -1.34e-07, -0.28, -8.94e-08)),
+       (( 1.44e-01, 1.5 , -2.24e-01), (-0.69, -5.00e-01,  0.15, -5.00e-01)),
+       (( 1.20e-01, 1.57, -1.86e-01), (-0.13, -8.42e-01,  0.46, -2.47e-01)),
+       ((-3.09e-02, 1.85,  4.81e-02), (-0.5 , -6.91e-01, -0.5 ,  1.51e-01)),
+       ((-3.09e-02, 1.85,  4.81e-02), ( 0.13, -8.42e-01, -0.46, -2.47e-01)),
+       ((-7.09e-02, 1.9 ,  1.10e-01), ( 0.6 , -7.07e-01,  0.38, -2.81e-04))],
+      dtype=[('p', [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]), ('r', [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('w', '<f4')])])
+
+mpc.gym.get_actor_joint_dict(mpc.env_ptr,2) # 2 is the index of ee_target_object in this environment
+{'rx_joint': 3, 'ry_joint': 4, 'rz_joint': 5, 'x_joint': 0, 'y_joint': 1, 'z_joint': 2}
+
+#################### actor dofs ####################
+1.mpc.gym.get_actor_dof_names(mpc.env_ptr,actor_handle) # return dof names of actor
+ 	example:
+	mpc.gym.get_actor_dof_names(mpc.env_ptr,0) # return dof names of actor. 0 is robot
+	['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+
+
+2. mpc.gym.get_actor_dof_properties(mpc.env_ptr,actor_handle)
+example: . mpc.gym.get_actor_dof_properties(mpc.env_ptr,0) #  0 is robot
+array([( True, -2.9 ,  2.9 , 1, 2.17, 87., 400., 40., 0., 0.),
+       ( True, -1.76,  1.76, 1, 2.17, 87., 400., 40., 0., 0.),
+       ( True, -2.9 ,  2.9 , 1, 2.17, 87., 400., 40., 0., 0.),
+       ( True, -3.07, -0.07, 1, 2.17, 87., 400., 40., 0., 0.),
+       ( True, -2.9 ,  2.9 , 1, 2.61, 12., 400., 40., 0., 0.),
+       ( True, -0.02,  3.75, 1, 2.61, 12., 100.,  5., 0., 0.),
+       ( True, -2.9 ,  2.9 , 1, 2.61, 12., 100.,  5., 0., 0.)],
+      dtype={'names': ['hasLimits', 'lower', 'upper', 'driveMode', 'velocity', 'effort', 'stiffness', 'damping', 'friction', 'armature'], 'formats': ['?', '<f4', '<f4', '<i4', '<f4', '<f4', '<f4', '<f4', '<f4', '<f4'], 'offsets': [0, 4, 8, 12, 16, 20, 24, 28, 32, 36], 'itemsize': 40})
+
+3. mpc.gym.get_actor_dof_states(mpc.env_ptr,actor_handle, gymapi.STATE_ALL) #  get state of dofs. 
+ 
+
+	# gymapi.STATE_ALL specifies what output you want.  could also be gymapi.STATE_POS , gymapi.STATE_VEL but just run with STATE_ALL to get
+	all of them (I also tried and they probably didnt implement the other two and all of the 3 return what STATE_ALL returns
+	examples: # 0 is robot
+	
+	mpc.gym.get_actor_dof_states(mpc.env_ptr,0, gymapi.STATE_ALL) 
+	array([( 1.  , 0.), (-1.  , 0.), ( 0.  , 0.), (-2.  , 0.), ( 0.  , 0.),
+	       ( 1.57, 0.), ( 0.78, 0.)], dtype=[('pos', '<f4'), ('vel', '<f4')])
+	
+
+#### Environmental functions #######
+
+1. mpc.gym.get_env_joint_count(mpc.env_ptr) # gets the total number of joints in  environment 
+
+	example:
+	mpc.gym.get_env_joint_count(mpc.env_ptr)
+	13
+
+2. mpc.gym.get_env_rigid_body_count(mpc.env_ptr) # Gets count of rigid bodies for environment
+	example:
+	# mpc.gym.get_env_rigid_body_count(mpc.env_ptr)
+	17
+
+3.  mpc.gym.get_rigid_name(mpc.env_ptr, rigid_handle) # get rigid body name for some rigid body in environment given its handle (index in env)
+	
+	
+	# example: these are the 17 rigid bodies of the environment (belonging to 4 assets in total)
+	mpc.gym.get_rigid_name(mpc.env_ptr,0)
+	'base_link'
+	mpc.gym.get_rigid_name(mpc.env_ptr,1)
+	'panda_link1'
+	mpc.gym.get_rigid_name(mpc.env_ptr,2)
+	'panda_link2'
+	mpc.gym.get_rigid_name(mpc.env_ptr,3)
+	'panda_link3'
+	mpc.gym.get_rigid_name(mpc.env_ptr,4)
+	'panda_link4'
+	mpc.gym.get_rigid_name(mpc.env_ptr,5)
+	'panda_link5'
+	mpc.gym.get_rigid_name(mpc.env_ptr,6)
+	'panda_link6'
+	mpc.gym.get_rigid_name(mpc.env_ptr,7)
+	'panda_link7'
+	mpc.gym.get_rigid_name(mpc.env_ptr,8)
+	'sphere'
+	mpc.gym.get_rigid_name(mpc.env_ptr,9)
+	'base'
+	mpc.gym.get_rigid_name(mpc.env_ptr,10)
+	'base1'
+	mpc.gym.get_rigid_name(mpc.env_ptr,11)
+	'base2'
+	mpc.gym.get_rigid_name(mpc.env_ptr,12)
+	'base3'
+	'base3'
+	mpc.gym.get_rigid_name(mpc.env_ptr,13)
+	'base4'
+	mpc.gym.get_rigid_name(mpc.env_ptr,14)
+	'base5'
+	mpc.gym.get_rigid_name(mpc.env_ptr,15)
+	'mug'
+	mpc.gym.get_rigid_name(mpc.env_ptr,16)
+	'mug'
+
+
+
+########## storm's state #########
+
+1. The state of time step t is calculated by: mpc.get_dofs_states_formatted()
+They don't need other attributes because they assume: 1. objects are fixed (goal pose, obstacles...) and they use their location behind scenes, 2.  
+example:
+mpc.get_dofs_states_formatted()
+{'name': ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'], 'position': array([ 1.  , -1.  ,  0.  , -2.  ,  0.  ,  1.57,  0.78], dtype=float32), 'velocity': array([0., 0., 0., 0., 0., 0., 0.], dtype=float32), 'acceleration': array([0., 0., 0., 0., 0., 0., 0.], dtype=float32)}
+
+
+
+

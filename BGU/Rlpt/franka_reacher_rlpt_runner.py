@@ -35,5 +35,6 @@ if __name__ == '__main__':
         n_episodes = agent_cfg['testing']['n_episodes']
     
     for e in range(ep, n_episodes):
+        print(f'episode: {ep} starts...')
         subprocess.run(['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path])
         pass

@@ -154,8 +154,8 @@ class MPPI(OLGaussianMPC):
             self.step_size_mean * new_mean
 
         sniffer = GLobalVars.cost_sniffer
-
-        sniffer.set_current_mppi_policy(self.mean_action, None)
+        if sniffer is not None:     
+            sniffer.set_current_mppi_policy(self.mean_action, None)
         #c = self.mean_action.cpu().numpy()
         #plt.plot(a[:,0])
         #plt.plot(b[:,0])
@@ -206,7 +206,8 @@ class MPPI(OLGaussianMPC):
             # TOGETHER WITH POLICY MEANS IT CONSTRURCTS THE CURRENT POLICY
             self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
                 self.step_size_cov * cov_update
-            sniffer.set_current_mppi_policy(None, self.cov_action)
+            if sniffer is not None:     
+                sniffer.set_current_mppi_policy(None, self.cov_action)
         
             
             #if(cov_update == 'diag_AxA'):
