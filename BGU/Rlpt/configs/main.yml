@@ -15,25 +15,25 @@ agent:
       pi_mppi_covs: false # currently disabled since it doesent change
   A: 
     cost_fn_space:
-      goal_pose: [[1.0, 300.0], [300.0, 1.0]] # 0: orientation, 1: position
+      goal_pose: [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
       zero_vel: [0.0]
       zero_acc: [0.0]
       joint_l2: [0.0]
-      robot_self_collision: [100, 1000]
-      primitive_collision: [100, 1000]
+      robot_self_collision: [100, 1000] # weight of penalty for reaching too close to own parts (penalty weight)
+      primitive_collision: [100, 1000] # weight of penalty for reaching too close to obstacles in env (penalty weight)
       voxel_collision: [0.0]
       null_space: [1.0]
       manipulability: [30]
       ee_vel: [0.0]
-      stop_cost: [[120.0, 1.5], [20.0, 4]]
+      stop_cost: [[120.0, 1.5], [20.0, 4]] # weight of penalty for crossing max vel. (0: cost term weight, 1: acceleration limit)
       stop_cost_acc: [[0.0, 0.1]]
       smooth: [1.0]
       state_bound: [1000.0]
 
     mppi_space:
-      horizon: [30] 
-      particles: [500,1000]
-      n_iters: [1,2]
+      horizon: [30] # horizon length. warning: linearly increasing runtime.
+      particles: [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
+      n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
 
   train_suit:
     gamma: 0.999
@@ -56,11 +56,11 @@ agent:
     terminal_goal: true
 
   training:
-    run: false
+    run: true
     save_checkpoints: true
     n_episodes: 1200
     max_ts: 1200
-    disable_frequent_h_changing: false
+    # disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
@@ -69,9 +69,9 @@ agent:
   
   testing:
     run: true
-    n_episodes: 100
+    n_episodes: 10
     max_ts: 1000
-    disable_frequent_h_changing: false
+    # disable_frequent_h_changing: false
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
@@ -80,6 +80,7 @@ agent:
 
   action_space:
     use_original_storm_params: false
+    tuning_enabled: false # normal mode is true, false is for debug
 
 
 

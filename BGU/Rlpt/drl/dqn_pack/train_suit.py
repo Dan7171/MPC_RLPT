@@ -10,6 +10,7 @@ https://arxiv.org/pdf/1312.5602
 
 """
 from curses import color_pair
+from gc import enable
 from typing import Union
 from graphviz import render
 import gymnasium as gym
@@ -81,7 +82,9 @@ class trainSuit:
         # self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
         
         self.eps_decay = cfg['eps_decay']
-        if not self.eps_decay:
+        if self.eps_decay:
+            self.current_eps = 1
+        else:
             self.current_eps = cfg['default_eps']
         self.episode_idx = episode_idx
         self.max_episode = max_episode
@@ -112,6 +115,7 @@ class trainSuit:
         elif optimizer == optim.SGD:
             self.optimizer = optimizer(self.current.parameters(), lr=self.learning_rate) # original paper
 
+        
 
     # def set_episode_idx(self,  episode_idx):
     #     self.episode_idx = episode_idx
@@ -139,7 +143,7 @@ class trainSuit:
             max_allowed_q, max_allowed_q_idx = max(Q_all_actions_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
             return max_allowed_q, max_allowed_q_idx
         
-    def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set(), training:bool=True) -> Union[torch.Tensor, dict]:
+    def select_action_idx(self, state:torch.Tensor, indices_to_filter_out: set=set(), training:bool=True, tuning_enabled=True) -> Union[torch.Tensor, dict]:
         """
         https://daiwk.github.io/assets/dqn.pdf alg 1
         Select an action from an epsilon greedy policy.
@@ -150,42 +154,51 @@ class trainSuit:
         
         all_action_indices:set = set(range(self.n_actions))
         allowed_actions_indices = all_action_indices - indices_to_filter_out
-        sample = random.random()
-        if self.eps_decay: 
-            self.current_eps = max(self.eps_end, (self.max_episode - self.episode_idx) / self.max_episode) 
-        if training:
-            greedy_choice = sample > self.current_eps
-        else: # deployment mode, taking the best action
-            greedy_choice = True
-        with torch.no_grad():
-            Q_all_actions = self.current(state)
-            if greedy_choice: # best a (which maximizes current Q)
-                # t.max(1) will return the largest column value of each row.
-                # second column on max result is index of where max element was
-                # found, so we pick action with the larger expected reward.
-                # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
-                Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
-                allowed_Q_values_with_idx = [qi for qi in Q_all_actions_with_idx if qi[1] in allowed_actions_indices] # filter out the not allowed actions 
-                max_allowed_q, max_allowed_q_idx = max(allowed_Q_values_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
-                # action_idx_tensor = torch.argmax(Q_all_actions) # [index]
-                # action_idx = action_idx_tensor.item() # index
-                action_idx = max_allowed_q_idx
-                picked_q = max_allowed_q
-                
-                # print(f'best action q: {torch.max(Q_all_actions)}')
-                # print(f'arg max q(s,a): {torch.max(Q_all_actions)}, max allowed q(s,a): {max_allowed_q}')
-                
-            else: # random action (each action has a fair chance to be selected)
-                # action_idx = random.randint(0, self.n_actions -1)
-                action_idx = random.choice(list(allowed_actions_indices)) 
-                picked_q = Q_all_actions[action_idx]
-            # color_print(f'Q(s,a) = {picked_q}, a = {action_idx}')
-                
-        # print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
-        # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
-        
-        action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
         meta_data = {}
+        action_idx = 0
+        picked_q = -1
+        greedy_choice = True
+        
+        if tuning_enabled:
+            if training:
+                # epsilon greedy 
+                sample = random.random()
+                if self.eps_decay: 
+                    self.current_eps = max(self.eps_end, (self.max_episode - self.episode_idx) / self.max_episode) 
+                greedy_choice = sample > self.current_eps
+            
+            else: # testing mode (greedy policy)
+                greedy_choice = True
+                
+            with torch.no_grad():
+                Q_all_actions = self.current(state)
+                if greedy_choice: # best a (which maximizes current Q)
+                    # t.max(1) will return the largest column value of each row.
+                    # second column on max result is index of where max element was
+                    # found, so we pick action with the larger expected reward.
+                    # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
+                    Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
+                    allowed_Q_values_with_idx = [qi for qi in Q_all_actions_with_idx if qi[1] in allowed_actions_indices] # filter out the not allowed actions 
+                    max_allowed_q, max_allowed_q_idx = max(allowed_Q_values_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
+                    # action_idx_tensor = torch.argmax(Q_all_actions) # [index]
+                    # action_idx = action_idx_tensor.item() # index
+                    action_idx = max_allowed_q_idx
+                    picked_q = max_allowed_q
+                    
+                    # print(f'best action q: {torch.max(Q_all_actions)}')
+                    # print(f'arg max q(s,a): {torch.max(Q_all_actions)}, max allowed q(s,a): {max_allowed_q}')
+                    
+                else: # random action (each action has a fair chance to be selected)
+                    # action_idx = random.randint(0, self.n_actions -1)
+                    action_idx = random.choice(list(allowed_actions_indices)) 
+                    picked_q = Q_all_actions[action_idx]
+                # color_print(f'Q(s,a) = {picked_q}, a = {action_idx}')
+                    
+            # print(f'max allowed q(s,a): {picked_q:{.3}f} (max q(s,a): {torch.max(Q_all_actions):{.3}f})')
+            # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
+            
+        action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
+        
         meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
         if training:
             meta_data['eps']= self.current_eps

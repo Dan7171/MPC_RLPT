@@ -77,6 +77,8 @@ class rlptAgent:
         
         # define the state representation configuration
         rlpt_cfg = GLobalVars.rlpt_cfg
+        assert rlpt_cfg is not None
+        
         state_represantation_config = rlpt_cfg['agent']['model']['state_representation'] 
         self.st_componentes_ordered = []
         for var in state_represantation_config.keys():    
@@ -98,8 +100,7 @@ class rlptAgent:
         self.train_suit = trainSuit(self.st_dim , len(action_space),episode_idx=episode_idx, max_episode=max_episode) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
-        # if training_mode:
-        #     self.train_suit.set_episode_idx(episode_idx)  
+        self.tuning_enabled = rlpt_cfg['agent']['action_space']['tuning_enabled'] if 'tuning_enabled' in rlpt_cfg['agent']['action_space'] else True 
 
     def initialize_etl(self,etl_file_path):
         st_titles = self.get_states_legend()
@@ -182,7 +183,7 @@ class rlptAgent:
         """
         action_idx_tensor: torch.Tensor
         action_idx:int
-        action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices, self.training_mode)
+        action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices, self.training_mode, self.tuning_enabled)
         action_idx = int(action_idx_tensor.item()) # action's index
         return action_idx, self.action_space[action_idx], meta_data # the action itself 
     

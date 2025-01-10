@@ -248,9 +248,9 @@ class Controller(ABC):
                     # generate random simulated trajectories
                     trajectory = self.generate_rollouts(state) #Dan: 1. nxk7 actions seqs, nxkx1 costs,nxkx3 end effector positions (x,y,z), rollout time. Dan this starts the rollout of mpc
                     ### debug #####
-                    if self.num_steps < 5:
-                        print(f'debug trajectory:')                 
-                        print(trajectory)
+                    # if self.num_steps < 5:
+                    #     print(f'debug trajectory:')                 
+                    #     print(trajectory)
                     # update distribution parameters
                     with profiler.record_function("mppi_update"):
                         self._update_distribution(trajectory)
