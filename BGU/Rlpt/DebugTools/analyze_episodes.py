@@ -1,9 +1,14 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
 # matplotlib.use('Agg')  # Use a non-interactive backend
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/etl.csv' 760 episodes, with pushing truncated into buffer
-path = "/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/etl.csv"# '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
+# path = "/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/etl.csv"# '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)17:29:59/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -85,8 +90,7 @@ for i, ng in enumerate(episodes):
     name, group = ng
     if i < max_episode:
         plt.plot(group['optim_raw_grad_norm'])
-        # if i == 3: # debug
-        #     plt.show()
+
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) norm of minibatch gradient at optimization step (unclipped)')
 
 #############
@@ -109,23 +113,58 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 
 
+###########
+plt.figure()
+dof_pos_parsed = df['st_robot_dofs_positions'].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
+dof_pos_matrix = np.stack(dof_pos_parsed.to_numpy())
+pca = PCA(n_components=2)  # For 2D
+data_2d = pca.fit_transform(dof_pos_matrix)
+# Plot the 2D projection
+ax = plt.axes(projection ='3d') 
+x = data_2d[:, 0]
+y = data_2d[:, 1]
+z = range(len(data_2d))
+for _,group in episodes:
+    
+    df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
+    df_group['x'] = x[df_group.index]
+    df_group['y'] = y[df_group.index]
+    z = df_group.index # timestep
+    ax.scatter(df_group['x'],df_group['y'],z)
+    
+ax.set_xlabel("x = DOF positions- Principal Component 1")
+ax.set_ylabel("y = DOF positions- Principal Component 2")
+ax.set_title('z = time step (t)')
 
+################
+plt.figure()
+mpc_policy_parsed = df['st_pi_mppi_means'].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
+mpc_policy_matrix = np.stack(mpc_policy_parsed.to_numpy())
+pca = PCA(n_components=2)  # For 2D
+data_2d = pca.fit_transform(mpc_policy_matrix)
+# Plot the 2D projection
+ax = plt.axes(projection ='3d') 
+x = data_2d[:, 0]
+y = data_2d[:, 1]
+z = range(len(data_2d))
+for _,group in episodes:
+    df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
+    df_group['x'] = x[df_group.index]
+    df_group['y'] = y[df_group.index]
+    z = df_group.index # timestep
+    ax.scatter(df_group['x'],df_group['y'],z)
+    
+ax.set_xlabel("x = MPC policy- Principal Component 1")
+ax.set_ylabel("y = MPC policy- Principal Component 2")
+ax.set_title('z = time step (t)')
+
+
+
+
+###########
 ###########
 plt.show()
 ##########
-# plt.show()
-# for name, group in df:
-#     plt.plot(group.index, group['q(w,st,at)'], label=f'Group {name}')
-# y = df['q(w,st,at)']
-# # y = df['at_particles']
-# # # y.fillna(value=0)
-# # x = np.arange(len(y))
-# # plt.plot(x,y)
-# print(y.unique())
-# y.
-#  plt.plot()
-
-
 
 # time.sleep(100)
 

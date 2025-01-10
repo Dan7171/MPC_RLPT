@@ -155,7 +155,8 @@ class trainSuit:
         all_action_indices:set = set(range(self.n_actions))
         allowed_actions_indices = all_action_indices - indices_to_filter_out
         meta_data = {}
-        action_idx = 0
+        # action_idx = 0
+        action_idx = self.episode_idx # trick to start new episodes with fixed parameters every time
         picked_q = -1
         greedy_choice = True
         

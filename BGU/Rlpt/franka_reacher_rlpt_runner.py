@@ -23,18 +23,21 @@ if __name__ == '__main__':
     if training:    
         n_episodes = agent_cfg['training']['n_episodes'] # total for the whole training
         if load_model_file:
-            ep = torch.load(model_file_path)['episode']  # episode to start from 
+            ep_start = torch.load(model_file_path)['episode']  # episode to start from 
             print(f'using existing model: {model_file_path}')
-            print(f'ep was updated to {ep}')
+            print(f'ep was updated to {ep_start}')
             
         else:
-            ep = 0
+            ep_start = 0
             model_file_path =  make_model_path(agent_cfg['model']['dst_dir'])
             print(f'new model {model_file_path} will be used')
     else: # testing    
         n_episodes = agent_cfg['testing']['n_episodes']
     
-    for e in range(ep, n_episodes):
+    # copy the config file of current run to the model dir
+
+
+    for ep in range(ep_start, n_episodes):
         print(f'episode: {ep} starts...')
         subprocess.run(['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path])
         pass

@@ -1,7 +1,3 @@
- 
-""" 
-Based on Elias's franka_reacher_for_comparison.py 
-"""
 import copy
 import datetime
 import gc
@@ -82,6 +78,9 @@ ONE_CM = 0.01 # IN METERS
 now = time.time()
 model_dir = os.path.join('BGU/Rlpt/trained_models') 
 
+def as_tensor(l:list,device="cuda", dtype=torch.float64):
+    return torch.tensor(l, device=device, dtype=dtype).unsqueeze(0)
+    
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
 
@@ -311,15 +310,6 @@ class MpcRobotInteractive:
         # initiate world
         self.world_instance: World = World(self.gym, self.sim, self.env_ptr, self.world_params, w_T_r=self.w_T_r) 
             
-        # # define obstacles in world
-        # self.table_dims = np.ravel([1.5,2.5,0.7])
-        # self.cube_pose = np.ravel([0.35, -0.0,-0.35,0.0, 0.0, 0.0,1.0])
-        # self.cube_pose = np.ravel([0.9,0.3,0.4, 0.0, 0.0, 0.0,1.0])
-        # self.table_dims = np.ravel([0.35,0.1,0.8])    
-        # self.cube_pose = np.ravel([0.35,0.3,0.4, 0.0, 0.0, 0.0,1.0])
-        # self.table_dims = np.ravel([0.3,0.1,0.8])
-    
-
         # get camera data:
         self.mpc_control = ReacherTask(self.task_file, self.robot_file, self.env_yml_relative_path, self.tensor_args)
         self.n_dof = self.mpc_control.controller.rollout_fn.dynamics_model.n_dofs
@@ -692,10 +682,10 @@ class MpcRobotInteractive:
         """
         
         
-        
-        # curr_ee_pose_np: np.ndarray
-        # goal_ee_pose_np: np.ndarray
-        
+        ####################################
+        ####### Setting up the episode #####
+        ####################################
+
         robot_handle = self.name_to_handle['robot'] # actor handle in current env
         # goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
         
@@ -706,18 +696,7 @@ class MpcRobotInteractive:
         ee_rot_error: np.float32 
         curr_pi_mppi_means: torch.Tensor
         curr_pi_mppi_covs: torch.Tensor
-        
-        # -- start episode control loop --
-        
-        # s0
-
-        # in_zone_cntr = 0
-        # prev_at_idx = None # None or int
         at: dict
-        # convergence_threshold_pos, convergence_threshold_rot = rlpt_cfg['agent']['reward']['goal_pos_thresh_dist'], rlpt_cfg['agent']['reward']['goal_rot_thresh_dist'] 
-        prev_at:dict = {} # dict 
-        # h_sequence_len = 0
-        # disable_frequent_h_changing = rlpt_cfg['agent']['training']['disable_frequent_h_changing']
         robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
@@ -727,25 +706,35 @@ class MpcRobotInteractive:
         # set initial mppi policy means and covariances at sniffer (empty policy)
         curr_pi_mppi_means = torch.zeros(rlpt_agent.max_horizon, 7)
         curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
-    
+
         # set initial mppi policy means and covariances at sniffer (empty policy)
         curr_pi_mppi_covs = torch.zeros(7)
         curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
-    
+
         sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
         st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
-
+        
         forced_stopping = False
         initial_state = None    
+        
+        ####################################
+        ####### Starting Episode steps #####
+        ####################################
+        using_HER = False
+        episode_trainsitions = []
+        if using_HER:
+            g = sample_goal() # episode goal state
+            # TODO: (s0 = sample initial state...)
+            
         for ts in range(episode_max_ts):
-            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+            st_tensor = as_tensor(st)
             if initial_state is None:
                 initial_state = st_tensor
                  
             forbidden_action_indices:set = set() # empty set - all actions are allowed
             
             at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
-                
+            
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -772,26 +761,28 @@ class MpcRobotInteractive:
             # Get the reward and check if the episode is over by reaching a terminal state
             rt, goal_state = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
             terminated = goal_state or contact_detected # reached a terminal state (of environment)
-            # truncated = ts == episode_max_ts - 1 # reached time limit (external to environment)
             optim_meta_data = {}
             if training:
-            # if training and not truncated: #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
-                # optim_meta_data = {}
-                # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-                st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
+                #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
+                at_idx_tensor = as_tensor([at_idx]) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+                st_tensor = as_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
+                s_next_tensor = as_tensor(s_next) # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
-                at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
-                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
-                # rlpt- perform optimization (gradient) step
-                optim_meta_data = rlpt_agent.optimize(ts)
-            
+                
+                # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
+                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)            
+                
+                if HER:
+                    episode_transitions.append((st_tensor, at_idx_tensor, s_next_tensor)) # save all transitions of episode 
+                else: # standard DQN/DDQN training       
+                    # rlpt- perform optimization (gradient) step
+                    optim_meta_data = rlpt_agent.optimize(ts)
             
             # log to etl
             if include_etl:             
                 rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
             
-            
+                
             # escape collision if necessary (change pose until no contact)
             if not (reset_state or sample_goal_every_episode):    
                 while sniffer.is_contact_real_world or sniffer.is_self_contact_real_world: # while still colliding
@@ -801,14 +792,44 @@ class MpcRobotInteractive:
             
             if terminated: # terminal state reached
                 break
-            # fill the benchmark states buffer until full
-            if not_full := len(self.benchmark_states) < 10:
-                if random.uniform(0,1) < 0.01:
-                    self.benchmark_states.append(st)
-                    
+            
             st = s_next
             prev_at_idx = at_idx
             prev_at = at
+        
+        def sample_additional_goals(episode_transitions, ts, strategy='future', k=8):
+            """
+            
+            strategy:
+            final: additional goals we use for replay are the ones corresponding to the final state of the environment. 
+            future: (most recommended (try k=4/8)). Replay with k random states which come from the same episode as the transition being replayed and were observed after it.
+            
+            """
+            
+            G = []
+            if strategy == 'future':
+                next_transitions_in_episode_range = range(ts, len(episode_transitions))
+                sampled_next_transitions_idxs = random.sample(next_transitions_in_episode_range, k)
+                for i in sampled_next_transitions_idxs:
+                    ith_next_state = episode_transitions[i][2] # state which was the current state at the episode at time step ts = i+1 (the next state of time step i)
+                    G.append(ith_next_state) # add next state in transition
+            
+            return G
+            
+        if using_HER:
+            T = len(episode_transitions)
+            N = T # 4 # num_of optimization steps
+            for t in range(T):
+                G = sample_additional_goals(episode_transitions, t) # sample
+                st_tensor, at_tensor, s_next_tensor = episode_transitions[t]
+                for g_tag in G:
+                    st_tensor_gtag = reset_goal_state(st_tensor, g_tag)
+                    st_next_tensor_gtag = reset_goal_state(s_next_tensor, g_tag) 
+                    r_tag_tensor = as_tensor(rlpt_agent.compute_reward(st_tensor_gtag, at_tensor)) 
+                    rlpt_agent.train_suit.memory.push(st_tensor_gtag, at_idx_tensor, st_next_tensor_gtag, r_tag_tensor) 
+            
+            for t in range(1,N):
+                optim_meta_data = rlpt_agent.optimize(t) # TODO: Should make the C of fixed targets update support HER too 
             
         ########## end of episode ###########            
         color_print(f'episode: {ep_num} finished')
