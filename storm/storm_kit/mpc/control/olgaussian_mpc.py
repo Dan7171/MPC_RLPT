@@ -165,7 +165,7 @@ class OLGaussianMPC(Controller):
         return delta
         
     def sample_actions(self, state=None):
-        print(f'debug - seed to send: {self.seed_val + self.num_steps}')
+        # print(f'debug - seed to send: {self.seed_val + self.num_steps}')
 
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
       

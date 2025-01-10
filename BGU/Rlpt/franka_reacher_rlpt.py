@@ -193,20 +193,60 @@ def reverse_map(map:dict):
     return ans
 
 
+def make_rlpt_actionspace():
+    # define rlpt action space
+    if rlpt_cfg['agent']['action_space']['use_original_storm_params']:
+        cost_fn_space = cost_fn_space_default
+        mppi_space = mppi_space_default    
+    
+    else: 
+        action_space_raw = rlpt_cfg['agent']['A']
+        for action_space in action_space_raw.values():
+            for dof_name, dof_options in action_space.items():
+                for i in range(len(dof_options)):
+                    if type(dof_options[i]) == list:
+                        dof_options[i] = tuple(dof_options[i])
+        cost_fn_space = action_space_raw['cost_fn_space']
+        mppi_space = action_space_raw['mppi_space']    
+        
+        # cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
+        #     # distance from goal pose (orientation err weight, position err weight).
+        #     "goal_pose":  [
+        #         (1.0, 300.0), # goal 100:1
+        #         (300.0, 1.0),
+        #         ], # orientation 100:15
+        #     "zero_vel": [0.0], 
+        #     "zero_acc": [0.0],
+        #     "joint_l2": [0.0], 
+        #     "robot_self_collision": [100, 1000], 
+        #     "primitive_collision" : [100, 1000],  
+        #     "voxel_collision" : [0.0],
+        #     "null_space": [1.0],
+        #     "manipulability": [30], 
+        #     "ee_vel": [0.0], 
+        #     "stop_cost" : [(120.0, 1.5),(20.0, 4)], # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration)). idx 0 = cost weight (the greather, the higher the charging for crossing max vel), idx 1 = acceleration limit (the higher, the greater max vel)        
+        #     "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
+        #     "smooth": [1.0], # smoothness weight
+        #     "state_bound": [1000.0], # joint limit avoidance weight
+        #     }
+        
+        # mppi_space = {
+        #     # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
+        #     "horizon": [
+        #         30, # myopic sight
+        #         # 165, # mid-level 
+        #         # 300 # long range observer
+        #         ],         
+        #     "particles": [500, 1000], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
+        #     "n_iters": [1, 2] # Num of optimization steps 
+        # } 
+        
+    # This op is aimed to save time when some parameters like horizon are too expansive to modify 
+    rlpt_action_space:list = list(get_combinations({
+        'cost_weights': get_combinations(cost_fn_space),
+        'mpc_params': get_combinations(mppi_space)}))
 
-# def kill_subprocesses():
-#     current_pid = os.getpid()  # Get current process ID
-#     for proc in psutil.process_iter(['pid', 'ppid']):
-#         try:
-#             if proc.info['ppid'] == current_pid:
-#                 proc.terminate()  # Terminate the subprocess
-#                 try:
-#                     proc.wait(timeout=3)  # Wait for it to be terminated with a timeout
-#                 except psutil.TimeoutExpired:
-#                     proc.kill()  # Force kill if it doesn't terminate in time
-#         except (psutil.NoSuchProcess, psutil.AccessDenied):
-#             pass  # Ignore processes that no longer exist or can't be accessed
-
+    return rlpt_action_space
 class MpcRobotInteractive:
     """
     This class is for controlling the arm base and simulator.
@@ -1102,8 +1142,9 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
         # reset environment with selections
         _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
        
+       
+        ###### pre-processing (only at the beginning) #####
         if ep == 0:
-
             # Initialize the rlpt agent
             all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
             all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
@@ -1120,31 +1161,29 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
 
-            
-        
-
-        
+        ###### run next episode ######
         print(f"episode {ep} started")       
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
+        
+        ##### episode post processing stesps ####### 
         print(f'internal episode {ep} over')
-
         if keyboard_interupt:
             raise KeyboardInterrupt() 
         ep += 1 # update index of the next episode to start from 
         rlpt_agent.set_episode(ep) 
         if training:
             rlpt_agent.save(ep, model_file_path)           
-
-       
-            
     
-    if profile_memory:
-        finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
+ 
 
 
     
 if __name__ == '__main__':
-    # color_print(f"test",'black','green')
+    
+    ############################
+    ###### Pre Processing ######
+    ############################
+    
     # parse arguments to start simulation
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn') # robot name
@@ -1155,7 +1194,6 @@ if __name__ == '__main__':
     parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
     parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
-    
     # external run params:
     parser.add_argument('--external_run', type=bool, default=False, help= 'run from external script')
     parser.add_argument('--model_path', type=str, default='', help= 'path to model file')    
@@ -1191,55 +1229,14 @@ if __name__ == '__main__':
     if profile_memory: # for debugging gpu if needed   
         start_mem_profiling()   
     
-    
     # define rlpt action space
-    if rlpt_cfg['agent']['action_space']['use_original_storm_params']:
-        cost_fn_space = cost_fn_space_default
-        mppi_space = mppi_space_default    
+    rlpt_action_space = make_rlpt_actionspace()
     
-    else:   
-        cost_fn_space = {  # for the original params see: storm/content/configs/mpc/franka_reacher.yml
-            # distance from goal pose (orientation err weight, position err weight).
-            "goal_pose":  [
-                (1.0, 300.0), # goal 100:1
-                (300.0, 1.0),
-                ], # orientation 100:15
-            "zero_vel": [0.0], 
-            "zero_acc": [0.0],
-            "joint_l2": [0.0], 
-            "robot_self_collision": [100, 1000], 
-            "primitive_collision" : [100, 1000],  
-            "voxel_collision" : [0.0],
-            "null_space": [1.0],
-            "manipulability": [30], 
-            "ee_vel": [0.0], 
-            "stop_cost" : [(120.0, 1.5),(20.0, 4)], # charging for crossing max velocity limit during rollout (weight, max_nlimit (max acceleration)). idx 0 = cost weight (the greather, the higher the charging for crossing max vel), idx 1 = acceleration limit (the higher, the greater max vel)        
-            "stop_cost_acc": [(0.0, 0.1)],# charging for crossing max acceleration limit (weight, max_limit)
-            "smooth": [1.0], # smoothness weight
-            "state_bound": [1000.0], # joint limit avoidance weight
-            }
-        
-        mppi_space = {
-            # "horizon": [15, 30, 100], # horizon must be at least some number (10 or greater I think, otherwise its raising)
-            "horizon": [
-                30, # myopic sight
-                # 165, # mid-level 
-                # 300 # long range observer
-                ],         
-            "particles": [500, 1000], #  How many rollouts are done. from paper:Number of trajectories sampled per iteration of optimization (or particles)
-            "n_iters": [1, 2] # Num of optimization steps 
-        } 
     
-    # This op is aimed to save time when some parameters like horizon are too expansive to modify 
-    rlpt_action_space:list = list(get_combinations({
-        'cost_weights': get_combinations(cost_fn_space),
-        'mpc_params': get_combinations(mppi_space)}))
-
-    
-    gym = Gym(**sim_params) # note - only one initiation is allowed per process
+    gym = Gym(**sim_params) # note - only one initiation is allowed per process!!! (p.n: I tried latelty for a very long time to re-create this instance, but failed to release the gpu memory it used)
     mpc_ri = MpcRobotInteractive(args, gym, rlpt_cfg, env_file, task_file) # not the best naming.             
     
-    
+    # make/get model (nn) and etl paths for the rlpt 
     if args.external_run:
         model_file_path = args.model_path
         load_checkpoint_model = os.path.exists(model_file_path) # if the model file exists, load it. Else, we'll make one
@@ -1250,16 +1247,19 @@ if __name__ == '__main__':
             assert os.path.exists(model_file_path)        
         else:
             model_file_path = make_model_path(rlpt_cfg['agent']['model']['dst_dir'])
-    
     model_dir = os.path.split(model_file_path)[0]
     if include_etl:
         etl_file_path = model_dir + '/etl.csv'
     
     
+    #############################
+    ######### Training ##########
+    #############################
+    
     ep_loop_cfg = rlpt_cfg['agent']['training']
     n_episodes_real = ep_loop_cfg['n_episodes']
     sample_goal_every_episode = ep_loop_cfg['sample_goal_every_episode']
-  
+    
     if ep_loop_cfg['run']:
         reset_state = ep_loop_cfg['reset_to_initial_state_every_episode']
         if args.external_run:
@@ -1276,6 +1276,10 @@ if __name__ == '__main__':
             
         episode_loop(n_episodes_loop, rlpt_cfg['agent']['training']['max_ts'], ep_loop_cfg)
 
+    
+    #############################
+    ######### Testing ###########
+    #############################
     
     ep_loop_cfg = rlpt_cfg['agent']['testing']
     n_episodes_real = ep_loop_cfg['n_episodes']  
@@ -1298,6 +1302,8 @@ if __name__ == '__main__':
         # n_episodes = rlpt_cfg['agent']['testing']['n_episodes']
         episode_loop(n_episodes_loop, rlpt_cfg['agent']['testing']['max_ts'], episodes_cfg, training=False)
         
-     
+    
+    if profile_memory:
+        finish_mem_profiling(rlpt_cfg['profile_memory']['pickle_path'])
     
     exit(0)

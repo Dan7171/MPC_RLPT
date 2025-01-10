@@ -322,7 +322,7 @@ class rlptAgent:
         
         if reward_config['pose_reward']:
             # positive rewards for position  and orientation when close enough to goal position        
-            possition_reward =  max(0, goal_pos_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0, never negative)
+            possition_reward =  max(0, goal_pos_thresh_dist - ee_pos_error) # "reversed relu" (greater when error is approaching 0, never negative)
             orientation_reward = max(0, goal_rot_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0,  never negative)
             
             # pose reward logic: we compute a positive reward for pose, only if both position and orientation are close enough to the goal
