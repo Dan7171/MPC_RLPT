@@ -1,3 +1,4 @@
+from cProfile import label
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,7 +9,8 @@ from sklearn.decomposition import PCA
 # path = "/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/etl.csv"# '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:06(Mon)13:35:23/etl.csv' # 194 episodes, without pushing truncated into buffer
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)17:29:59/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -114,6 +116,8 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 
 ###########
+import plotly.express as px
+
 plt.figure()
 dof_pos_parsed = df['st_robot_dofs_positions'].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
 dof_pos_matrix = np.stack(dof_pos_parsed.to_numpy())
@@ -130,7 +134,7 @@ for _,group in episodes:
     df_group['x'] = x[df_group.index]
     df_group['y'] = y[df_group.index]
     z = df_group.index # timestep
-    ax.scatter(df_group['x'],df_group['y'],z)
+    ax.scatter(df_group['x'],df_group['y'],z, s=10, linewidths=0.0001)
     
 ax.set_xlabel("x = DOF positions- Principal Component 1")
 ax.set_ylabel("y = DOF positions- Principal Component 2")
@@ -147,12 +151,20 @@ ax = plt.axes(projection ='3d')
 x = data_2d[:, 0]
 y = data_2d[:, 1]
 z = range(len(data_2d))
+groupnum = 0
 for _,group in episodes:
-    df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
-    df_group['x'] = x[df_group.index]
-    df_group['y'] = y[df_group.index]
-    z = df_group.index # timestep
-    ax.scatter(df_group['x'],df_group['y'],z)
+    if groupnum < 10: # debug
+        df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
+        df_group['x'] = x[df_group.index]
+        df_group['y'] = y[df_group.index]
+        z = df_group.index # timestep
+        ax.scatter(df_group['x'],df_group['y'],z, s=10, linewidths=0.0001)
+        label = []
+        for k, n_unique in df.nunique().to_dict().items():
+            if k.startswith('at_') and n_unique > 1:
+                label.append(group[k][group.index[0]])
+        print(f'groupnum:{groupnum}, group label: {label}') 
+    groupnum += 1
     
 ax.set_xlabel("x = MPC policy- Principal Component 1")
 ax.set_ylabel("y = MPC policy- Principal Component 2")
