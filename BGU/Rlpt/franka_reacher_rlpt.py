@@ -1,7 +1,3 @@
- 
-""" 
-Based on Elias's franka_reacher_for_comparison.py 
-"""
 import copy
 import datetime
 import gc
@@ -19,6 +15,7 @@ import typing
 from click import BadArgumentUsage
 from colorlog import root
 from cv2 import norm
+# from examples_rlpt.dan.franka_reacher_dan import goal_test
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
@@ -32,6 +29,7 @@ from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
 import torch
 from traitlets import default
+from BGU.Rlpt.drl.her import HindsightExperienceReplay
 from BGU.Rlpt.monitor import Monitor
 from BGU.Rlpt.rlpt_agent import rlptAgent 
 torch.multiprocessing.set_start_method('spawn',force=True)
@@ -68,8 +66,10 @@ from BGU.Rlpt.experiments.experiment_utils import get_combinations
 from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
-from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray
+from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_tensor
 from BGU.Rlpt.utils.utils import make_model_path, color_print
+from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
+
 import GPUtil
 import psutil
 import os
@@ -81,6 +81,7 @@ RED = gymapi.Vec3(0.8, 0.1, 0.1)
 ONE_CM = 0.01 # IN METERS
 now = time.time()
 model_dir = os.path.join('BGU/Rlpt/trained_models') 
+
 
 def get_actor_name(gym, env, actor_handle):
     return gym.get_actor_name(env, actor_handle)
@@ -107,46 +108,7 @@ def make_plot(x:Union[None,tuple]=None, ys:list=[]):
     plt.legend(y_labels, loc="upper right")        
     plt.show()
     
-# Functions for converting gym objects to numpy vectors
-def pose_as_ndarray(pose:gymapi.Transform) -> np.ndarray:
-        """Converting a pose from a Transform object to a np.array in length 7 (indices 0-2 = position, 3-6 = rotation) """
-        # get pos and rot as ndarray
-        pos_np = pos_as_ndarray(pose.p)
-        rot_np = rot_as_ndarray(pose.r)
-        # concatenate to one vector in length 7
-        return np.concatenate([pos_np, rot_np]) 
-def pos_as_ndarray(pos:gymapi.Vec3) -> np.ndarray:
-    
-    """
-    cast pos from gymapi.Vec3 to an ndarray in length 3 (np array - vector)
-    """
-    
-    return np.array([pos.x, pos.y, pos.z])   
-def rot_as_ndarray(rot:gymapi.Quat) -> np.ndarray:
-    
-    """
-    cast rot from gymapi.Quat to an ndarray in length 4 (np array - vector)
-    """
-    
-    return np.array([rot.x, rot.y, rot.z, rot.w])
 
-# Error measurment functions:
-def pose_error(curr_pose:gymapi.Transform, goal_pose:gymapi.Transform)-> np.float32:
-    """
-    return l2 norm between current and desired poses (each pose is both positon and rotation)  
-    """
-    return np.linalg.norm(pose_as_ndarray(curr_pose) - pose_as_ndarray(goal_pose))  
-def pos_error(curr_pos:gymapi.Vec3, goal_pos:gymapi.Vec3)-> np.float32:
-    """
-    return l2 norm between current and desired positions (position is only the spacial location in environment ("x,y,z" coordinates))
-    """
-    return np.linalg.norm(pos_as_ndarray(curr_pos) - pos_as_ndarray(goal_pos))     
-def rot_error(curr_rot:gymapi.Quat, goal_rot:gymapi.Quat)-> np.float32:
-    """
-    return l2 norm between current and desired rotations (each rotation is the quaternion - a 4 length vector)  
-    """
-    
-    return np.linalg.norm(rot_as_ndarray(curr_rot) - rot_as_ndarray(goal_rot)) 
 def gui_draw_lines(gym_instance,mpc_control,w_robot_coord):
     """
     Drawing the green (good) & red (bed) trajectories in gui, at every real-world time step
@@ -192,6 +154,14 @@ def reverse_map(map:dict):
         ans[v] = k
     return ans
 
+def goal_test(pos_error, rot_error) -> bool:
+    goal_test_cfg = rlpt_cfg['agent']['goal_test']
+    pos_threshold = goal_test_cfg['goal_pos_thresh_dist']
+    rot_threshold = goal_test_cfg['goal_rot_thresh_dist']
+    requirements = goal_test_cfg['requirements']
+    passed_pos_test = 'pos' not in requirements or pos_error < pos_threshold
+    passed_rot_test = 'rot' not in requirements or rot_error < rot_threshold
+    return passed_pos_test and passed_rot_test   
 
 def make_rlpt_actionspace():
     # define rlpt action space
@@ -311,15 +281,6 @@ class MpcRobotInteractive:
         # initiate world
         self.world_instance: World = World(self.gym, self.sim, self.env_ptr, self.world_params, w_T_r=self.w_T_r) 
             
-        # # define obstacles in world
-        # self.table_dims = np.ravel([1.5,2.5,0.7])
-        # self.cube_pose = np.ravel([0.35, -0.0,-0.35,0.0, 0.0, 0.0,1.0])
-        # self.cube_pose = np.ravel([0.9,0.3,0.4, 0.0, 0.0, 0.0,1.0])
-        # self.table_dims = np.ravel([0.35,0.1,0.8])    
-        # self.cube_pose = np.ravel([0.35,0.3,0.4, 0.0, 0.0, 0.0,1.0])
-        # self.table_dims = np.ravel([0.3,0.1,0.8])
-    
-
         # get camera data:
         self.mpc_control = ReacherTask(self.task_file, self.robot_file, self.env_yml_relative_path, self.tensor_args)
         self.n_dof = self.mpc_control.controller.rollout_fn.dynamics_model.n_dofs
@@ -677,8 +638,6 @@ class MpcRobotInteractive:
             
         return env_selected
            
-    def goal_test(self, pos_error:np.float64, rot_error:np.float64, eps=1e-3):
-        return pos_error < eps and rot_error < eps     
     
     def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, include_etl:bool, training):
         
@@ -692,60 +651,59 @@ class MpcRobotInteractive:
         """
         
         
-        
-        # curr_ee_pose_np: np.ndarray
-        # goal_ee_pose_np: np.ndarray
-        
+        ####################################
+        ####### Setting up the episode #####
+        ####################################
+        include_HER = False
+        if training:
+            HER_cfg = ep_loop_cfg['HER'] 
+            if include_HER := HER_cfg['include']:
+                HER = HindsightExperienceReplay(HER_cfg)
+            
+            # assuming s0 and g were already sampled before episdoes started (can be also fixed) 
+            
         robot_handle = self.name_to_handle['robot'] # actor handle in current env
         # goal_pose_handle = self.name_to_handle['ee_target_object'] # actor handle in current env
         
         # rlpt state and action
         st: np.ndarray
         rt: np.float32
-        ee_pos_error: np.float32
-        ee_rot_error: np.float32 
-        curr_pi_mppi_means: torch.Tensor
-        curr_pi_mppi_covs: torch.Tensor
-        
-        # -- start episode control loop --
-        
-        # s0
-
-        # in_zone_cntr = 0
-        # prev_at_idx = None # None or int
         at: dict
-        # convergence_threshold_pos, convergence_threshold_rot = rlpt_cfg['agent']['reward']['goal_pos_thresh_dist'], rlpt_cfg['agent']['reward']['goal_rot_thresh_dist'] 
-        prev_at:dict = {} # dict 
-        # h_sequence_len = 0
-        # disable_frequent_h_changing = rlpt_cfg['agent']['training']['disable_frequent_h_changing']
-        robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
-        robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
-        robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
+        s0_robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
+        s0_robot_dof_positions_gym_np = s0_robot_dof_states_gym['pos'] 
+        s0_robot_dof_vels_gym_np = s0_robot_dof_states_gym['vel']
         goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
         goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
         
         # set initial mppi policy means and covariances at sniffer (empty policy)
-        curr_pi_mppi_means = torch.zeros(rlpt_agent.max_horizon, 7)
-        curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
-    
-        # set initial mppi policy means and covariances at sniffer (empty policy)
-        curr_pi_mppi_covs = torch.zeros(7)
-        curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
-    
-        sniffer.set_current_mppi_policy(curr_pi_mppi_means, curr_pi_mppi_covs)
-        st = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
+        s0_pi_mppi_means = torch.zeros(rlpt_agent.max_horizon, 7)
+        s0_pi_mppi_means_np = torch_tensor_to_ndarray(s0_pi_mppi_means)
 
+        # set initial mppi policy means and covariances at sniffer (empty policy)
+        s0_pi_mppi_covs = torch.zeros(7)
+        s0_pi_mppi_covs_np = torch_tensor_to_ndarray(s0_pi_mppi_covs).flatten() # [1,7] to [7]
+
+        sniffer.set_current_mppi_policy(s0_pi_mppi_means, s0_pi_mppi_covs)
+        st = rlpt_agent.compose_state_vector(s0_robot_dof_positions_gym_np, s0_robot_dof_vels_gym_np, goal_ee_pose_gym_np, s0_pi_mppi_means_np, s0_pi_mppi_covs_np) # converting the state to a form that agent would feel comfortable with
+        
         forced_stopping = False
         initial_state = None    
+        
+        
+        ####################################
+        ####### Starting Episode steps #####
+        ####################################
+        
+            
         for ts in range(episode_max_ts):
-            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64)
+            st_tensor = as_tensor(st)
             if initial_state is None:
                 initial_state = st_tensor
                  
             forbidden_action_indices:set = set() # empty set - all actions are allowed
             
             at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
-                
+            
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
@@ -753,45 +711,50 @@ class MpcRobotInteractive:
             
             # rlpt - compute the state you just moved to (s(t+1))
             robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
-            robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
-            robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
+            s_next_robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
+            s_next_robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
             goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
             goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
-            curr_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-            curr_pi_mppi_means, curr_pi_mppi_covs = sniffer.get_current_mppi_policy() 
-            curr_pi_mppi_means_np = torch_tensor_to_ndarray(curr_pi_mppi_means)
-            curr_pi_mppi_covs_np = torch_tensor_to_ndarray(curr_pi_mppi_covs).flatten() # [1,7] to [7]
-            s_next = rlpt_agent.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, curr_pi_mppi_means_np, curr_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
+            s_next_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
+            s_next_pi_mppi_means, s_next_pi_mppi_covs = sniffer.get_current_mppi_policy() 
+            s_next_pi_mppi_means_np = torch_tensor_to_ndarray(s_next_pi_mppi_means)
+            s_next_pi_mppi_covs_np = torch_tensor_to_ndarray(s_next_pi_mppi_covs).flatten() # [1,7] to [7]
+            s_next = rlpt_agent.compose_state_vector(s_next_robot_dof_positions_gym, s_next_robot_dof_vels_gym, goal_ee_pose_gym_np, s_next_pi_mppi_means_np, s_next_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
             
             
             # rlpt - compute reward (r(t))  
-            ee_pos_error = pos_error(curr_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
-            ee_rot_error = rot_error(curr_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
-            contact_detected:bool = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
-            
+            s_next_ee_pos_error = pos_error(s_next_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
+            s_next_ee_rot_error = rot_error(s_next_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
+            s_next_contact_detected = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
+            s_next_is_goal_state = goal_test(s_next_ee_pos_error, s_next_ee_rot_error)
+
             # Get the reward and check if the episode is over by reaching a terminal state
-            rt, goal_state = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)
-            terminated = goal_state or contact_detected # reached a terminal state (of environment)
-            # truncated = ts == episode_max_ts - 1 # reached time limit (external to environment)
+            if training:
+                rt = rlpt_agent.compute_reward(s_next_ee_pos_error, s_next_ee_rot_error, s_next_contact_detected, step_duration)
+            
+            terminated =  s_next_is_goal_state or s_next_contact_detected # reached a terminal state (of environment)
             optim_meta_data = {}
             if training:
-            # if training and not truncated: #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work 
-                # optim_meta_data = {}
-                # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-                st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
+                #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
+                at_idx_tensor = as_tensor([at_idx]) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+                st_tensor = as_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
+                s_next_tensor = as_tensor(s_next) # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
-                at_idx_tensor = torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
-                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)   
-                # rlpt- perform optimization (gradient) step
-                optim_meta_data = rlpt_agent.optimize(ts)
-            
+                
+                # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
+                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)            
+                
+                if include_HER:
+                    HER.add_transition((st_tensor, at_idx_tensor, s_next_tensor), {'s_next_contact_detected':s_next_contact_detected, 'step_duration':step_duration,'s_next_ee_pose_gym':s_next_ee_pose_gym}) # save all transitions of episode 
+                else: # standard DQN/DDQN training       
+                    # rlpt- perform optimization (gradient) step
+                    optim_meta_data = rlpt_agent.optimize()
             
             # log to etl
             if include_etl:             
-                rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
+                rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
             
-            
+                
             # escape collision if necessary (change pose until no contact)
             if not (reset_state or sample_goal_every_episode):    
                 while sniffer.is_contact_real_world or sniffer.is_self_contact_real_world: # while still colliding
@@ -800,34 +763,33 @@ class MpcRobotInteractive:
                 
             
             if terminated: # terminal state reached
+                color_print(f'moved from s({ts}) to s({ts+1}) but s({ts+1}) is a terminal state! (goal / collision(contact))\n\
+                    goal state:{s_next_is_goal_state} contact detected: {s_next_contact_detected}')
                 break
-            # fill the benchmark states buffer until full
-            if not_full := len(self.benchmark_states) < 10:
-                if random.uniform(0,1) < 0.01:
-                    self.benchmark_states.append(st)
-                    
+            
             st = s_next
-            prev_at_idx = at_idx
             prev_at = at
+        
+        
+        if include_HER:
+            HER.optimize(rlpt_agent)
+            
             
         ########## end of episode ###########            
         color_print(f'episode: {ep_num} finished')
         color_print(f'episode duration: {ts}')
-        if terminated:
-            color_print('terminal state reached')
-            color_print(f'goal_state: {goal_state} contact_detected: {contact_detected}')
-        
-        if training:
-            color_print(f'current epsilon: {rlpt_agent.train_suit.current_eps}')
-            if len(self.benchmark_states):
-                current_q_vals = []
-                for benchmark_st in self.benchmark_states:
-                    current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(benchmark_st, device="cuda", dtype=torch.float64))[0])
-                color_print(f'initial state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(initial_state)[0]}')
-                # color_print(f"benchmark states: current q* values: {current_q_vals}")
-                # color_print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}')
-                color_print(f"averge raw gradient norms of minibatch in size: {np.sum(optim_meta_data['raw_grad_norm']) / rlpt_agent.train_suit.batch_size}")
-                # color_print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
+ 
+        # if training:
+        #     color_print(f'current epsilon: {rlpt_agent.train_suit.current_eps}')
+        #     if len(self.benchmark_states):
+        #         current_q_vals = []
+        #         for benchmark_st in self.benchmark_states:
+        #             current_q_vals.append(rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(benchmark_st, device="cuda", dtype=torch.float64))[0])
+        #         color_print(f'initial state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(initial_state)[0]}')
+        #         # color_print(f"benchmark states: current q* values: {current_q_vals}")
+        #         # color_print(f'benchmark states: average q* value = {float(np.mean(np.asarray(current_q_vals)))}')
+        #         color_print(f"averge raw gradient norms of minibatch in size: {np.sum(optim_meta_data['raw_grad_norm']) / rlpt_agent.train_suit.batch_size}")
+        #         # color_print(f'current state q*: {rlpt_agent.train_suit.pick_greedy_no_grads(torch.tensor(st, device="cuda", dtype=torch.float64))[0]}')
 
         return ts, forced_stopping 
             
@@ -1106,8 +1068,7 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
 
             # load model from checkpoint
             if load_checkpoint_model:
-                checkpoint = torch.load(model_file_path)
-                ep = rlpt_agent.load(checkpoint) # current true episode index to start from
+                ep = rlpt_agent.load(torch.load(model_file_path)) # current true episode index to start from
                 print(f'episode {ep} loaded')
                 
             # initialize etl if required
@@ -1226,11 +1187,11 @@ if __name__ == '__main__':
             save_checkpoints_every_episode = rlpt_cfg['agent']['training']['save_checkpoints']
             n_episodes_loop = n_episodes_real 
             assert not reset_state, 'must run from external'
-                
+             
         if (save_checkpoints_every_episode or include_etl) and not os.path.exists(model_dir):
             os.mkdir(model_dir)
             
-            
+
         episode_loop(n_episodes_loop, rlpt_cfg['agent']['training']['max_ts'], ep_loop_cfg)
 
     

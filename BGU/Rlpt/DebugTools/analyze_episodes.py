@@ -3,6 +3,60 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from tomlkit import item
+
+
+def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
+    
+    ndim_var_parsed_df = df[ndim_variable_name].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
+    ndim_var_parsed_n = np.stack(ndim_var_parsed_df.to_numpy())
+    pca = PCA(n_components=2)  # For 2D
+    data_2d = pca.fit_transform(ndim_var_parsed_n)
+    # Plot the 2D projection
+    x = data_2d[:, 0]
+    y = data_2d[:, 1]
+    z = range(len(data_2d))
+    
+
+    axs = []
+    figs = []
+    groupnum = 0
+    for _,group in episodes:
+        if groupnum % max_episodes_in_on_figure == 0:
+            fig = plt.figure()
+            ax = plt.axes(projection ='3d')
+            figs.append(fig)
+            axs.append(ax)
+        df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
+        df_group['x'] = x[df_group.index]
+        df_group['y'] = y[df_group.index]
+        z = df_group.index # timestep
+        
+        label = []
+        for k, n_unique in df_varying_actions.items():
+            label.append(group[k][group.index[0]])
+        
+        axs[-1].scatter(df_group['x'],df_group['y'],z, alpha=0.5 ,s=10, linewidths=0.1,label=f'episode {groupnum}: {str(label)}')         
+        
+        if groupnum % (max_episodes_in_on_figure - 1)  == 0: #  == 0 or groupnum == len(episodes)-1:
+            
+            axs[-1].legend(title=str(list(df_varying_actions.keys())),fontsize='x-small') # axs[-1].legend(fontsize='x-small',title=str(list(df_varying_actions.keys())))
+            axs[-1].set_xlabel(f"x = {ndim_variable_name} PC1")
+            axs[-1].set_ylabel(f"y = {ndim_variable_name} PC2")
+            axs[-1].set_title('z = time step (t)')
+            figs[-1].tight_layout()
+
+
+        groupnum += 1
+        
+ 
+
+        
+
+    
+
+
+
 
 # matplotlib.use('Agg')  # Use a non-interactive backend
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:05(Sun)12:16:36/etl.csv' 760 episodes, with pushing truncated into buffer
@@ -26,6 +80,7 @@ print(df.nunique())
 max_episode = 1500
 episodes = df.groupby('ep')
 base_color = 'orange'
+
 for i, ng in enumerate(episodes):
     name, group = ng
     print(f'{i}, {len(group)}')
@@ -113,62 +168,11 @@ for i, ng in enumerate(episodes):
         plt.plot(group['at_epsilon'])
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random action chance')
 
-
-
 ###########
-import plotly.express as px
-
-plt.figure()
-dof_pos_parsed = df['st_robot_dofs_positions'].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
-dof_pos_matrix = np.stack(dof_pos_parsed.to_numpy())
-pca = PCA(n_components=2)  # For 2D
-data_2d = pca.fit_transform(dof_pos_matrix)
-# Plot the 2D projection
-ax = plt.axes(projection ='3d') 
-x = data_2d[:, 0]
-y = data_2d[:, 1]
-z = range(len(data_2d))
-for _,group in episodes:
-    
-    df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
-    df_group['x'] = x[df_group.index]
-    df_group['y'] = y[df_group.index]
-    z = df_group.index # timestep
-    ax.scatter(df_group['x'],df_group['y'],z, s=10, linewidths=0.0001)
-    
-ax.set_xlabel("x = DOF positions- Principal Component 1")
-ax.set_ylabel("y = DOF positions- Principal Component 2")
-ax.set_title('z = time step (t)')
-
-################
-plt.figure()
-mpc_policy_parsed = df['st_pi_mppi_means'].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
-mpc_policy_matrix = np.stack(mpc_policy_parsed.to_numpy())
-pca = PCA(n_components=2)  # For 2D
-data_2d = pca.fit_transform(mpc_policy_matrix)
-# Plot the 2D projection
-ax = plt.axes(projection ='3d') 
-x = data_2d[:, 0]
-y = data_2d[:, 1]
-z = range(len(data_2d))
-groupnum = 0
-for _,group in episodes:
-    if groupnum < 10: # debug
-        df_group = pd.DataFrame(index=group.index,columns=['x', 'y'])    
-        df_group['x'] = x[df_group.index]
-        df_group['y'] = y[df_group.index]
-        z = df_group.index # timestep
-        ax.scatter(df_group['x'],df_group['y'],z, s=10, linewidths=0.0001)
-        label = []
-        for k, n_unique in df.nunique().to_dict().items():
-            if k.startswith('at_') and n_unique > 1:
-                label.append(group[k][group.index[0]])
-        print(f'groupnum:{groupnum}, group label: {label}') 
-    groupnum += 1
-    
-ax.set_xlabel("x = MPC policy- Principal Component 1")
-ax.set_ylabel("y = MPC policy- Principal Component 2")
-ax.set_title('z = time step (t)')
+df_nunique = df.nunique().to_dict()
+df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
+pca3d('st_robot_dofs_positions')
+pca3d('st_pi_mppi_means')
 
 
 

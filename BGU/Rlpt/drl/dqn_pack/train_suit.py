@@ -207,7 +207,7 @@ class trainSuit:
         
         return action_idx_tensor, meta_data # that index is the id of the action 
     
-    def optimize(self, episode_ts, max_norm=1.0):
+    def optimize(self, total_optimization_steps_cntr, max_norm=1.0):
         """
         Sample a random minibatch of transitions from the shape (s, a, s', r) from D, 
         compute error in Q^ w.r to target Q^s as the "true values",  and make a gradient step.
@@ -219,7 +219,6 @@ class trainSuit:
         We will use experience replay and optimize using 2 networks: Q network (updated) and targets network Q^ (older, fixed).
 
         """
-        
         
         meta_data = {'raw_grad_norm': 0, 'clipped_grad_norm':0.0, 'use_clipped':self.clipping, 'loss' :0}
 
@@ -270,8 +269,7 @@ class trainSuit:
         self.optimizer.step()
         
         
-        if episode_ts % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
-            # color_print(f'debug episodes time step= {episode_ts}')
+        if total_optimization_steps_cntr % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
             self.target.load_state_dict(self.current.state_dict())
         
         

@@ -46,6 +46,8 @@ class rlptAgent:
         # self.base_pos_gym_s0 = base_pos_gym
         # self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
         # self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
+        self.completed_optimization_steps_cntr = 0
+        
         self.training_mode = training_mode
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
@@ -80,13 +82,16 @@ class rlptAgent:
         assert rlpt_cfg is not None
         
         state_represantation_config = rlpt_cfg['agent']['model']['state_representation'] 
+        
+        # add state components names. That's what determines the ordere of components int the long state which represented as 1d vecotr   
         self.st_componentes_ordered = []
-        for var in state_represantation_config.keys():    
+        for var in state_represantation_config.keys(): 
             if state_represantation_config[var]:
                 self.st_componentes_ordered.append(var)
                 
+                    
         # define the current state s(t) (initially s0)
-        self.current_st = {component: np.array([]) for component in self.st_componentes_ordered} 
+        self.current_st = {component: np.array([]) for component in self.st_componentes_ordered} # component (name) to the component values
         if 'robot_base_pos' in self.st_componentes_ordered:
             self.current_st['robot_base_pos'] = base_pos_gym
         if 'coll_objs' in self.st_componentes_ordered:
@@ -95,6 +100,10 @@ class rlptAgent:
             self.current_st['prev_action_idx'] = np.array([-1])
         
         self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
+        self.component_to_location_list:list = self.get_component_with_range_list()         
+        self.component_to_location_dict:dict = {name_to_loc[0]:name_to_loc[1] for name_to_loc in self.component_to_location_list}
+        
+        
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
         self.st_legend = self.get_states_legend() # readable shape of the state 
         self.train_suit = trainSuit(self.st_dim , len(action_space),episode_idx=episode_idx, max_episode=max_episode) # bulding the DQN (state dim is input dim,len action space is  output dim)
@@ -197,10 +206,10 @@ class rlptAgent:
             self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
             self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.train_suit.memory = checkpoint['memory']
-            # self.train_suit.steps_done = checkpoint['steps_done']
             episode_idx_to_start_from = checkpoint['episode'] 
             self.train_suit.episode_idx = episode_idx_to_start_from
-            print(f"Curretn episode was reset to: {episode_idx_to_start_from}")
+            self.completed_optimization_steps_cntr = checkpoint['completed_optimization_steps_cntr']
+            print(f"Current episode was reset to: {episode_idx_to_start_from}")
         
         return episode_idx_to_start_from
     
@@ -212,13 +221,14 @@ class rlptAgent:
             'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
             'memory':self.train_suit.memory,
             'episode': ep,  
-            # 'steps_done': self.get_t_total(),
+            'completed_optimization_steps_cntr': self.completed_optimization_steps_cntr,
             
         }, model_file_path)
         
-    def optimize(self,episode_ts):
-        return self.train_suit.optimize(episode_ts)
-    
+    def optimize(self):
+        ans = self.train_suit.optimize(self.completed_optimization_steps_cntr)
+        self.completed_optimization_steps_cntr += 1
+        return ans
     def set_episode(self, ep_idx):
         self.train_suit.episode_idx = ep_idx
         
@@ -266,17 +276,24 @@ class rlptAgent:
         return current_st_vectorized
         
     
-        
-    # def increase_t_total(self):
-    #     self.train_suit.steps_done += 1
-    #     return self.train_suit.steps_done
+    def calc_component_size_in_state(self, component_name):
+        """returns the number of cells in the whole state vector which the component takes """
+        start_loc, end_loc = self.component_to_location_dict[component_name]
+        return end_loc - start_loc + 1  
     
-    # def get_t_total(self):
-    #     return self.train_suit.steps_done
-
-    
+    def make_modified_state(self, base_state:np.ndarray, component_to_modify:str, new_component_val:np.ndarray):
+        """makes a copy of base_state (flatten 1d state), modified only the the indices of the component named "component_to_modify", with the "new_component_val"  """
+        modified_state = base_state.copy()
+        new_val_len = len(new_component_val)
+        actual_len = self.calc_component_size_in_state(component_to_modify)
+        assert new_val_len == actual_len   
+        start_loc, end_loc = self.component_to_location_dict[component_to_modify]
+        modified_state[start_loc: end_loc + 1] = new_component_val # modifying state
+        return modified_state 
     def get_states_legend(self)->List[tuple]:
-        
+        """ 
+        human readible legend for state representation
+        """
         out = []
         start_idx = 0
         for i in range(len(self.st_componentes_ordered)):
@@ -297,9 +314,23 @@ class rlptAgent:
                     start_idx = end_idx + 1
         return out
                     
-                    
-                
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)->Tuple[np.float32, bool]:
+    def get_component_with_range_list(self):
+        """ returns a list l where l[i] = (ith component name, (ith component start idx), ith component end idx))"""
+        ans = []
+        component_start_idx = 0
+        for i in range(len(self.st_componentes_ordered)):
+            component_name = self.st_componentes_ordered[i]
+            component_end_idx = self.st_componentes_ordered_dims[i] - 1 # inclisive    
+            component_location = (component_start_idx, component_end_idx) # start index inclusive to end index inclusive 
+            ans.append((component_name, component_location))
+        print(f'debug ans = {ans}')
+        return ans
+    
+    def get_loc_of_component_in_state(self, component_name):
+        """ returns start index (inclusive) to end index (inclusive) int he oredered flatten state vector"""
+        return self.component_to_location_dict[component_name]
+    
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)-> np.float32:
         """ A weighted sum of reward terms
         Returns:
             a. np.float64: total reward of the transition from s(t) to s(t+1).
@@ -307,8 +338,8 @@ class rlptAgent:
         """
         rlpt_cfg = GLobalVars.rlpt_cfg
         reward_config = rlpt_cfg['agent']['reward']
-        goal_pos_thresh_dist =  reward_config['goal_pos_thresh_dist']
-        goal_rot_thresh_dist =  reward_config['goal_rot_thresh_dist']
+        goal_pos_thresh_dist = reward_config['goal_pos_thresh_dist']
+        goal_rot_thresh_dist = reward_config['goal_rot_thresh_dist']
         step_dur_w = reward_config['step_dur_w']
         safety_w = reward_config['safety_w']
         pose_w = reward_config['pose_w']
@@ -319,7 +350,7 @@ class rlptAgent:
             assert arg >= 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
 
         # checking if the goal is reached (if the ee is close enough to the goal position and orientation)
-        goal_test = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
+        passing_pose_threshold = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
         
         if reward_config['pose_reward']:
             # positive rewards for position  and orientation when close enough to goal position        
@@ -328,25 +359,19 @@ class rlptAgent:
             
             # pose reward logic: we compute a positive reward for pose, only if both position and orientation are close enough to the goal
             # the pose reward is the sum of the position and orientation rewards,  
-            pose_reward = (possition_reward + orientation_reward) * int(goal_test)         
+            pose_reward = (possition_reward + orientation_reward) * int(passing_pose_threshold)         
             pose_reward *= pose_w
         else:
             pose_reward = 0   
             
-        safety_reward = safety_w * - int(contact_detected)
-        
-        
-        if  goal_test:
-            step_duration_reward = 0 # no time penalty when goal is reached
-        
-        else:
-            if reward_config['time_reward'] == 'linear':
-                step_duration_reward = step_dur_w * - step_duration
-            else: # binary, penalty of 1 for every step
-                step_duration_reward = -1
+        safety_reward = safety_w * - int(contact_detected)                
+        if reward_config['time_reward'] == 'linear':
+            step_duration_reward = step_dur_w * - step_duration
+        else: # binary, penalty of 1 for every step
+            step_duration_reward = -1
 
         total_reward = pose_reward + safety_reward + step_duration_reward
-        return np.float32(total_reward), goal_test
+        return np.float32(total_reward)
 
     def action_space_info(self):
         

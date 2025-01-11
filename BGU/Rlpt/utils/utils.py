@@ -22,3 +22,6 @@ def color_print(text, fore_color='black', back_color='green'):
     print(fore[fore_color] + '')
     print(back[back_color] + text)    
     print(Style.RESET_ALL)
+
+
+
