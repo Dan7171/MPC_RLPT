@@ -168,8 +168,8 @@ class trainSuit:
                     self.current_eps = max(self.eps_end, (self.max_episode - self.episode_idx) / self.max_episode) 
                 greedy_choice = sample > self.current_eps
             
-            else: # testing mode (greedy policy)
-                greedy_choice = True
+            # else: # testing mode (greedy policy)
+            #     greedy_choice = True
                 
             with torch.no_grad():
                 Q_all_actions = self.current(state)
@@ -199,7 +199,6 @@ class trainSuit:
             # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
             
         action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
-        
         meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
         if training:
             meta_data['eps']= self.current_eps

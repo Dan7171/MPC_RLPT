@@ -19,7 +19,7 @@ agent:
     
   A: 
     cost_fn_space:
-      goal_pose: [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
+      goal_pose: [[1,2]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
       zero_vel: [0.0]
       zero_acc: [0.0]
       joint_l2: [0.0]
@@ -35,13 +35,13 @@ agent:
       state_bound: [1000.0]
 
     mppi_space:
-      horizon: [30, 120] # [30] # horizon length. warning: linearly increasing runtime.
+      horizon: [30] # [30] # horizon length. warning: linearly increasing runtime.
       particles: [500,1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
-      n_iters: [1, 2] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
+      n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
   
   action_space:
     use_original_storm_params: false
-    tuning_enabled: false # normal mode is true, false is for debug
+    tuning_enabled: true # normal mode is true, false is for debug
 
 
   train_suit:
@@ -77,7 +77,7 @@ agent:
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: true
+    reset_to_initial_state_every_episode: false # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
     HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
@@ -93,7 +93,7 @@ agent:
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: true
+    reset_to_initial_state_every_episode: true # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision).
     etl_file_name: 'test_etl.csv'
 

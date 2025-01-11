@@ -145,9 +145,17 @@ class rlptAgent:
         
         new_row = [ep_num, ts, at_meta_data['q'], *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
         
-        if self.training_mode:
-            new_row.extend([at_meta_data['eps'], at_meta_data['is_random'],optim_meta_data['raw_grad_norm'],optim_meta_data['clipped_grad_norm'],optim_meta_data['use_clipped'], optim_meta_data['loss']])
+             
         
+        if self.training_mode:
+            new_row.extend([at_meta_data['eps'], at_meta_data['is_random']])
+            optim_meta_data_labels = ['raw_grad_norm', 'clipped_grad_norm', 'use_clipped', 'loss']
+            optim_meta_data_log = ['' for _ in optim_meta_data_labels]
+            for i,label in enumerate(optim_meta_data_labels):
+                if label in optim_meta_data:
+                    optim_meta_data_log[i] = optim_meta_data[label] 
+            new_row.extend(optim_meta_data_log)
+                    
         with open(etl_file_path, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(new_row)

@@ -669,6 +669,7 @@ class MpcRobotInteractive:
         st: np.ndarray
         rt: np.float32
         at: dict
+        prev_at = {}
         s0_robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
         s0_robot_dof_positions_gym_np = s0_robot_dof_states_gym['pos'] 
         s0_robot_dof_vels_gym_np = s0_robot_dof_states_gym['vel']
@@ -752,7 +753,7 @@ class MpcRobotInteractive:
             
             # log to etl
             if include_etl:             
-                rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_state)
+                rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, s_next_is_goal_state)
             
                 
             # escape collision if necessary (change pose until no contact)
