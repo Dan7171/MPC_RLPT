@@ -658,6 +658,7 @@ class MpcRobotInteractive:
         if training:
             HER_cfg = ep_loop_cfg['HER'] 
             if include_HER := HER_cfg['include']:
+                assert rlpt_cfg['agent']['model']['state_representation']['goal_pose'] # must be used in her
                 HER = HindsightExperienceReplay(HER_cfg)
             
             # assuming s0 and g were already sampled before episdoes started (can be also fixed) 

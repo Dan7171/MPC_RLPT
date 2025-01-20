@@ -7,7 +7,7 @@ agent:
     state_representation: # input layer 
       robot_dofs_positions: true
       robot_dofs_velocities: true
-      goal_pose: false 
+      goal_pose: true # note: must be true if using HER  
       coll_objs: false
       robot_base_pos: false
       prev_action_idx: false
