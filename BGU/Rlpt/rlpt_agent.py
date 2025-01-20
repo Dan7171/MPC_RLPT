@@ -296,7 +296,7 @@ class rlptAgent:
         actual_len = self.calc_component_size_in_state(component_to_modify)
         assert new_val_len == actual_len   
         start_loc, end_loc = self.component_to_location_dict[component_to_modify]
-        modified_state[start_loc: end_loc + 1] = new_component_val # modifying state
+        modified_state[0][start_loc: end_loc + 1] = torch.tensor(new_component_val) 
         return modified_state 
     def get_states_legend(self)->List[tuple]:
         """ 
