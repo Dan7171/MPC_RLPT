@@ -711,7 +711,8 @@ class MpcRobotInteractive:
             
             step_start_time = time.time()    
             for commitment_step_num in range(C):
-                print(f'debug: ts mdp= {ts}, commitment step= {commitment_step_num}, a={at_idx},ts simulation={ts_sim}')
+                if C > 1:
+                    print(f'debug: ts mdp= {ts}, commitment step= {commitment_step_num}, a={at_idx},ts simulation={ts_sim}')
                 # rlpt and mpc planner - make steps
                 self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
                 # rlpt - compute the state you just moved to 
