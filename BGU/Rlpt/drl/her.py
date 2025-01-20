@@ -33,15 +33,18 @@ class HindsightExperienceReplay: # HER
             future: (most recommended (try k=4/8)). Replay with k random states which come from the same episode as the transition being replayed and were observed after it.
             
             """
+            G = []
             
-            G = [None] * k
             if strategy == 'future':
                 next_transitions_in_episode_range = range(ts, len(self.episode_transitions)) # from each transition, we take the "next state" (the state it was reached to). from s(ts+1) inclusive to s(final) inclusive) 
+                k = min(k,len(next_transitions_in_episode_range))
+                G = [None] * k
                 sampled_next_transitions_timesteps = random.sample(next_transitions_in_episode_range, k) # get k "next states" like
                 for i in range(k):
                     sampled_transition_ts = sampled_next_transitions_timesteps[i] # sampled transition (identified by its time step)
                     new_goal_pose_gym = self._episode_transitions_info_for_reward_computation[sampled_transition_ts]['s_next_ee_pose_gym'] # this is the representation which is relevant for the reward computation
                     G[i] = new_goal_pose_gym # set ith "next state" as a goal in the additional goals list     
+            
             return G
     
     def _make_modified_state_copy_with_new_goal(self, rlpt_agent, st_tensor, new_goal)-> np.ndarray:
@@ -68,7 +71,7 @@ class HindsightExperienceReplay: # HER
                 st_with_g_tag = self._make_modified_state_copy_with_new_goal(rlpt_agent, st_tensor, g_tag_np_flatten)
                 st_next_with_g_tag = self._make_modified_state_copy_with_new_goal(rlpt_agent, s_next_tensor, g_tag_np_flatten)
                 r_tag = self._compute_reward_for_new_goal(rlpt_agent, g_tag, transition_info) 
-                rlpt_agent.train_suit.memory.push(as_2d_tensor(st_with_g_tag), at_idx_tensor, as_2d_tensor(st_next_with_g_tag), torch.tensor([r_tag], device="cuda", dtype=torch.float64)) 
+                rlpt_agent.train_suit.memory.push(st_with_g_tag, at_idx_tensor, st_next_with_g_tag, torch.tensor([r_tag], device="cuda", dtype=torch.float64)) 
         
         for t in range(N):
             optim_meta_data = rlpt_agent.optimize() # TODO: Should make the C of fixed targets update support HER too 

@@ -43,7 +43,7 @@ agent:
 
   train_suit:
     gamma: 0.999
-    batch_size: 128
+    batch_size: 16 # 128
     eps_decay: true
     default_eps: 0.01
     grad_clipping: false
@@ -70,7 +70,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 1000
-    max_ts: 100
+    max_ts: 50
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
@@ -103,7 +103,7 @@ cost_sniffer:
 
 gui:
   render_ee_icons: true
-  render_trajectory_lines: true
+  render_trajectory_lines: false
 
 episode_plots:
   show: true 
