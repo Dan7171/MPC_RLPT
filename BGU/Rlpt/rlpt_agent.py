@@ -291,7 +291,7 @@ class rlptAgent:
     
     def make_modified_state(self, base_state:np.ndarray, component_to_modify:str, new_component_val:np.ndarray):
         """makes a copy of base_state (flatten 1d state), modified only the the indices of the component named "component_to_modify", with the "new_component_val"  """
-        modified_state = base_state.copy()
+        modified_state = copy.copy(base_state)
         new_val_len = len(new_component_val)
         actual_len = self.calc_component_size_in_state(component_to_modify)
         assert new_val_len == actual_len   
