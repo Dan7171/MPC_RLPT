@@ -331,6 +331,7 @@ class rlptAgent:
             component_end_idx = self.st_componentes_ordered_dims[i] - 1 # inclisive    
             component_location = (component_start_idx, component_end_idx) # start index inclusive to end index inclusive 
             ans.append((component_name, component_location))
+            component_start_idx = component_end_idx + 1 # move next component start index to next entry 
         print(f'debug ans = {ans}')
         return ans
     
