@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from BGU.Rlpt import rlpt_agent
 from BGU.Rlpt.utils.error import pos_error, pose_as_ndarray, rot_error
-from BGU.Rlpt.utils.type_operations import as_tensor
+from BGU.Rlpt.utils.type_operations import as_2d_tensor
 
 class HindsightExperienceReplay: # HER 
     def __init__(self, cfg):
@@ -68,7 +68,7 @@ class HindsightExperienceReplay: # HER
                 st_with_g_tag = self._make_modified_state_copy_with_new_goal(rlpt_agent, st_tensor, g_tag_np_flatten)
                 st_next_with_g_tag = self._make_modified_state_copy_with_new_goal(rlpt_agent, s_next_tensor, g_tag_np_flatten)
                 r_tag = self._compute_reward_for_new_goal(rlpt_agent, g_tag, transition_info) 
-                rlpt_agent.train_suit.memory.push(as_tensor(st_with_g_tag), at_idx_tensor, as_tensor(st_next_with_g_tag), torch.tensor([r_tag], device="cuda", dtype=torch.float64)) 
+                rlpt_agent.train_suit.memory.push(as_2d_tensor(st_with_g_tag), at_idx_tensor, as_2d_tensor(st_next_with_g_tag), torch.tensor([r_tag], device="cuda", dtype=torch.float64)) 
         
         for t in range(N):
             optim_meta_data = rlpt_agent.optimize() # TODO: Should make the C of fixed targets update support HER too 

@@ -66,7 +66,7 @@ from BGU.Rlpt.experiments.experiment_utils import get_combinations
 from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
-from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_tensor
+from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_2d_tensor
 from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar
 from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
 
@@ -735,9 +735,9 @@ class MpcRobotInteractive:
             optim_meta_data = {}
             if training:
                 #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
-                at_idx_tensor = as_tensor([at_idx]) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
-                st_tensor = as_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = as_tensor(s_next) # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
+                at_idx_tensor = as_2d_tensor([at_idx]) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+                st_tensor = as_2d_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
+                s_next_tensor = as_2d_tensor(s_next) # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
                 rt_tensor = torch.tensor([rt], device="cuda", dtype=torch.float64)
                 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
