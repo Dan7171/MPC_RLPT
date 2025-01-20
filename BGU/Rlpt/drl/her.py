@@ -38,9 +38,10 @@ class HindsightExperienceReplay: # HER
             if strategy == 'future':
                 next_transitions_in_episode_range = range(ts, len(self.episode_transitions)) # from each transition, we take the "next state" (the state it was reached to). from s(ts+1) inclusive to s(final) inclusive) 
                 sampled_next_transitions_timesteps = random.sample(next_transitions_in_episode_range, k) # get k "next states" like
-                for transition_ts in sampled_next_transitions_timesteps:
-                    new_goal_pose_gym = self._episode_transitions_info_for_reward_computation[transition_ts]['s_next_ee_pose_gym'] # this is the representation which is relevant for the reward computation
-                    G.append(new_goal_pose_gym) # add "next state" to the additional goals list     
+                for i in range(k):
+                    sampled_transition_ts = sampled_next_transitions_timesteps[i] # sampled transition (identified by its time step)
+                    new_goal_pose_gym = self._episode_transitions_info_for_reward_computation[sampled_transition_ts]['s_next_ee_pose_gym'] # this is the representation which is relevant for the reward computation
+                    G[i] = new_goal_pose_gym # set ith "next state" as a goal in the additional goals list     
             return G
     
     def _make_modified_state_copy_with_new_goal(self, rlpt_agent, st_tensor, new_goal)-> np.ndarray:
