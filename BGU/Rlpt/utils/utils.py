@@ -18,7 +18,6 @@ def kill_zombie_processes():
 def color_print(text, fore_color='black', back_color='green', end='\n'):
     fore = {'red':Fore.RED, 'green':Fore.GREEN,'black':Fore.BLACK, 'blue':Fore.BLUE}
     back = {'red':Back.RED, 'green':Back.GREEN,'black':Back.BLACK, 'blue':Back.BLUE}
-    
     print(fore[fore_color] + '',end=end)
     print(back[back_color] + text,end=end)    
     print(Style.RESET_ALL)

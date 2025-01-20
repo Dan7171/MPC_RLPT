@@ -35,11 +35,12 @@ agent:
       horizon: [30] # [30] # horizon length. warning: linearly increasing runtime.
       particles: [500,1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
       n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
-  
+    
+    
   action_space:
     use_original_storm_params: false
     tuning_enabled: true # normal mode is true, false is for debug (when false, no parameter tuning. just using the initial episode parameter assignment)
-
+    C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
 
   train_suit:
     gamma: 0.999
@@ -100,7 +101,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: true # dont show gui at all
+  headless: false # dont show gui at all
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: false # render trajectory lines of mpc rollouts
 

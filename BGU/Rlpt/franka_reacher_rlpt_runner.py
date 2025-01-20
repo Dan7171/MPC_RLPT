@@ -39,9 +39,7 @@ if __name__ == '__main__':
 
     
     for ep in range(ep_start, n_episodes):
-        color_print(f'episode: {ep} starts...', back_color='blue')
-        # subprocess.run(['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path])
-        
+        color_print(f'EXTERNAL RUNNER: episode: {ep} starts...', back_color='blue')        
         # Run the subprocess
         process = subprocess.Popen(
             # ['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path],

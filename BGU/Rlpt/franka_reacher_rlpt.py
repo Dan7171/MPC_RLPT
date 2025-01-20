@@ -639,7 +639,7 @@ class MpcRobotInteractive:
         return env_selected
            
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_num:int, include_etl:bool, training):
+    def episode(self, rlpt_agent:rlptAgent, episode_max_sim_ts:int, ep_num:int, include_etl:bool, training):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -697,43 +697,53 @@ class MpcRobotInteractive:
         ####################################
         episode_start_time = time.time()
         episode_total_reward = 0
-        for ts in range(episode_max_ts):
-            # st_tensor = as_1d_tensor(st) 
+        C = rlpt_cfg['agent']['action_space']['C'] # action commitment (denoising training). TODO: replace with reading from cfg
+        max_ts_mdp = episode_max_sim_ts // C + 1  
+        ts_sim = 0 # 
+        # for ts in range(episode_max_action_num):
+        
+        for ts in range(max_ts_mdp):
             st_tensor = as_1d_tensor(st)
             if initial_state is None:
                 initial_state = st_tensor
-                 
             forbidden_action_indices:set = set() # empty set - all actions are allowed            
             at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
-            # rlpt and mpc planner - make steps
-            step_start_time = time.time()
-            self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
+            
+            step_start_time = time.time()    
+            for commitment_step_num in range(C):
+                print(f'debug: ts mdp= {ts}, commitment step= {commitment_step_num}, a={at_idx},ts simulation={ts_sim}')
+                # rlpt and mpc planner - make steps
+                self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
+                # rlpt - compute the state you just moved to 
+                robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
+                s_next_robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
+                s_next_robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
+                goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
+                goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
+                s_next_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
+                s_next_pi_mppi_means, s_next_pi_mppi_covs = sniffer.get_current_mppi_policy() 
+                s_next_pi_mppi_means_np = torch_tensor_to_ndarray(s_next_pi_mppi_means)
+                s_next_pi_mppi_covs_np = torch_tensor_to_ndarray(s_next_pi_mppi_covs).flatten() # [1,7] to [7]
+                s_next = rlpt_agent.compose_state_vector(s_next_robot_dof_positions_gym, s_next_robot_dof_vels_gym, goal_ee_pose_gym_np, s_next_pi_mppi_means_np, s_next_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
+                
+                # rlpt - check if terminal state was reached 
+                s_next_ee_pos_error = pos_error(s_next_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
+                s_next_ee_rot_error = rot_error(s_next_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
+                s_next_contact_detected = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
+                s_next_is_goal_state = goal_test(s_next_ee_pos_error, s_next_ee_rot_error)
+                terminated = s_next_is_goal_state or s_next_contact_detected # reached a terminal state (of environment)
+                ts_sim += 1                
+                
+                if terminated:
+                    break
+                
+            # rlpt - compute reward (r(t)) 
             step_duration = time.time() - step_start_time # time it took to move from st to st+1
-            
-            # rlpt - compute the state you just moved to (s(t+1))
-            robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
-            s_next_robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
-            s_next_robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
-            goal_ee_pose_gym = self.get_body_pose(self.obj_body_handle, "gym") # in gym coordinate system
-            goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)
-            s_next_ee_pose_gym = self.get_body_pose(self.ee_body_handle, "gym") # in gym coordinate system
-            s_next_pi_mppi_means, s_next_pi_mppi_covs = sniffer.get_current_mppi_policy() 
-            s_next_pi_mppi_means_np = torch_tensor_to_ndarray(s_next_pi_mppi_means)
-            s_next_pi_mppi_covs_np = torch_tensor_to_ndarray(s_next_pi_mppi_covs).flatten() # [1,7] to [7]
-            s_next = rlpt_agent.compose_state_vector(s_next_robot_dof_positions_gym, s_next_robot_dof_vels_gym, goal_ee_pose_gym_np, s_next_pi_mppi_means_np, s_next_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
-            
-            
-            # rlpt - compute reward (r(t))  
-            s_next_ee_pos_error = pos_error(s_next_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
-            s_next_ee_rot_error = rot_error(s_next_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
-            s_next_contact_detected = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
-            s_next_is_goal_state = goal_test(s_next_ee_pos_error, s_next_ee_rot_error)
-
             # Get the reward and check if the episode is over by reaching a terminal state
             if training:
                 rt = rlpt_agent.compute_reward(s_next_ee_pos_error, s_next_ee_rot_error, s_next_contact_detected, step_duration)
                 episode_total_reward += rt
-            terminated =  s_next_is_goal_state or s_next_contact_detected # reached a terminal state (of environment)
+            
             optim_meta_data = {}
             if training:
                 #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
@@ -771,8 +781,8 @@ class MpcRobotInteractive:
             st = s_next
             prev_at = at
             
-            if not args.external_run or (ts%(episode_max_ts/10) == 0):
-                print_progress_bar(ts, episode_max_ts, seconds_passed=time.time()-episode_start_time)
+            if not args.external_run or (ts_sim%(episode_max_sim_ts/10) == 0):
+                print_progress_bar(ts_sim, episode_max_sim_ts, seconds_passed=time.time()-episode_start_time)
                 
         
         if include_HER:
@@ -1016,12 +1026,12 @@ def sample_obj_subset(all_coll_objs_with_positions):
 
     return participating
 
-def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
+def episode_loop(n_episodes, episode_max_sim_ts,cfg,training=True):
     """
     Running episodes in a loop.
     Args:
         n_episodes (_type_): number of 
-        episode_max_ts (_type_): _description_
+        episode_max_sim_ts (_type_): _description_
         
     Returns:
         _type_: _description_
@@ -1073,7 +1083,7 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
 
         ###### run next episode ######
         color_print(f"episode {ep} started")       
-        ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
+        ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_sim_ts, ep_num=ep, include_etl=include_etl,training=training) 
         
         ##### episode post processing stesps ####### 
         color_print(f'internal episode {ep} over')

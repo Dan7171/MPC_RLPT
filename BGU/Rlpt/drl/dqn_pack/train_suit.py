@@ -72,6 +72,8 @@ class trainSuit:
         # learning_rate is the learning rate of the  optimizer (aka alpha or step size)
         # C is the target network update frequenty (set it to be the Q network's weights every C steps)
         # T = Max step num in episode
+        if GLobalVars.rlpt_cfg is None:
+            exit()
         cfg = GLobalVars.rlpt_cfg['agent']['train_suit']
         self.ddqn = ddqn
         self.seed = seed
