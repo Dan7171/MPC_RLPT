@@ -77,10 +77,7 @@ class trainSuit:
         self.seed = seed
         self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
         self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
-        # self.eps_start = eps_start
-        self.eps_end = eps_end
-        # self.eps_decay = cfg['eps_decay'] if 'eps_decay' in cfg else eps_decay
-        
+        self.eps_end = eps_end        
         self.eps_decay = cfg['eps_decay']
         if self.eps_decay:
             self.current_eps = 1

@@ -697,14 +697,12 @@ class MpcRobotInteractive:
         
             
         for ts in range(episode_max_ts):
-            st_tensor = as_tensor(st)
+            st_tensor = torch.tensor(st, device="cuda", dtype=torch.float64) # bugfix
             if initial_state is None:
                 initial_state = st_tensor
                  
-            forbidden_action_indices:set = set() # empty set - all actions are allowed
-            
+            forbidden_action_indices:set = set() # empty set - all actions are allowed            
             at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
-            
             # rlpt and mpc planner - make steps
             step_start_time = time.time()
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
