@@ -40,7 +40,7 @@ class HindsightExperienceReplay: # HER
                 k = min(k,len(next_transitions_in_episode_range))
                 G = [None] * k
                 sampled_next_transitions_timesteps = random.sample(next_transitions_in_episode_range, k) # get k "next states" like
-                print(f"debug {k} new goals to add in buffer, indices = {sampled_next_transitions_timesteps}")
+                # print(f"debug {k} new goals to add in buffer for update {ts}, indices = {sampled_next_transitions_timesteps}")
                 
                 for i in range(k):
                     sampled_transition_ts = sampled_next_transitions_timesteps[i] # sampled transition (identified by its time step)
@@ -74,10 +74,10 @@ class HindsightExperienceReplay: # HER
                 st_next_with_g_tag = self._make_modified_state_copy_with_new_goal(rlpt_agent, s_next_tensor, g_tag_np_flatten)
                 r_tag = self._compute_reward_for_new_goal(rlpt_agent, g_tag, transition_info) 
                 rlpt_agent.train_suit.memory.push(st_with_g_tag, at_idx_tensor, st_next_with_g_tag, as_1d_tensor([r_tag])) 
-                print("debug g tag")
-                print(g_tag_np_flatten)
+                # print("debug g tag")
+                # print(g_tag_np_flatten)
+                
         for t in range(N):
             optim_meta_data = rlpt_agent.optimize() # TODO: Should make the C of fixed targets update support HER too 
-            print("debug")
-            print(optim_meta_data)
+
         return optim_meta_data

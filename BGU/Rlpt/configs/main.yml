@@ -1,7 +1,7 @@
 agent:
   model: # The Neural network 
-    load_checkpoint: false
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:06(Mon)22:47:44/model.pth' # None
+    load_checkpoint: true
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:20(Mon)23:35:19/model.pth' # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -16,7 +16,7 @@ agent:
     
   A: 
     cost_fn_space:
-      goal_pose: [[1,2]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
+      goal_pose: [[1.0, 300.0],[300.0, 1.0]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
       zero_vel: [0.0]
       zero_acc: [0.0]
       joint_l2: [0.0]
@@ -43,7 +43,7 @@ agent:
 
   train_suit:
     gamma: 0.999
-    batch_size: 16 # 128
+    batch_size: 128  
     eps_decay: true
     default_eps: 0.01
     grad_clipping: false
@@ -70,11 +70,11 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 1000
-    max_ts: 50
+    max_ts: 800
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: false # when true must use external script (franka_reacher_rlpt_runner.py)
+    reset_to_initial_state_every_episode: true # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
     HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
@@ -95,15 +95,14 @@ agent:
     etl_file_name: 'test_etl.csv'
 
 
-
-
 cost_sniffer:
   gui: false
   save_costs: false
 
 gui:
-  render_ee_icons: true
-  render_trajectory_lines: false
+  headless: true # dont show gui at all
+  render_ee_icons: true # render green and red mugs
+  render_trajectory_lines: false # render trajectory lines of mpc rollouts
 
 episode_plots:
   show: true 

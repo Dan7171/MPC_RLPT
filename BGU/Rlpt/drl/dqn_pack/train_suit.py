@@ -198,9 +198,10 @@ class trainSuit:
         action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
         meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
         if training:
+            meta_data['idx'] = action_idx
             meta_data['eps']= self.current_eps
             meta_data['is_random'] = not greedy_choice 
-        
+            
         return action_idx_tensor, meta_data # that index is the id of the action 
     
     def optimize(self, total_optimization_steps_cntr, max_norm=1.0):

@@ -15,17 +15,17 @@ def kill_zombie_processes():
         if child.status() == psutil.STATUS_ZOMBIE:
             child.kill()
 
-def color_print(text, fore_color='black', back_color='green'):
+def color_print(text, fore_color='black', back_color='green', end='\n'):
     fore = {'red':Fore.RED, 'green':Fore.GREEN,'black':Fore.BLACK, 'blue':Fore.BLUE}
     back = {'red':Back.RED, 'green':Back.GREEN,'black':Back.BLACK, 'blue':Back.BLUE}
     
-    print(fore[fore_color] + '')
-    print(back[back_color] + text)    
+    print(fore[fore_color] + '',end=end)
+    print(back[back_color] + text,end=end)    
     print(Style.RESET_ALL)
 
 
 
-def print_progress_bar(current, max_steps, bar_length=50):
+def print_progress_bar(current, max_steps, bar_length=50,seconds_passed=-1.0):
     """
     Prints a progress bar to indicate remaining units of a variable.
     
@@ -42,5 +42,5 @@ def print_progress_bar(current, max_steps, bar_length=50):
     remaining_ratio = current / max_steps
     remaining_length = int(remaining_ratio * bar_length)
     bar = "[" + "=" * remaining_length + " " * (bar_length - remaining_length) + "]"
-    print(f"\r{bar} {current}/{max_steps} steps left", end="")
+    color_print(f"\r{bar} {current}/{max_steps} steps. Seconds passed: {seconds_passed if seconds_passed != -1 else 'unavailable'}", end="")
 

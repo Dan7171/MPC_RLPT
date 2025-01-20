@@ -123,7 +123,7 @@ class rlptAgent:
             at_titles_shared_features = self.shared_action_features.keys()
         at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
         st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
-        col_names = ['ep', 't', 'q(w,st,at)', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
+        col_names = ['ep', 't', 'q(w,st,at)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
         if self.training_mode:
             col_names.extend(['at_epsilon','rand_at', 'optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss'])
         with open(etl_file_path, mode='a', newline='') as file:
@@ -143,7 +143,7 @@ class rlptAgent:
             at_shared_features = list(self.shared_action_features.values())
         st_at = st_parsed + at_unique_features + at_shared_features                
         
-        new_row = [ep_num, ts, at_meta_data['q'], *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
+        new_row = [ep_num, ts, at_meta_data['q'], at_idx, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
         
              
         
@@ -217,7 +217,7 @@ class rlptAgent:
             episode_idx_to_start_from = checkpoint['episode'] 
             self.train_suit.episode_idx = episode_idx_to_start_from
             self.completed_optimization_steps_cntr = checkpoint['completed_optimization_steps_cntr']
-            print(f"Current episode was reset to: {episode_idx_to_start_from}")
+            # print(f"Current episode was reset to: {episode_idx_to_start_from}")
         
         return episode_idx_to_start_from
     
@@ -298,6 +298,7 @@ class rlptAgent:
         start_loc, end_loc = self.component_to_location_dict[component_to_modify]
         modified_state[0][start_loc: end_loc + 1] = torch.tensor(new_component_val) 
         return modified_state 
+    
     def get_states_legend(self)->List[tuple]:
         """ 
         human readible legend for state representation
@@ -332,7 +333,7 @@ class rlptAgent:
             component_location = (component_start_idx, component_end_idx) # start index inclusive to end index inclusive 
             ans.append((component_name, component_location))
             component_start_idx = component_end_idx + 1 # move next component start index to next entry 
-        print(f'debug ans = {ans}')
+        # print(f'debug ans = {ans}')
         return ans
     
     def get_loc_of_component_in_state(self, component_name):
@@ -346,6 +347,8 @@ class rlptAgent:
             b. is goal_test
         """
         rlpt_cfg = GLobalVars.rlpt_cfg
+        if rlpt_cfg is None:
+            exit()
         reward_config = rlpt_cfg['agent']['reward']
         goal_pos_thresh_dist = reward_config['goal_pos_thresh_dist']
         goal_rot_thresh_dist = reward_config['goal_rot_thresh_dist']
@@ -356,12 +359,13 @@ class rlptAgent:
         assert_positive = [pose_w, safety_w, step_dur_w, goal_pos_thresh_dist,goal_rot_thresh_dist]
         for arg in assert_positive:
             arg_name = f'{arg=}'.split('=')[0]
-            assert arg >= 0, BadArgumentUsage(f"argument {arg_name} must be positv, but {arg} was passed.")
+            assert arg >= 0, BadArgumentUsage(f"argument {arg_name} must be positve, but {arg} was passed.")
 
         # checking if the goal is reached (if the ee is close enough to the goal position and orientation)
-        passing_pose_threshold = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
         
         if reward_config['pose_reward']:
+            passing_pose_threshold = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
+
             # positive rewards for position  and orientation when close enough to goal position        
             possition_reward =  max(0, goal_pos_thresh_dist - ee_pos_error) # "reversed relu" (greater when error is approaching 0, never negative)
             orientation_reward = max(0, goal_rot_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0,  never negative)
@@ -401,10 +405,11 @@ class rlptAgent:
         df_diffs = df.drop(equal_columns, axis=1) # differences between actions
  
         # parse output before returning it
-        print("rlpt action space: shared action featueres")
-        print(df_equality)
-        print("rlpt: action space: unique action featueres")
-        print(df_diffs)
+        # print("rlpt action space: shared action featueres")
+        # print(df_equality)
+        # print("rlpt: action space: unique action featueres")
+        
+        # print(df_diffs)
         shared_params_all_actions:dict = df_equality.to_dict(orient='records')[0] # shared params between all actions
         different_params_by_action_inx:list = df_diffs.to_dict(orient='records') # l[i] a dict of the ith action, containing the unique assignment of this action to action features with 2 or more options  
         return shared_params_all_actions, different_params_by_action_inx 

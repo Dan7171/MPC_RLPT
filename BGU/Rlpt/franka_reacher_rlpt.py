@@ -695,8 +695,8 @@ class MpcRobotInteractive:
         ####################################
         ####### Starting Episode steps #####
         ####################################
-        
-            
+        episode_start_time = time.time()
+        episode_total_reward = 0
         for ts in range(episode_max_ts):
             # st_tensor = as_1d_tensor(st) 
             st_tensor = as_1d_tensor(st)
@@ -732,7 +732,7 @@ class MpcRobotInteractive:
             # Get the reward and check if the episode is over by reaching a terminal state
             if training:
                 rt = rlpt_agent.compute_reward(s_next_ee_pos_error, s_next_ee_rot_error, s_next_contact_detected, step_duration)
-            
+                episode_total_reward += rt
             terminated =  s_next_is_goal_state or s_next_contact_detected # reached a terminal state (of environment)
             optim_meta_data = {}
             if training:
@@ -771,8 +771,9 @@ class MpcRobotInteractive:
             st = s_next
             prev_at = at
             
-            print_progress_bar(ts, episode_max_ts)
-        
+            if not args.external_run or (ts%(episode_max_ts/10) == 0):
+                print_progress_bar(ts, episode_max_ts, seconds_passed=time.time()-episode_start_time)
+                
         
         if include_HER:
             HER.optimize(rlpt_agent)
@@ -780,8 +781,12 @@ class MpcRobotInteractive:
             
         ########## end of episode ###########            
         color_print(f'episode: {ep_num} finished')
-        color_print(f'episode duration: {ts}')
-
+        color_print(f'episode duration: {ts} time steps of {time.time()-episode_start_time} seconds')
+        color_print(f'episode total reward: {episode_total_reward}')
+        color_print(f'current buffer size: {len(rlpt_agent.train_suit.memory)}')
+        color_print(f'current epsilon: {rlpt_agent.train_suit.current_eps if training else 0}')
+        
+        
         return ts, forced_stopping 
             
         
@@ -1060,18 +1065,18 @@ def episode_loop(n_episodes, episode_max_ts,cfg,training=True):
             # load model from checkpoint
             if load_checkpoint_model:
                 ep = rlpt_agent.load(torch.load(model_file_path)) # current true episode index to start from
-                print(f'episode {ep} loaded')
+                color_print(f'episode {ep} loaded')
                 
             # initialize etl if required
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
 
         ###### run next episode ######
-        print(f"episode {ep} started")       
+        color_print(f"episode {ep} started")       
         ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_num=ep, include_etl=include_etl,training=training) 
         
         ##### episode post processing stesps ####### 
-        print(f'internal episode {ep} over')
+        color_print(f'internal episode {ep} over')
         if keyboard_interupt:
             raise KeyboardInterrupt() 
         ep += 1 # update index of the next episode to start from 
@@ -1117,14 +1122,15 @@ if __name__ == '__main__':
     
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
-    sim_params['headless'] = args.headless # run with no gym gui
                     
     # rlpt setup
     if not GLobalVars.is_defined('rlpt_cfg'):
         GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
         rlpt_cfg = GLobalVars.rlpt_cfg
     
+    sim_params['headless'] = rlpt_cfg['gui']['headless'] # run with no gym gui
     include_etl = rlpt_cfg['agent']['model']['include_etl']
+    
                 
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)

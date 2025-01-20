@@ -2,10 +2,11 @@ from operator import xor
 from pyexpat import model
 import subprocess
 import os
+import time
 
 import torch
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
-from BGU.Rlpt.utils.utils import make_model_path
+from BGU.Rlpt.utils.utils import color_print, make_model_path
 
 if __name__ == '__main__':
     agent_cfg = load_config_with_defaults('BGU/Rlpt/configs/main.yml')['agent']
@@ -24,8 +25,8 @@ if __name__ == '__main__':
         n_episodes = agent_cfg['training']['n_episodes'] # total for the whole training
         if load_model_file:
             ep_start = torch.load(model_file_path)['episode']  # episode to start from 
-            print(f'using existing model: {model_file_path}')
-            print(f'ep was updated to {ep_start}')
+            color_print(f'using existing model: {model_file_path}')
+            color_print(f'episode index was updated to {ep_start}')
             
         else:
             ep_start = 0
@@ -36,8 +37,24 @@ if __name__ == '__main__':
     
     # copy the config file of current run to the model dir
 
-
+    
     for ep in range(ep_start, n_episodes):
-        print(f'episode: {ep} starts...')
-        subprocess.run(['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path])
-        pass
+        color_print(f'episode: {ep} starts...', back_color='blue')
+        # subprocess.run(['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path])
+        
+        # Run the subprocess
+        process = subprocess.Popen(
+            # ['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path],
+            ['conda', 'run','--no-capture-output', '-n', 'storm_kit', 'python','-u', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            text=True,  
+            bufsize=1 # Use text mode for easier handling of output
+        )
+        if process.stdout is not None:
+            # Print each line of output as it arrives
+            for line in process.stdout:
+                print(line, end="")  # Print each line in real time
+            # Wait for the subprocess to finish
+            process.wait()
+        
