@@ -67,7 +67,7 @@ from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
 from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_tensor
-from BGU.Rlpt.utils.utils import make_model_path, color_print
+from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar
 from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
 
 import GPUtil
@@ -768,6 +768,8 @@ class MpcRobotInteractive:
             
             st = s_next
             prev_at = at
+            
+            print_progress_bar(ts, episode_max_ts)
         
         
         if include_HER:

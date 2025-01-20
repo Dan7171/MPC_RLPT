@@ -25,3 +25,22 @@ def color_print(text, fore_color='black', back_color='green'):
 
 
 
+def print_progress_bar(current, max_steps, bar_length=50):
+    """
+    Prints a progress bar to indicate remaining units of a variable.
+    
+    Parameters:
+        current (int): The current step (remaining units).
+        max_steps (int): The maximum number of steps.
+        bar_length (int): The length of the bar in characters (default: 50).
+    """
+    if max_steps <= 0:
+        raise ValueError("max_steps must be a positive integer.")
+    if current < 0 or current > max_steps:
+        raise ValueError("current must be between 0 and max_steps.")
+    
+    remaining_ratio = current / max_steps
+    remaining_length = int(remaining_ratio * bar_length)
+    bar = "[" + "=" * remaining_length + " " * (bar_length - remaining_length) + "]"
+    print(f"\r{bar} {current}/{max_steps} steps left", end="")
+
