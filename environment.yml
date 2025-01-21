@@ -148,3 +148,7 @@ dependencies:
     - attrs==23.2.0
     - storm-kit
     - isaacgym==1.0rc4
+    # - - e Stoix/requirements/requirements.txt    
+    # - -r file:Stoix/requirements/requirements.txt
+    # - -r file:Stoix/requirements/requirements-dev.txt
+
