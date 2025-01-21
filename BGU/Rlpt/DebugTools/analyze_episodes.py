@@ -55,6 +55,22 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
 
     
 
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+##################################### START HERE ########################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
+#########################################################################################
 
 
 
@@ -64,7 +80,8 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)17:29:59/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
+path = '/home/dan/Desktop/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -75,20 +92,29 @@ print(df.head)
 print('columns:')
 print(df.columns)
 print(df.nunique())
+df_nunique = df.nunique().to_dict()
 # df['rt'].value_counts()
-#########
+
 max_episode = 1500
 episodes = df.groupby('ep')
+# %%%%%%%%%%%%% FIG 1 %%%%%%%%%%%%%%%
+
 base_color = 'orange'
 
+# GROUPED BY EPISODES (FOR COLOR SEPARATION)
 for i, ng in enumerate(episodes):
     name, group = ng
     print(f'{i}, {len(group)}')
 
+
+# FIG 1: Q values  
+# Red episodes: colision
+# Green episodes: goal
+# Orange: else
 for i, ng in enumerate(episodes):
     name, group = ng
     if i < max_episode:
-        
+
         contact_q = pd.DataFrame(index=group.index,columns=['q_if_contact'],dtype=float)
         contact_q[:] = 0
         contact_q.loc[group['contact_s(t+1)'], 'q_if_contact'] = group['q(w,st,at)']
@@ -111,6 +137,9 @@ for i, ng in enumerate(episodes):
         
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) q vals')
 
+
+# %%%%%%%%%%%%% FIG 2 %%%%%%%%%%%%%%%
+# FIG 2: Q(s0,a0) for each episode  
 #########
 plt.figure()
 q_start = []
@@ -120,46 +149,70 @@ for i, ng in enumerate(episodes):
         first_q = group['q(w,st,at)'][group.index[0]]
         q_start.append(first_q)
 plt.plot(q_start)
-plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) q start')
+plt.title(f'first {min(i+1,max_episode)} episodes "Q0". X = episode num, Y = q(s0,a0)')
 
+# %%%%%%%%%%%%% FIG 3 %%%%%%%%%%%%%%%
 ###########
-fig = plt.figure()
+# FIG 3: Last epidode data: x = pos error, y = rot error, z = q value. Each point (x,y,z) represents one time step, color gradient: the more its yellow, the earlier in episode it is  
 
-last_episode = episodes.get_group(episodes.ngroups-1) # last episode
+fig = plt.figure()
+last_episode_group_num = episodes.ngroups-1
+last_episode = episodes.get_group(last_episode_group_num) # last episode
 q = last_episode['q(w,st,at)']
 pos_err = last_episode['pos_er_s(t+1)']
 rot_err = last_episode['rot_er_s(t+1)']
-# defining axes
-ax = plt.axes(projection ='3d') 
-z = q
+
+
+
+# set 3d axis
 x = pos_err
 y = rot_err
+z = q
+
+# defining axes
+ax = plt.axes(projection ='3d') 
+
 # ax.scatter(x, y, z) # also works (but one color)
 c = x + y # changes color, but not a must
-ax.scatter(x, y, z, c = c)
 ax.set_title('q(pos_err, rot_err) in last episode')
 ax.set_xlabel('pos_err', fontsize=12)
 ax.set_ylabel('rot_err', fontsize=12)
 
+ax.plot(x.values, y.values, z.values) # simple blue line
+ax.scatter(x, y, z, c = c) # adds marking points with color gradient to simple line
+
+
+
+
+# %%%%%%%%%%%%% FIG 4 %%%%%%%%%%%%%%%
+# FIG 4: Raw Gradient norm of update step over entire minibache for "max_episode" first episodes in data (color = episode)
 #############
-fig = plt.figure()
-for i, ng in enumerate(episodes):
-    name, group = ng
-    if i < max_episode:
-        plt.plot(group['optim_raw_grad_norm'])
+if df_nunique['optim_raw_grad_norm'] > 1:    
+    fig = plt.figure()
+    for i, ng in enumerate(episodes):
+        name, group = ng
+        if i < max_episode:
+            plt.plot(group['optim_raw_grad_norm'])
 
-plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) norm of minibatch gradient at optimization step (unclipped)')
+    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) norm of minibatch gradient at optimization step (unclipped)')
 
+
+# %%%%%%%%%%%%% FIG 5 %%%%%%%%%%%%%%%
+# FIG 5: Loss of update step over entire minibache for "max_episode" first episodes in data (color = episode)
 #############
-fig = plt.figure()
-for i, ng in enumerate(episodes):
-    name, group = ng
-    if i < max_episode:
-        plt.plot(group['optim_loss'])
-plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) total minibatch loss at optimization step')
+
+if df_nunique['optim_loss'] > 1:
+    fig = plt.figure()
+    for i, ng in enumerate(episodes):
+        name, group = ng
+        if i < max_episode:
+            plt.plot(group['optim_loss'])
+    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) total minibatch loss at optimization step')
 
 
 
+# %%%%%%%%%%%%% FIG 6 %%%%%%%%%%%%%%%
+# FIG 6: Epsilon value of action over all actions in first max_episdoe episodes (color = episode) 
 #############
 fig = plt.figure()
 for i, ng in enumerate(episodes):
@@ -168,11 +221,16 @@ for i, ng in enumerate(episodes):
         plt.plot(group['at_epsilon'])
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random action chance')
 
-###########
-df_nunique = df.nunique().to_dict()
-df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
-pca3d('st_robot_dofs_positions')
-pca3d('st_pi_mppi_means')
+
+
+# # %%%%%%%%%%%%% FIGS 7 to 7+"K1"+"K2" (PCA figures of dof states and mpc policy) %%%%%%%%%%%%%%%
+# ####### TODO - AT THE MOMENT - THE LEGEND REPRESENTS THE FIRST ACTION IN EPISODE ONLY) 
+# df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
+
+# # NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
+# pca3d('st_robot_dofs_positions') 
+# # NEXT "K2" FIGURES: FIGS 7+K1 to 7+K1+K2 PCA over 2 first components in MPC policy (means only, no standard devs) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode)
+# pca3d('st_pi_mppi_means')
 
 
 

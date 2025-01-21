@@ -79,5 +79,6 @@ class HindsightExperienceReplay: # HER
                 
         for t in range(N):
             optim_meta_data = rlpt_agent.optimize() # TODO: Should make the C of fixed targets update support HER too 
-
+            print('debug: optim meta data of HER updates')
+            print(optim_meta_data)
         return optim_meta_data

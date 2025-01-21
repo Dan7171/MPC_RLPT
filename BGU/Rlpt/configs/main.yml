@@ -1,6 +1,6 @@
 agent:
   model: # The Neural network 
-    load_checkpoint: true
+    load_checkpoint: false
     checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:20(Mon)23:35:19/model.pth' # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
@@ -70,7 +70,7 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 1000
+    n_episodes: 1500
     max_ts: 800
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
@@ -101,7 +101,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: false # dont show gui at all
+  headless: true # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: false # render trajectory lines of mpc rollouts
 
