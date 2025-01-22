@@ -10,7 +10,7 @@ import random
 import numpy as np
 import torch
 from BGU.Rlpt import rlpt_agent
-from BGU.Rlpt.franka_reacher_rlpt import goal_test
+from BGU.Rlpt.utils.utils import goal_test
 from BGU.Rlpt.utils.error import pos_error, pose_as_ndarray, rot_error
 from BGU.Rlpt.utils.type_operations import as_1d_tensor, as_2d_tensor
 
@@ -72,7 +72,7 @@ class HindsightExperienceReplay: # HER
             st_tensor, at_idx_tensor, s_next_tensor = self.episode_transitions[t]
             transition_info = self._episode_transitions_info[t]
             
-            for g_tag in G:
+            for i,g_tag in enumerate(G):
                                 
                 
                 # compute new s(t) (with new goal pose "g-tag")
@@ -88,7 +88,9 @@ class HindsightExperienceReplay: # HER
                 
                 # compute new r(t) (with new goal pose "g-tag")
                 r_tag = self._compute_rt_wrt_new_goal(rlpt_agent, transition_info['step_duration'], transition_info['s_next_contact_detected'], s_next_ee_pos_error_wrt_new_goal, s_next_ee_rot_error_wrt_new_goal ) 
-                
+                if t < 10:
+                    print(f'debug goal:{i}: \n snext/gtag errors: {s_next_ee_pos_error_wrt_new_goal}, {s_next_ee_rot_error_wrt_new_goal}. Terminal: {s_next_is_terminal_wrt_new_goal}, contact-termination: {transition_info["s_next_contact_detected"]}, r-tag = {r_tag}')
+
                 # push r(t) to
                 rlpt_agent.train_suit.memory.push(st_with_g_tag, at_idx_tensor, s_next_with_g_tag, as_1d_tensor([r_tag])) 
                 

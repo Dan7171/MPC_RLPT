@@ -11,6 +11,7 @@ https://arxiv.org/pdf/1312.5602
 """
 from curses import color_pair
 from gc import enable
+import time
 from typing import Union
 from graphviz import render
 import gymnasium as gym
@@ -89,7 +90,7 @@ class trainSuit:
         self.max_episode = max_episode
         self.learning_rate = learning_rate
         self.C = C
-        self.N = cfg['N'] if N in cfg else N
+        self.N = cfg['N'] if 'N' in cfg else N
         self.T = T
         self.n_actions = n_actions
         self.action_indices = range(n_actions) # these are the action ids. Corresponding to Q networks output layers

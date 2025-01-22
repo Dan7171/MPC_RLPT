@@ -36,7 +36,7 @@ def print_progress_bar(current, max_steps, bar_length=50,seconds_passed=-1.0):
     if max_steps <= 0:
         raise ValueError("max_steps must be a positive integer.")
     if current < 0 or current > max_steps:
-        raise ValueError("current must be between 0 and max_steps.")
+        raise ValueError(f"current must be between 0 and max_steps. but ,{current} was given and max_steps = {max_steps}")
     
     remaining_ratio = current / max_steps
     remaining_length = int(remaining_ratio * bar_length)
