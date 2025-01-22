@@ -1074,7 +1074,9 @@ def episode_loop(n_episodes, episode_max_sim_ts,cfg,training=True):
             # load model from checkpoint
             if load_checkpoint_model:
                 ep = rlpt_agent.load(torch.load(model_file_path)) # current true episode index to start from
+                
                 color_print(f'episode {ep} loaded')
+                
                 
             # initialize etl if required
             if include_etl and not os.path.exists(etl_file_path):

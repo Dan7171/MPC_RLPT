@@ -5,6 +5,7 @@ source: https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 
 """
 
+import array
 import random
 from collections import namedtuple, deque
 Transition = namedtuple('Transition',
@@ -20,7 +21,8 @@ class ReplayMemory(object):
         object (_type_): _description_
     """
 
-    def __init__(self, capacity, seed=-1):
+    def __init__(self, capacity=100000, seed=-1):
+        self.capacity = capacity
         self.memory = deque([], maxlen=capacity) # lru
         if seed != -1 and type(seed) == int:
             random.seed(seed)
@@ -37,3 +39,16 @@ class ReplayMemory(object):
 
     def __len__(self):
         return len(self.memory)
+    
+    def update_capacity(self, new_capacity) -> None:
+        # if new_capacity == self.memory.capacity:
+        #    return
+        # new_memory = deque([], maxlen=new_capacity)
+        # if new_capacity > self.capacity:
+        #   for transition in self.memory:
+        #       new_memory.append(transition)
+        # else: # new capacity < old capacity
+        #   start_index = self.capacity - new_capacity  
+        #   for i in range(start_index, self.capacity):
+        #       
+        pass
