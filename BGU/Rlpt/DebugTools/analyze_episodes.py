@@ -80,8 +80,8 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)17:29:59/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
-# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -226,22 +226,22 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 # # # %%%%%%%%%%%%% FIGS 7 to 7+"K1"+"K2" (PCA figures of dof states and mpc policy) %%%%%%%%%%%%%%%
 # # ####### TODO - AT THE MOMENT - THE LEGEND REPRESENTS THE FIRST ACTION IN EPISODE ONLY) 
-# df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
-
-# # NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
-# pca3d('st_robot_dofs_positions') 
-# # NEXT "K2" FIGURES: FIGS 7+K1 to 7+K1+K2 PCA over 2 first components in MPC policy (means only, no standard devs) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode)
-# pca3d('st_pi_mppi_means')
+df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
+# NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
+pca3d('st_robot_dofs_positions') 
+# NEXT "K2" FIGURES: FIGS 7+K1 to 7+K1+K2 PCA over 2 first components in MPC policy (means only, no standard devs) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode)
+pca3d('st_pi_mppi_means')
 
 
 # # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%
-fig = plt.figure()
-for i, ng in enumerate(episodes):
-    name, group = ng
-    if i < max_episode:
-        # plt.bar(group.index, group['action_id'])
-        plt.stem(group.index, group['action_id'])
-plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
+if 'action_id' in df.columns:
+    fig = plt.figure()
+    for i, ng in enumerate(episodes):
+        name, group = ng
+        if i < max_episode:
+            # plt.bar(group.index, group['action_id'])
+            plt.stem(group.index, group['action_id'])
+    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
 
 
 ###########

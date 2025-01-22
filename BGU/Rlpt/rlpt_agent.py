@@ -215,19 +215,9 @@ class rlptAgent:
             self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
             self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.train_suit.memory = checkpoint['memory']
-            if len(self.train_suit.memory.memory)  == 100000:
-                print("debug!!!!!!!!!!!!!!")     
-                new_memory = deque([], maxlen=4000000)
-                for item in self.train_suit.memory.memory:
-                    new_memory.append(item)
-                assert(len(self.train_suit.memory.memory) == len(new_memory))
-                print(f'debug len = {len(self.train_suit.memory.memory)}')
-                self.train_suit.memory.memory = new_memory
-                
             episode_idx_to_start_from = checkpoint['episode'] 
             self.train_suit.episode_idx = episode_idx_to_start_from
             self.completed_optimization_steps_cntr = checkpoint['completed_optimization_steps_cntr']
-            # print(f"Current episode was reset to: {episode_idx_to_start_from}")
 
         return episode_idx_to_start_from
     

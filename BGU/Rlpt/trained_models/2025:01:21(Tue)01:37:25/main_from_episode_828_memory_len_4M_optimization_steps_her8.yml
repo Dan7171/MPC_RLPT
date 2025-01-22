@@ -82,7 +82,7 @@ agent:
       include: true # to use the feature 
       strategy: future # (argument name as in paper)
       k: 8 # (argument name as in paper)
-      N: 4 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
+      N: 8 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
 
   testing:
     run: false
