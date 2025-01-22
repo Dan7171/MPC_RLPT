@@ -150,10 +150,11 @@ class trainSuit:
         
         Return the idx of the aciton and the action
         """
-        
+        meta_data = {}
+
+
         all_action_indices:set = set(range(self.n_actions))
         allowed_actions_indices = all_action_indices - indices_to_filter_out
-        meta_data = {}
         action_idx = 0
         # action_idx = self.episode_idx # trick to start new episodes with fixed parameters every time
         picked_q = -1
@@ -172,22 +173,12 @@ class trainSuit:
                 
             with torch.no_grad():
                 Q_all_actions = self.current(state)
+                Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
+                allowed_Q_values_with_idx = [qi for qi in Q_all_actions_with_idx if qi[1] in allowed_actions_indices] # filter out the not allowed actions 
+                max_allowed_q, max_allowed_q_idx = max(allowed_Q_values_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
                 if greedy_choice: # best a (which maximizes current Q)
-                    # t.max(1) will return the largest column value of each row.
-                    # second column on max result is index of where max element was
-                    # found, so we pick action with the larger expected reward.
-                    # action_idx_tensor = self.current(state).max().indices.view(1, 1) # argmax a: Q∗(s_t, a; θ_t)
-                    Q_all_actions_with_idx = [(Q_all_actions[i].item(), i) for i in range(len(Q_all_actions))] # all actions q value with action idx
-                    allowed_Q_values_with_idx = [qi for qi in Q_all_actions_with_idx if qi[1] in allowed_actions_indices] # filter out the not allowed actions 
-                    max_allowed_q, max_allowed_q_idx = max(allowed_Q_values_with_idx, key=lambda t: t[0]) # selecting the maximizing tuple based on the q value 
-                    # action_idx_tensor = torch.argmax(Q_all_actions) # [index]
-                    # action_idx = action_idx_tensor.item() # index
                     action_idx = max_allowed_q_idx
                     picked_q = max_allowed_q
-                    
-                    # print(f'best action q: {torch.max(Q_all_actions)}')
-                    # print(f'arg max q(s,a): {torch.max(Q_all_actions)}, max allowed q(s,a): {max_allowed_q}')
-                    
                 else: # random action (each action has a fair chance to be selected)
                     # action_idx = random.randint(0, self.n_actions -1)
                     action_idx = random.choice(list(allowed_actions_indices)) 
@@ -198,7 +189,9 @@ class trainSuit:
             # print(f'max q(s,a): {torch.max(Q_all_actions):{.3}f})')
             
         action_idx_tensor = torch.tensor([[action_idx]], device=self.device, dtype=torch.long)
-        meta_data['q']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q  
+        meta_data['q(w,st,at)']= picked_q.item() if type(picked_q) == torch.Tensor else picked_q
+        meta_data['q(w,st,all)'] = Q_all_actions # all vals
+        
         if training:
             meta_data['idx'] = action_idx
             meta_data['eps']= self.current_eps

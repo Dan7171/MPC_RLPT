@@ -43,3 +43,23 @@ def print_progress_bar(current, max_steps, bar_length=50,seconds_passed=-1.0):
     bar = "[" + "=" * remaining_length + " " * (bar_length - remaining_length) + "]"
     color_print(f"\r{bar} {current}/{max_steps} steps. Seconds passed: {seconds_passed if seconds_passed != -1 else 'unavailable'}", end="")
 
+
+
+
+
+def goal_test(pos_error, rot_error, goal_test_cfg) -> bool:
+    """ performing goal test based on end effector position and rotation errors.
+
+    Args:
+        pos_error (_type_): _description_
+        rot_error (_type_): _description_
+
+    Returns:
+        bool: _description_
+    """
+    pos_threshold = goal_test_cfg['goal_pos_thresh_dist']
+    rot_threshold = goal_test_cfg['goal_rot_thresh_dist']
+    requirements = goal_test_cfg['requirements']
+    passed_pos_test = 'pos' not in requirements or pos_error < pos_threshold
+    passed_rot_test = 'rot' not in requirements or rot_error < rot_threshold
+    return passed_pos_test and passed_rot_test   

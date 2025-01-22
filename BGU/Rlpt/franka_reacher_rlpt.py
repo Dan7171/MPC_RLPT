@@ -66,7 +66,7 @@ from deepdiff import DeepDiff
 from multiprocessing import Process
 import csv
 from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_2d_tensor, as_1d_tensor
-from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar
+from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar, goal_test
 from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
 
 import psutil
@@ -151,15 +151,6 @@ def reverse_map(map:dict):
     for k,v in map.items():
         ans[v] = k
     return ans
-
-def goal_test(pos_error, rot_error) -> bool:
-    goal_test_cfg = rlpt_cfg['agent']['goal_test']
-    pos_threshold = goal_test_cfg['goal_pos_thresh_dist']
-    rot_threshold = goal_test_cfg['goal_rot_thresh_dist']
-    requirements = goal_test_cfg['requirements']
-    passed_pos_test = 'pos' not in requirements or pos_error < pos_threshold
-    passed_rot_test = 'rot' not in requirements or rot_error < rot_threshold
-    return passed_pos_test and passed_rot_test   
 
 def make_rlpt_actionspace():
     # define rlpt action space
@@ -657,7 +648,7 @@ class MpcRobotInteractive:
             HER_cfg = ep_loop_cfg['HER'] 
             if include_HER := HER_cfg['include']:
                 assert rlpt_cfg['agent']['model']['state_representation']['goal_pose'] # must be used in her
-                HER = HindsightExperienceReplay(HER_cfg)
+                HER = HindsightExperienceReplay(HER_cfg, rlpt_cfg['agent']['goal_test'])
             
             # assuming s0 and g were already sampled before episdoes started (can be also fixed) 
             
@@ -705,12 +696,12 @@ class MpcRobotInteractive:
             if initial_state is None:
                 initial_state = st_tensor
             forbidden_action_indices:set = set() # empty set - all actions are allowed            
-            at_idx, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
+            at_id, at, at_meta_data = rlpt_agent.select_action(st_tensor, forbidden_action_indices)
             
             step_start_time = time.time()    
             for commitment_step_num in range(C):
                 if C > 1:
-                    print(f'debug: ts mdp= {ts}, commitment step= {commitment_step_num}, a={at_idx},ts simulation={ts_sim}')
+                    print(f'debug: ts mdp= {ts}, commitment step= {commitment_step_num}, a={at_id},ts simulation={ts_sim}')
                 # rlpt and mpc planner - make steps
                 self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
                 # rlpt - compute the state you just moved to 
@@ -723,13 +714,13 @@ class MpcRobotInteractive:
                 s_next_pi_mppi_means, s_next_pi_mppi_covs = sniffer.get_current_mppi_policy() 
                 s_next_pi_mppi_means_np = torch_tensor_to_ndarray(s_next_pi_mppi_means)
                 s_next_pi_mppi_covs_np = torch_tensor_to_ndarray(s_next_pi_mppi_covs).flatten() # [1,7] to [7]
-                s_next = rlpt_agent.compose_state_vector(s_next_robot_dof_positions_gym, s_next_robot_dof_vels_gym, goal_ee_pose_gym_np, s_next_pi_mppi_means_np, s_next_pi_mppi_covs_np,at_idx) # converting the state to a form that agent would feel comfortable with
+                s_next = rlpt_agent.compose_state_vector(s_next_robot_dof_positions_gym, s_next_robot_dof_vels_gym, goal_ee_pose_gym_np, s_next_pi_mppi_means_np, s_next_pi_mppi_covs_np,at_id) # converting the state to a form that agent would feel comfortable with
                 
                 # rlpt - check if terminal state was reached 
                 s_next_ee_pos_error = pos_error(s_next_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
                 s_next_ee_rot_error = rot_error(s_next_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
                 s_next_contact_detected = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
-                s_next_is_goal_state = goal_test(s_next_ee_pos_error, s_next_ee_rot_error)
+                s_next_is_goal_state = goal_test(s_next_ee_pos_error, s_next_ee_rot_error, rlpt_cfg['agent']['goal_test'])
                 terminated = s_next_is_goal_state or s_next_contact_detected # reached a terminal state (of environment)
                 ts_sim += 1                
                 
@@ -746,16 +737,16 @@ class MpcRobotInteractive:
             optim_meta_data = {}
             if training:
                 #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
-                at_idx_tensor = as_2d_tensor([at_idx], dtype=torch.int64) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
+                at_id_tensor = as_2d_tensor([at_id], dtype=torch.int64) # torch.tensor([at_id], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 st_tensor = as_2d_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
                 s_next_tensor = as_2d_tensor(s_next) if not terminated else None # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
                 rt_tensor = as_1d_tensor([rt])
                 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
-                rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)            
+                rlpt_agent.train_suit.memory.push(st_tensor, at_id_tensor, s_next_tensor, rt_tensor)            
                 
                 if include_HER:
-                    HER.add_transition((st_tensor, at_idx_tensor, s_next_tensor), 
+                    HER.add_transition((st_tensor, at_id_tensor, s_next_tensor), 
                                        {'s_next_contact_detected':s_next_contact_detected, 
                                         'step_duration':step_duration,
                                         's_next_ee_pose_gym':s_next_ee_pose_gym,
@@ -767,7 +758,7 @@ class MpcRobotInteractive:
             
             # log to etl
             if include_etl:             
-                rlpt_agent.update_etl(st, at_idx,rt,ep_num,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, s_next_is_goal_state)
+                rlpt_agent.update_etl(st, at_id,rt,ep_num,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, s_next_is_goal_state)
             
                 
             # escape collision if necessary (change pose until no contact)

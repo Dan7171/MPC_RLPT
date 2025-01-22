@@ -124,7 +124,7 @@ class rlptAgent:
             at_titles_shared_features = self.shared_action_features.keys()
         at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
         st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
-        col_names = ['ep', 't', 'q(w,st,at)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
+        col_names = ['ep', 't','q(w,st,all)','q(w,st,at)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
         if self.training_mode:
             col_names.extend(['at_epsilon','rand_at', 'optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss'])
         with open(etl_file_path, mode='a', newline='') as file:
@@ -133,18 +133,18 @@ class rlptAgent:
         print(f'new etl file was initialized: {etl_file_path}')    
         
     
-    def update_etl(self, st, at_idx,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_reached):
+    def update_etl(self, st, action_id,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_reached):
         
         st_parsed:list = list(self.parse_st(st).values()) 
         at_unique_features = []
         if len(self.unique_action_features_by_idx):
-            at_unique_features = list(self.unique_action_features_by_idx[at_idx].values())
+            at_unique_features = list(self.unique_action_features_by_idx[action_id].values())
         at_shared_features = []
         if len(self.shared_action_features):
             at_shared_features = list(self.shared_action_features.values())
         st_at = st_parsed + at_unique_features + at_shared_features                
         
-        new_row = [ep_num, ts, at_meta_data['q'], at_idx, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
+        new_row = [ep_num, ts, at_meta_data['q(w,st,all)'], at_meta_data['q(w,st,at)'], action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
         
              
         

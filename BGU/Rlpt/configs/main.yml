@@ -71,7 +71,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 1500
-    max_ts: 800
+    max_ts: 80
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
