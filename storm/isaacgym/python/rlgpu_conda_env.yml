@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.8 # dan python=3.7
+  - python=3.8 # python=3.8 # dan python=3.7 (gym not supported with >= 3.9)
   - pytorch=1.8.1
   - torchvision=0.9.1
   - cudatoolkit=11.1

@@ -14,8 +14,7 @@ from typing import Callable, Collection, Iterable, List, Tuple, Union
 import typing
 from click import BadArgumentUsage
 from colorlog import root
-from cv2 import norm
-# from examples_rlpt.dan.franka_reacher_dan import goal_test
+# from cv2 import norm
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
@@ -70,7 +69,6 @@ from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_2d_tensor
 from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar
 from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
 
-import GPUtil
 import psutil
 import os
 import signal
