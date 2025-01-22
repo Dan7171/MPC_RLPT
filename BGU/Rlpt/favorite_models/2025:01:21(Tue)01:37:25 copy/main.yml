@@ -48,7 +48,7 @@ agent:
     eps_decay: true
     default_eps: 0.01
     grad_clipping: false
-    N: 100000 # replay buffer size 
+    N: 1000000 # replay buffer size 
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation thresold of position part in goal state reward (distance in meters).  TODO: when working with poser reward, I think it'd be better to make it larger. 

@@ -48,7 +48,7 @@ agent:
     eps_decay: true
     default_eps: 0.01
     grad_clipping: false
-    N: 1000000 # replay buffer size 
+    N: 4000000 # replay buffer size 
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation thresold of position part in goal state reward (distance in meters).  TODO: when working with poser reward, I think it'd be better to make it larger. 
@@ -75,14 +75,14 @@ agent:
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: true # when true must use external script (franka_reacher_rlpt_runner.py)
+    reset_to_initial_state_every_episode: false # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
     HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
       include: true # to use the feature 
       strategy: future # (argument name as in paper)
       k: 8 # (argument name as in paper)
-      N: 4 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
+      N: 8 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
 
   testing:
     run: false
