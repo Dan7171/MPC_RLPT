@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 from tomlkit import item
 
 
-def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
+def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
     
     ndim_var_parsed_df = df[ndim_variable_name].apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
     ndim_var_parsed_n = np.stack(ndim_var_parsed_df.to_numpy())
@@ -24,6 +24,7 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
     for _,group in episodes:
         if groupnum % max_episodes_in_on_figure == 0:
             fig = plt.figure()
+            fig.subplots_adjust(left=-0.3, right=0.75)  # Adjust subplot to move axes to the left
             ax = plt.axes(projection ='3d')
             figs.append(fig)
             axs.append(ax)
@@ -36,15 +37,25 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
         for k, n_unique in df_varying_actions.items():
             label.append(group[k][group.index[0]])
         
-        axs[-1].scatter(df_group['x'],df_group['y'],z, alpha=0.5 ,s=10, linewidths=0.1,label=f'episode {groupnum}: {str(label)}')         
+        # axs[-1].scatter(df_group['x'],df_group['y'],z, alpha=0.5 ,s=10, linewidths=0.1,label=f'episode {groupnum}: {str(label)}')         
+        ax.plot(df_group['x'].values, df_group['y'].values, z.values, alpha=0.5,label=f'episode {groupnum}: {str(label)}') # simple blue line
         
+
         if groupnum % (max_episodes_in_on_figure - 1)  == 0: #  == 0 or groupnum == len(episodes)-1:
             
-            axs[-1].legend(title=str(list(df_varying_actions.keys())),fontsize='x-small') # axs[-1].legend(fontsize='x-small',title=str(list(df_varying_actions.keys())))
+            # axs[-1].legend(title=str(list(df_varying_actions.keys())),fontsize='x-small') # axs[-1].legend(fontsize='x-small',title=str(list(df_varying_actions.keys())))
+            axs[-1].legend(
+                # title=str(list(df_varying_actions.keys())),
+                title=str(action_features_for_legend),
+                fontsize='x-small',
+                loc='upper left',  # Adjust location
+                bbox_to_anchor= (1, 1),# (0.8, 1., 0.5, 0.5),# (1.05, 1),  # Move it outside the axes
+                ncol=2  # Split into columns if still too wide
+            )
             axs[-1].set_xlabel(f"x = {ndim_variable_name} PC1")
             axs[-1].set_ylabel(f"y = {ndim_variable_name} PC2")
-            axs[-1].set_title('z = time step (t)')
-            figs[-1].tight_layout()
+            # ax.set_title(f'action legend: {str(list(df_varying_actions.keys()))}\n(z = time step (t))')
+
 
 
         groupnum += 1
@@ -80,8 +91,8 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=8):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)17:29:59/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
-# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -95,7 +106,7 @@ print(df.nunique())
 df_nunique = df.nunique().to_dict()
 # df['rt'].value_counts()
 
-max_episode = 10
+max_episode = 1400
 episodes = df.groupby('ep')
 base_color = 'orange'
 
@@ -226,11 +237,12 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 # # # %%%%%%%%%%%%% FIGS 7 to 7+"K1"+"K2" (PCA figures of dof states and mpc policy) %%%%%%%%%%%%%%%
 # # ####### TODO - AT THE MOMENT - THE LEGEND REPRESENTS THE FIRST ACTION IN EPISODE ONLY) 
-df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
-# NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
-pca3d('st_robot_dofs_positions') 
-# NEXT "K2" FIGURES: FIGS 7+K1 to 7+K1+K2 PCA over 2 first components in MPC policy (means only, no standard devs) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode)
-pca3d('st_pi_mppi_means')
+# df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
+# action_features_for_legend = [k[3:] for k in  df_varying_actions.keys()]
+# # NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
+# pca3d('st_robot_dofs_positions') 
+# # NEXT "K2" FIGURES: FIGS 7+K1 to 7+K1+K2 PCA over 2 first components in MPC policy (means only, no standard devs) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode)
+# pca3d('st_pi_mppi_means')
 
 
 # # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%

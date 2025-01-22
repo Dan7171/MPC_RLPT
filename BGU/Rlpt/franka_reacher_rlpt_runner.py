@@ -36,7 +36,7 @@ if __name__ == '__main__':
         n_episodes = agent_cfg['testing']['n_episodes']
     
     # copy the config file of current run to the model dir
-
+    
     
     for ep in range(ep_start, n_episodes):
         color_print(f'EXTERNAL RUNNER: episode: {ep} starts...', back_color='blue')        

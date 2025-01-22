@@ -735,7 +735,7 @@ class MpcRobotInteractive:
                 
                 if terminated:
                     break
-                
+            
             # rlpt - compute reward (r(t)) 
             step_duration = time.time() - step_start_time # time it took to move from st to st+1
             # Get the reward and check if the episode is over by reaching a terminal state
@@ -748,7 +748,7 @@ class MpcRobotInteractive:
                 #https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/ , https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work
                 at_idx_tensor = as_2d_tensor([at_idx], dtype=torch.int64) # torch.tensor([at_idx], device="cuda", dtype=torch.int64).unsqueeze(0) # sinnce the action as the DQN knows it is just the index j representing a Oj where O is the output layer of the DQN
                 st_tensor = as_2d_tensor(st)# torch.tensor(st, device="cuda", dtype=torch.float64).unsqueeze(0)
-                s_next_tensor = as_2d_tensor(s_next) # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
+                s_next_tensor = as_2d_tensor(s_next) if not terminated else None # torch.tensor(s_next, device="cuda", dtype=torch.float64).unsqueeze(0) if not terminated else None # "st+1 == None" will be reffered as Q(st+1,a*) = 0 at the update step towards target
                 rt_tensor = as_1d_tensor([rt])
                 
                 # rlpt- store transition (s(t), a(t), s(t+1), r(t)) in replay memory D (data). This is like the "labeled iid train set" for the Q network 
