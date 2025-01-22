@@ -95,16 +95,17 @@ print(df.nunique())
 df_nunique = df.nunique().to_dict()
 # df['rt'].value_counts()
 
-max_episode = 1500
+max_episode = 10
 episodes = df.groupby('ep')
-# %%%%%%%%%%%%% FIG 1 %%%%%%%%%%%%%%%
-
 base_color = 'orange'
 
 # GROUPED BY EPISODES (FOR COLOR SEPARATION)
-for i, ng in enumerate(episodes):
-    name, group = ng
+for i, ng in enumerate(episodes): 
+    name, group = ng # debug to see group lengths (episode lengths)
     print(f'{i}, {len(group)}')
+
+# %%%%%%%%%%%%% FIG 1 %%%%%%%%%%%%%%%
+
 
 
 # FIG 1: Q values  
@@ -223,8 +224,8 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 
 
-# # %%%%%%%%%%%%% FIGS 7 to 7+"K1"+"K2" (PCA figures of dof states and mpc policy) %%%%%%%%%%%%%%%
-# ####### TODO - AT THE MOMENT - THE LEGEND REPRESENTS THE FIRST ACTION IN EPISODE ONLY) 
+# # # %%%%%%%%%%%%% FIGS 7 to 7+"K1"+"K2" (PCA figures of dof states and mpc policy) %%%%%%%%%%%%%%%
+# # ####### TODO - AT THE MOMENT - THE LEGEND REPRESENTS THE FIRST ACTION IN EPISODE ONLY) 
 # df_varying_actions = {k:df_nunique[k] for k in df_nunique if (k.startswith('at_') and (not k.startswith('at_dur')) and df_nunique[k] > 1) }
 
 # # NEXT "K1" FIGURES: FIGS 7 to 7+K1 (K1 determined dinamically based on num of episodes): PCA over 2 first components in st_robot_dofs_positions (robot joints state) at time t, each figure represents a subset of episoides, x = first pca, y = second pca, z = time step, (color = episode) 
@@ -233,6 +234,14 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 # pca3d('st_pi_mppi_means')
 
 
+# # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%
+fig = plt.figure()
+for i, ng in enumerate(episodes):
+    name, group = ng
+    if i < max_episode:
+        # plt.bar(group.index, group['action_id'])
+        plt.stem(group.index, group['action_id'])
+plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
 
 
 ###########
@@ -245,3 +254,4 @@ plt.show()
 # x = np.arange(len(y))
 # plt.plot(x,y)
 # plt.show()
+ 
