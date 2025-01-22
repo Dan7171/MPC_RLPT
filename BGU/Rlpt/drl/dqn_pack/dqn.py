@@ -17,8 +17,10 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
         self.layer1 = nn.Linear(state_dim, 128)
         self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, 256)
-        self.layer4 = nn.Linear(256, n_actions)
+        self.layer3 = nn.Linear(128, 128)
+        self.layer4 = nn.Linear(128, 128)
+        self.layer5 = nn.Linear(128, 128)
+        self.layer6 = nn.Linear(128, n_actions)
         # self.max_padded_dim = max(max_padded_dim, state_dim)
         
     # Called with either one element to determine next action, or a batch
@@ -27,7 +29,9 @@ class DQN(nn.Module):
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
         x = F.relu(self.layer3(x))
-        return self.layer4(x)
+        x = F.relu(self.layer4(x))
+        x = F.relu(self.layer5(x))
+        return self.layer6(x)
     
     
     def pad_input(self, input_tensor):
@@ -36,16 +40,3 @@ class DQN(nn.Module):
         padded_tensor[0, :input_tensor.shape[1]] = input_tensor # zeros on the right
         return padded_tensor
 
-# # Example with padding
-# max_length = 100  # Largest input size
-# model = nn.Sequential(
-#     nn.Linear(max_length, 128),
-#     nn.ReLU(),
-#     nn.Linear(128, output_dim)
-# )
-
-# for input_dim in [30, 60, 100]:
-#     input_tensor = torch.randn(1, input_dim)
-#     padded_input = pad_input(input_tensor, max_length)
-#     output = model(padded_input)
-#     print(f"Output shape for padded input size {input_dim}: {output.shape}")
