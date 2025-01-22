@@ -1,7 +1,7 @@
 agent:
   model: # The Neural network 
-    load_checkpoint: true
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:21(Tue)01:37:25/model.pth' # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
+    load_checkpoint: false
+    checkpoint_path:  # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 

@@ -755,7 +755,12 @@ class MpcRobotInteractive:
                 rlpt_agent.train_suit.memory.push(st_tensor, at_idx_tensor, s_next_tensor, rt_tensor)            
                 
                 if include_HER:
-                    HER.add_transition((st_tensor, at_idx_tensor, s_next_tensor), {'s_next_contact_detected':s_next_contact_detected, 'step_duration':step_duration,'s_next_ee_pose_gym':s_next_ee_pose_gym}) # save all transitions of episode 
+                    HER.add_transition((st_tensor, at_idx_tensor, s_next_tensor), 
+                                       {'s_next_contact_detected':s_next_contact_detected, 
+                                        'step_duration':step_duration,
+                                        's_next_ee_pose_gym':s_next_ee_pose_gym,
+                                        }) # save all transitions of episode 
+                
                 else: # standard DQN/DDQN training       
                     # rlpt- perform optimization (gradient) step
                     optim_meta_data = rlpt_agent.optimize()
@@ -781,7 +786,7 @@ class MpcRobotInteractive:
             prev_at = at
             
             if not args.external_run or (ts_sim%(episode_max_sim_ts/10) == 0):
-                print_progress_bar(ts_sim, episode_max_sim_ts, seconds_passed=time.time()-episode_start_time)
+                print_progress_bar(ts_sim, episode_max_sim_ts, seconds_passed=time.time() - episode_start_time)
                 
         
         if include_HER:
