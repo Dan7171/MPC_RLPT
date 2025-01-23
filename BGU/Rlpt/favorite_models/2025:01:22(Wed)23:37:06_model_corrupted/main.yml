@@ -1,7 +1,7 @@
 agent:
   model: # The Neural network 
-    load_checkpoint: true
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:21(Tue)01:37:25/model.pth' # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
+    load_checkpoint: false
+    checkpoint_path:  # 'BGU/Rlpt/trained_models/2025:01:20(Mon)22:12:31/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -20,8 +20,8 @@ agent:
       zero_vel: [0.0]
       zero_acc: [0.0]
       joint_l2: [0.0]
-      robot_self_collision: [100, 1000] # [100, 1000] # weight of penalty for reaching too close to own parts (penalty weight)
-      primitive_collision:  [100, 1000] # [100, 1000] # weight of penalty for reaching too close to obstacles in env (penalty weight)
+      robot_self_collision: [100, 2000] # [100, 1000] # weight of penalty for reaching too close to own parts (penalty weight)
+      primitive_collision:  [100, 2000] # [100, 1000] # weight of penalty for reaching too close to obstacles in env (penalty weight)
       voxel_collision: [0.0]
       null_space: [1.0]
       manipulability: [30]
@@ -33,7 +33,7 @@ agent:
 
     mppi_space:
       horizon: [30] # [30] # horizon length. warning: linearly increasing runtime.
-      particles: [500,1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
+      particles: [500] # [500, 1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
       n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
     
     
@@ -44,11 +44,11 @@ agent:
 
   train_suit:
     gamma: 0.999
-    batch_size: 128  
+    batch_size: 256  
     eps_decay: true
     default_eps: 0.01
     grad_clipping: false
-    N: 4000000 # replay buffer size 
+    N: 10000000 # replay buffer size 
 
   reward:
     goal_pos_thresh_dist: 0.01 # activation thresold of position part in goal state reward (distance in meters).  TODO: when working with poser reward, I think it'd be better to make it larger. 
@@ -71,7 +71,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 1500
-    max_ts: 800
+    max_ts: 1000
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
@@ -82,7 +82,7 @@ agent:
       include: true # to use the feature 
       strategy: future # (argument name as in paper)
       k: 8 # (argument name as in paper)
-      N: 8 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
+      N: 32 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
 
   testing:
     run: false
@@ -101,9 +101,9 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: true # dont show gui at all, speedup training by 10%
+  headless: false # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
-  render_trajectory_lines: false # render trajectory lines of mpc rollouts
+  render_trajectory_lines: true # render trajectory lines of mpc rollouts
 
 episode_plots:
   show: true 

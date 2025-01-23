@@ -263,6 +263,7 @@ class trainSuit:
         
         
         if total_optimization_steps_cntr % self.C == 0: # Every C steps update the Q network of targets to be as the frequently updating Q network of policy Q^ ← Q
+            print(f'debug: changing target net, reached {total_optimization_steps_cntr} steps')
             self.target.load_state_dict(self.current.state_dict())
         
         

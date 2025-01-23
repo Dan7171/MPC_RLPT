@@ -92,7 +92,9 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:08:00/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:10(Fri)20:29:59/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -252,7 +254,10 @@ if 'action_id' in df.columns:
         name, group = ng
         if i < max_episode:
             # plt.bar(group.index, group['action_id'])
-            plt.stem(group.index, group['action_id'])
+            # plt.stem(group.index, group['action_id'])
+            # plt.plot(group['action_id'], linewidth=0.1)
+            # plt.bar(group.index, group['action_id'],linewidth=0.1)
+            plt.bar(group['action_id'])
     plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
 
 

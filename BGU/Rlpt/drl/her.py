@@ -88,14 +88,15 @@ class HindsightExperienceReplay: # HER
                 
                 # compute new r(t) (with new goal pose "g-tag")
                 r_tag = self._compute_rt_wrt_new_goal(rlpt_agent, transition_info['step_duration'], transition_info['s_next_contact_detected'], s_next_ee_pos_error_wrt_new_goal, s_next_ee_rot_error_wrt_new_goal ) 
-                if t < 10:
-                    print(f'debug goal:{i}: \n snext/gtag errors: {s_next_ee_pos_error_wrt_new_goal}, {s_next_ee_rot_error_wrt_new_goal}. Terminal: {s_next_is_terminal_wrt_new_goal}, contact-termination: {transition_info["s_next_contact_detected"]}, r-tag = {r_tag}')
+                if t < 10 or t>T-10:
+                    print(f'debug goal:{t},{i}: \n snext/gtag errors: {s_next_ee_pos_error_wrt_new_goal}, {s_next_ee_rot_error_wrt_new_goal}. Terminal: {s_next_is_terminal_wrt_new_goal}, contact-termination: {transition_info["s_next_contact_detected"]}, r-tag = {r_tag}')
 
                 # push r(t) to
                 rlpt_agent.train_suit.memory.push(st_with_g_tag, at_idx_tensor, s_next_with_g_tag, as_1d_tensor([r_tag])) 
-                
+        # print(f'debug: making {N} optimization steps')      
         for t in range(N):
-            optim_meta_data = rlpt_agent.optimize() # TODO: Should make the C of fixed targets update support HER too 
-            print('debug: optim meta data of HER updates')
-            print(optim_meta_data)
+            optim_meta_data = rlpt_agent.optimize() 
+            if t == N-1:
+              print(f'debug: optim meta data of HER updates- last optim step {N}/{N} only')
+              print(optim_meta_data)
         return optim_meta_data
