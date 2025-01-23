@@ -1,10 +1,28 @@
 from cProfile import label
+import matplotlib
+# matplotlib.use('Agg')  # Use a non-interactive backend
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from tomlkit import item
 
+# "[-0.0340, -0.1148,  0.0282,  0.0251,  0.0971,  0.0627,  0.0481,  0.0024,\n        -0.0610,  0.0389, -0.0970,  0.0343,  0.0462, -0.0405,  0.1165, -0.0322],\n       device='cuda:0')"
+def parse_str_tensor_to_nparray_1d(df, ndim_variable_name):
+    # ndim_var_parsed_df = df[ndim_variable_name]
+    # parsed_series = df[ndim_variable_name].str.removeprefix('tensor(')
+    # ndim_var_parsed_df = parsed_series.apply(lambda x: np.fromstring(x.strip("[]"), sep=" "))
+    # ndim_var_parsed_ndarray = np.stack(ndim_var_parsed_df.to_numpy())
+    tensor_str = df[ndim_variable_name]
+    tensor_str = tensor_str.str.removeprefix('tensor(')
+    tensor_str = tensor_str.apply(lambda x: x.splitlines()) # remove \n and turn into a list in length 3
+    tensor_str = tensor_str.apply(lambda x: "".join(x))
+    tensor_str = tensor_str.apply(lambda x: x.replace(" ",""))
+    tensor_str = tensor_str.apply(lambda x: x.replace(",device='cuda:0')",""))
+    tensor_str = tensor_str.apply(lambda x: np.array(eval(x))) # a series frame of np arrays (each np array is flattened tensor)
+    matrix = np.vstack(tensor_str) # matrix insted of series (for example- row = time step t, cols = q vals at s(t)) 
+    return matrix
 
 def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
     
@@ -94,7 +112,7 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -248,17 +266,29 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 
 
 # # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%
-if 'action_id' in df.columns:
+# if 'action_id' in df.columns:
+#     fig = plt.figure()
+#     for i, ng in enumerate(episodes):
+#         name, group = ng
+#         if i < max_episode:
+#             # plt.bar(group.index, group['action_id'])
+#             # plt.stem(group.index, group['action_id'])
+#             # plt.plot(group['action_id'], linewidth=0.1)
+#             # plt.bar(group.index, group['action_id'],linewidth=0.1)
+#             plt.bar(group.index,group['action_id'])
+#     plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
+
+
+# # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 2 - Q* at each state  %%%%%%%%%%%%%%%
+
+if 'q(w,st,all)' in df.columns:
+    q_all = parse_str_tensor_to_nparray_1d(df,'q(w,st,all)')
     fig = plt.figure()
     for i, ng in enumerate(episodes):
         name, group = ng
         if i < max_episode:
-            # plt.bar(group.index, group['action_id'])
-            # plt.stem(group.index, group['action_id'])
-            # plt.plot(group['action_id'], linewidth=0.1)
-            # plt.bar(group.index, group['action_id'],linewidth=0.1)
-            plt.bar(group['action_id'])
-    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
+            plt.plot(group.index, np.max(q_all[group.index],axis=1))
+    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = q*(w,st) x = time step (t)')
 
 
 ###########
