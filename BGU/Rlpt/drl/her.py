@@ -95,6 +95,7 @@ class HindsightExperienceReplay: # HER
                 rlpt_agent.train_suit.memory.push(st_with_g_tag, at_idx_tensor, s_next_with_g_tag, as_1d_tensor([r_tag])) 
         # print(f'debug: making {N} optimization steps')      
         for t in range(N):
+            # print(f'debug: in optimization step: {t}')
             optim_meta_data = rlpt_agent.optimize() 
             if t == N-1:
               print(f'debug: optim meta data of HER updates- last optim step {N}/{N} only')

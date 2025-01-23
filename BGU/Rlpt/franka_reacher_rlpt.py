@@ -1069,6 +1069,7 @@ def episode_loop(n_episodes, episode_max_sim_ts,cfg,training=True):
 
             # load model from checkpoint
             if load_checkpoint_model:
+                color_print(f'loading checkpoint model...')
                 ep = rlpt_agent.load(torch.load(model_file_path)) # current true episode index to start from
                 color_print(f'episode {ep} loaded')
                 
@@ -1086,9 +1087,10 @@ def episode_loop(n_episodes, episode_max_sim_ts,cfg,training=True):
             raise KeyboardInterrupt() 
         ep += 1 # update index of the next episode to start from 
         rlpt_agent.set_episode(ep) 
+        color_print(f'debug saving model...')
         if training:
             rlpt_agent.save(ep, model_file_path)           
-    
+
  
 
 

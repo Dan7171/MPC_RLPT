@@ -113,7 +113,8 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)

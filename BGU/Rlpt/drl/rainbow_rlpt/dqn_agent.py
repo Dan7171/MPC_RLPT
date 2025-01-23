@@ -14,9 +14,9 @@ from Rlpt.drl.rainbow_rlpt.network import Network
 from Rlpt.drl.rainbow_rlpt.prioritized_replay_buffer import PrioritizedReplayBuffer
 from Rlpt.drl.rainbow_rlpt.replay_buffer import ReplayBuffer
 from segment_tree import MinSegmentTree, SumSegmentTree
+from rlpt_agent_base import rlptAgent
 
-
-class DQNAgent:
+class DQNAgent(rlptAgentBase):
     """DQN Agent interacting with environment.
     
     Attribute:
@@ -135,26 +135,34 @@ class DQNAgent:
         # mode: train / test
         self.is_test = False
 
-    def select_action(self, state: np.ndarray) -> np.ndarray:
+    def _select_action(self,st:torch.Tensor, *args, **kwargs)->tuple[int,dict]:
         """Select an action from the input state."""
         # NoisyNet: no epsilon greedy action selection
-        selected_action = self.dqn(
-            torch.FloatTensor(state).to(self.device)
-        ).argmax()
-        selected_action = selected_action.detach().cpu().numpy()
+        at_meta_data = {'eps':None, 'is_random': None } # due to the usage in noisy net
+        selected_action_idx = self.dqn(
+            # torch.FloatTensor(st).to(self.device)
+            st.to(self.device)
+        ).argmax() # index of maximizing action
+        selected_action_idx = selected_action_idx.detach().cpu().numpy() 
         
         if not self.is_test:
-            self.transition = [state, selected_action]
+            self.transition = [st, selected_action_idx]
         
-        return selected_action
+        # return selected_action index and its meta data
+        return int(selected_action_idx), at_meta_data # turns an np array of 1 item to its val (an integer)
+    
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
         """Take an action and return the response of the env."""
         next_state, reward, terminated, truncated, _ = self.env.step(action)
-        done = terminated or truncated
-        
+        done = terminated or truncated    
+        self.store_transition(next_state, reward, done)
+        return next_state, reward, done
+    
+    def store_transition(self, next_state, reward, terminated):
+        """Was seperated from step so it will be easy to use it from mpc rlpt"""
         if not self.is_test:
-            self.transition += [reward, next_state, done]
+            self.transition += [reward, next_state, terminated]
             
             # N-step transition
             if self.use_n_step:
@@ -167,7 +175,6 @@ class DQNAgent:
             if one_step_transition:
                 self.memory.store(*one_step_transition)
     
-        return next_state, reward, done
 
     def update_model(self) -> torch.Tensor:
         """Update the model by gradient descent."""
@@ -211,6 +218,18 @@ class DQNAgent:
         self.dqn_target.reset_noise()
 
         return loss.item()
+    
+    def _update_beta(self, training_steps_passed, traning_steps_limit):
+        fraction = min(training_steps_passed / traning_steps_limit, 1.0)
+        self.beta = self.beta + fraction * (1.0 - self.beta)
+ 
+    def post_step_ops(self,*args, **kwargs):
+        
+        training_steps_passed: int = kwargs['current_episode_index'] * kwargs['max_ts_in_episode'] + kwargs['current_ts'] 
+        traning_steps_limit: int = kwargs['max_episode_index'] * kwargs['max_ts_in_episode']
+        self._update_beta(training_steps_passed, traning_steps_limit)
+        
+        
         
     def train(self, num_frames: int, plotting_interval: int = 200):
         """Train the agent."""

@@ -28,7 +28,7 @@ random.seed(seed)
 seed_torch(seed)
 
 # parameters
-num_frames = 1000 # 10000
+num_frames = 1000 # 10000 TOTAL TRAINING STEPS (OVER ALL EPISODES)
 memory_size = 10000
 batch_size = 128
 target_update = 100

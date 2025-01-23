@@ -1,10 +1,11 @@
+from abc import abstractmethod
 from collections import deque
 import copy
 import csv
 from importlib import metadata
 from os import access
 from turtle import position
-from typing import Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Set, Tuple, Union
 from click import BadArgumentUsage
 from networkx import union
 from storm_kit.mpc import task
@@ -26,8 +27,8 @@ def _merge_dict(original, update):
     new.update(update)
     return new
     
-class rlptAgent:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, max_episode, episode_idx, training_mode=True):
+class rlptAgentBase:       
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, training_mode=True):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -39,11 +40,7 @@ class rlptAgent:
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
         """
         
-        # self.base_pos_gym_s0 = base_pos_gym
-        # self.participating_storm:dict = participating_storm # initial states of participating collision objects. 
-        # self.not_participating_storm:dict = not_participating_storm # initial states of collision objects which are not participating (). 
         self.completed_optimization_steps_cntr = 0
-        
         self.training_mode = training_mode
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
@@ -102,7 +99,6 @@ class rlptAgent:
         
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
         self.st_legend = self.get_states_legend() # readable shape of the state 
-        # self.train_suit = trainSuit(self.st_dim , len(action_space),episode_idx=episode_idx, max_episode=max_episode) # bulding the DQN (state dim is input dim,len action space is  output dim)
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         
         self.tuning_enabled = rlpt_cfg['agent']['action_space']['tuning_enabled'] if 'tuning_enabled' in rlpt_cfg['agent']['action_space'] else True 
@@ -119,7 +115,7 @@ class rlptAgent:
             at_titles_shared_features = self.shared_action_features.keys()
         at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
         st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
-        col_names = ['ep', 't','q(w,st,all)','q(w,st,at)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
+        col_names = ['ep', 't','q(w,st,all)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
         if self.training_mode:
             col_names.extend(['at_epsilon','rand_at', 'optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss'])
         with open(etl_file_path, mode='a', newline='') as file:
@@ -139,7 +135,7 @@ class rlptAgent:
             at_shared_features = list(self.shared_action_features.values())
         st_at = st_parsed + at_unique_features + at_shared_features                
         
-        new_row = [ep_num, ts, at_meta_data['q(w,st,all)'], at_meta_data['q(w,st,at)'], action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
+        new_row = [ep_num, ts, at_meta_data['q(w,st,all)'], action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
         
              
         
@@ -183,60 +179,82 @@ class rlptAgent:
                 print('skipped mppi policy printing')
                 continue
             print(f'{item_name}: {item_st}')
-            
-    # def select_action(self, st:torch.Tensor,forbidden_action_indices):
-    #     """Given state s(t) return action a(t) and its index.
-    #     If training: select epsilon greedy. Else: select greedy action.
+    
+    @abstractmethod 
+    def _select_action(self,st:torch.Tensor, *args, **kwargs)->tuple[int,dict]:
+        """agent action selection - for implementention"""
+        pass
+    
+    def select_action(self,st:torch.Tensor, *args, **kwargs):
+        """
+        Given state s(t) return action a(t) and its index.
+        If training: select epsilon greedy. Else: select greedy action.
         
-    #     Args:
-    #         st (torch.Tensor): s(t)
+        Args:
+            st (torch.Tensor): s(t)
 
-    #     Returns:
-    #         _type_: _description_
-    #     """
-    #     action_idx_tensor: torch.Tensor
-    #     action_idx:int
-    #     action_idx_tensor, meta_data = self.train_suit.select_action_idx(st, forbidden_action_indices, self.training_mode, self.tuning_enabled)
-    #     action_idx = int(action_idx_tensor.item()) # action's index
-    #     return action_idx, self.action_space[action_idx], meta_data # the action itself 
-    
-    def load(self, checkpoint):
-        
-    
-        self.train_suit.current.load_state_dict(checkpoint['current_state_dict'])
-        
-        if self.training_mode:
-            self.train_suit.target.load_state_dict(checkpoint['target_state_dict'])
-            self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.train_suit.memory = checkpoint['memory']
-            episode_idx_to_start_from = checkpoint['episode'] 
-            self.train_suit.episode_idx = episode_idx_to_start_from
-            self.completed_optimization_steps_cntr = checkpoint['completed_optimization_steps_cntr']
-
-        return episode_idx_to_start_from
-    
-    def save(self, ep, model_file_path):
-        # save model with relevant info to start the next episode
-        torch.save({
-            'current_state_dict': self.train_suit.current.state_dict(), # Q network
-            'target_state_dict': self.train_suit.target.state_dict(), # Targets network
-            'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
-            'memory':self.train_suit.memory,
-            'episode': ep,  
-            'completed_optimization_steps_cntr': self.completed_optimization_steps_cntr,
+        Returns:
             
-        }, model_file_path)
+        """
+        ans = self._select_action(st, *args, **kwargs)
+        action_idx:int = ans[0]
+        action: Any = self.action_space[action_idx]
+        meta_data:dict = ans[1]
+        return action_idx, action, meta_data 
+    
+    @abstractmethod
+    def _load(self, checkpoint:dict) -> None:
+        pass 
+    
+    def load(self, checkpoint_path:str) -> Any:
         
-    def optimize(self):
-        ans = self.train_suit.optimize(self.completed_optimization_steps_cntr)
+        """ loading contents from checkpoint model, to "hot start" from a pre trained model.
+        Returns:
+            _type_: _description_
+        """
+        
+        checkpoint = torch.load(checkpoint_path)
+        assert 'episode' in  checkpoint and checkpoint['episode'] >= 0, "checkpoint model must contain the episode index to start from (the number of completed episodes it was trained on)"
+        self._load(checkpoint)        
+        return checkpoint 
+    
+    @abstractmethod
+    def _make_model_to_save(self)->dict:
+        """
+        making a dict with the model items to save. Example:
+        {
+        'current_state_dict': self.train_suit.current.state_dict(), # Q network
+        'target_state_dict': self.train_suit.target.state_dict(), # Targets network
+        'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
+        'memory':self.train_suit.memory,
+        'episode': ep,  
+        'completed_optimization_steps_cntr': self.completed_optimization_steps_cntr
+        }   
+        """
+        
+    def save(self,model_file_path):
+        """ saves model with relevant info to start the next episode""" 
+    
+        torch.save(self._make_model_to_save(self),model_file_path)
+    
+        
+    @abstractmethod    
+    def _optimize(self, *args, **kwargs) -> dict:
+        """optimization function of agent, to update network weights.
+        Returns optimization meta data
+        
+        for example:
+        self.train_suit.optimize(self.completed_optimization_steps_cntr)"""
+        
+    def optimize(self,*args, **kwargs) -> dict:
+        """a wrapper for the per-agent-implemented optimization step.
+        Returns optimization meta data
+        """
+        
+        optimization_meta_data = self._optimize(*args, **kwargs)
         self.completed_optimization_steps_cntr += 1
-        return ans
+        return optimization_meta_data
     
-    
-        
-        
-        
-        
         
     def flatten_sorted_coll_objs_states(self, col_obj_st_flat_states):
         """ 
@@ -274,6 +292,7 @@ class rlptAgent:
         # Vectorize the state components in the order of the state representation configuration
         ordered_st_components = [self.current_st[key].flatten() for key in self.st_componentes_ordered]
         current_st_vectorized = np.concatenate(ordered_st_components)    
+        assert current_st_vectorized.ndim == 1 # TODO: this is verifying the shape is of a vector (shape is (n,)) and not of a matrix (shape is (1,n)).Remove it when convined its ok
         return current_st_vectorized
         
     
@@ -396,13 +415,7 @@ class rlptAgent:
  
         # Drop the columns with all equal values (more these action features to stay just with varying features)
         df_diffs = df.drop(equal_columns, axis=1) # differences between actions
- 
-        # parse output before returning it
-        # print("rlpt action space: shared action featueres")
-        # print(df_equality)
-        # print("rlpt: action space: unique action featueres")
         
-        # print(df_diffs)
         shared_params_all_actions:dict = df_equality.to_dict(orient='records')[0] # shared params between all actions
         different_params_by_action_inx:list = df_diffs.to_dict(orient='records') # l[i] a dict of the ith action, containing the unique assignment of this action to action features with 2 or more options  
         return shared_params_all_actions, different_params_by_action_inx 
