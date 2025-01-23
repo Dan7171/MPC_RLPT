@@ -5,7 +5,6 @@ import random
 from collections import deque
 from typing import Deque, Dict, List, Tuple
 import gymnasium as gym
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn

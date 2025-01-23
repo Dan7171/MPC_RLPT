@@ -41,34 +41,8 @@ agent:
     use_original_storm_params: false
     tuning_enabled: true # normal mode is true, false is for debug (when false, no parameter tuning. just using the initial episode parameter assignment)
     C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
-  
-  
-  agent_type: 'ddqn' # 'dqn', 'rainbow'
 
-
-  rainbow_agent_settings:
-    obs_dim: int, # TO SET 
-    action_dim: int, # TO SET
-    memory_size: int, # TO SET
-    batch_size: int, # TO SET
-    target_update: int, # TO SET
-    seed: int, # TO SET
-    gamma: float = 0.99,
-    # PER parameters
-    alpha: float = 0.2,
-    beta: float = 0.6,
-    prior_eps: float = 1e-6,
-    # Categorical DQN parameters
-    v_min: float = 0.0,
-    v_max: float = 200.0,
-    atom_size: int = 51,
-    # N-step Learning
-    n_step: int = 3
-
-    
-
-  
-  train_suit: # dqn/ddqn agent settings
+  train_suit:
     gamma: 0.999
     batch_size: 512 # 256  
     eps_decay: false
@@ -76,9 +50,6 @@ agent:
     grad_clipping: false
     N: 1_000_000 # replay buffer size 
 
- 
-      
-      
   reward:
     goal_pos_thresh_dist: 0.01 # activation thresold of position part in goal state reward (distance in meters).  TODO: when working with poser reward, I think it'd be better to make it larger. 
     goal_rot_thresh_dist: 0.01 # activation threshold of orientation part in goal state reward.  TODO: when working with poser reward, I think it'd be better to make it larger. 

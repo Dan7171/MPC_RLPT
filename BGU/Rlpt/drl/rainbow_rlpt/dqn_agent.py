@@ -1,12 +1,8 @@
 
-
-import math
-import os
-import random
+import matplotlib.pyplot as plt
 from collections import deque
 from typing import Deque, Dict, List, Tuple
 import gymnasium as gym
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,6 +10,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
+from Rlpt.drl.rainbow_rlpt.network import Network
+from Rlpt.drl.rainbow_rlpt.prioritized_replay_buffer import PrioritizedReplayBuffer
+from Rlpt.drl.rainbow_rlpt.replay_buffer import ReplayBuffer
 from segment_tree import MinSegmentTree, SumSegmentTree
 
 
@@ -21,7 +20,6 @@ class DQNAgent:
     """DQN Agent interacting with environment.
     
     Attribute:
-        env (gym.Env): openAI Gym environment
         memory (PrioritizedReplayBuffer): replay memory to store transitions
         batch_size (int): batch size for sampling
         target_update (int): period for target model's hard update
@@ -42,7 +40,8 @@ class DQNAgent:
 
     def __init__(
         self, 
-        env: gym.Env,
+        obs_dim: int, # new
+        action_dim: int, # new
         memory_size: int,
         batch_size: int,
         target_update: int,
@@ -62,7 +61,8 @@ class DQNAgent:
         """Initialization.
         
         Args:
-            env (gym.Env): openAI Gym environment
+            obs_dim: observation space length
+            action_dim: action space length 
             memory_size (int): length of memory
             batch_size (int): batch size for sampling
             target_update (int): period for target model's hard update
@@ -76,10 +76,11 @@ class DQNAgent:
             atom_size (int): the unit number of support
             n_step (int): step number to calculate n-step td error
         """
-        obs_dim = env.observation_space.shape[0]
-        action_dim = env.action_space.n
-        
-        self.env = env
+        # obs_dim = env.observation_space.shape[0]
+        obs_dim = obs_dim
+        # action_dim = env.action_space.n
+        action_dim = action_dim
+        # self.env = env
         self.batch_size = batch_size
         self.target_update = target_update
         self.seed = seed
@@ -90,7 +91,6 @@ class DQNAgent:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        print(self.device)
         
         # PER
         # memory for 1-step Learning
@@ -221,8 +221,10 @@ class DQNAgent:
         losses = []
         scores = []
         score = 0
-
+            
         for frame_idx in range(1, num_frames + 1):
+            if frame_idx%100 == 0:
+                print(f'debug: reached {frame_idx} traning steps')
             action = self.select_action(state)
             next_state, reward, done = self.step(action)
 
@@ -263,8 +265,9 @@ class DQNAgent:
         
         # for recording a video
         naive_env = self.env
-        self.env = gym.wrappers.RecordVideo(self.env, video_folder=video_folder)
-        
+        # self.env = gym.wrappers.RecordVideo(self.env, video_folder=video_folder)
+        self.env = env = gym.make("CartPole-v1", max_episode_steps=200, render_mode="human")
+
         state, _ = self.env.reset(seed=self.seed)
         done = False
         score = 0
@@ -348,4 +351,4 @@ class DQNAgent:
         plt.subplot(132)
         plt.title('loss')
         plt.plot(losses)
-        plt.show()
+        # plt.show()

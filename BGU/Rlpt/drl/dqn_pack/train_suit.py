@@ -1,4 +1,6 @@
 """
+Standard DQN or Double DQN utils
+
 Deep Q learning with experience replay, seperate target network, and gradient clipping.
 Train DDQN if using flag ddqn=True else trains DQN.
 

@@ -112,7 +112,8 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:10(Fri)20:41:09___128_start_actions(no_tuning)_for_pca/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:21(Tue)01:37:25_episode_953/training_etl.csv' # 2025:01:21(Tue)01:37:25 with HER and 16 actions
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -131,9 +132,9 @@ episodes = df.groupby('ep')
 base_color = 'orange'
 
 # GROUPED BY EPISODES (FOR COLOR SEPARATION)
-for i, ng in enumerate(episodes): 
-    name, group = ng # debug to see group lengths (episode lengths)
-    print(f'{i}, {len(group)}')
+# for i, ng in enumerate(episodes): 
+#     name, group = ng # debug to see group lengths (episode lengths)
+#     print(f'{i}, {len(group)}')
 
 # %%%%%%%%%%%%% FIG 1 %%%%%%%%%%%%%%%
 
@@ -251,6 +252,7 @@ for i, ng in enumerate(episodes):
     name, group = ng
     if i < max_episode:
         plt.plot(group['at_epsilon'])
+        
 plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random action chance')
 
 
@@ -289,6 +291,31 @@ if 'q(w,st,all)' in df.columns:
         if i < max_episode:
             plt.plot(group.index, np.max(q_all[group.index],axis=1))
     plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = q*(w,st) x = time step (t)')
+
+
+# # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 3 reward sum as a function of epsilon and episode num  %%%%%%%%%%%%%%%
+
+if 'rt' in df.columns and 'at_epsilon' in df.columns:
+    fig = plt.figure()
+    
+    episode_initial_eps = []
+    episode_reward_sum = []
+    for i, ng in enumerate(episodes):
+        name, group = ng
+        if i < max_episode:
+            episode_initial_eps.append(group['at_epsilon'][group.index[0]]) # starting epsilon of episode
+            episode_reward_sum.append(np.sum(group['rt'])) # reward sum of episode
+    # defining axes
+    ax = plt.axes(projection ='3d') 
+    # plt.plot(episode_initial_eps)
+    # plt.scatter(x=range(len(episode_reward_sum)),y=episode_initial_eps, z=episode_reward_sum)
+    ax.plot(range(len(episodes)), episode_initial_eps, episode_reward_sum)
+    plt.title(f'first {min(i+1,max_episode)} episodes')
+    ax.set_xlabel('episode num', fontsize=12)
+    ax.set_ylabel('episode epsilon', fontsize=12)
+    ax.set_zlabel('episode reward sum', fontsize=12)
+
+    
 
 
 ###########

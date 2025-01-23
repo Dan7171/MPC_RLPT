@@ -5,7 +5,6 @@ import random
 from collections import deque
 from typing import Deque, Dict, List, Tuple
 import gymnasium as gym
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,6 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
+from Rlpt.drl.rainbow_rlpt.noisy_linear import NoisyLinear
 from segment_tree import MinSegmentTree, SumSegmentTree
 
 class Network(nn.Module):
