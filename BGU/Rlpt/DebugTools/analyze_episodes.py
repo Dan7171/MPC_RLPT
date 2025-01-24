@@ -114,7 +114,7 @@ def pca3d(ndim_variable_name,max_episodes_in_on_figure=10):
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:22(Wed)23:37:06_model_corrupted/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/2025:01:23(Thu)10:49:54/training_etl.csv'
 df = pd.read_csv(path)
 # y = np.arange(10)
 # plt.plot(y)
@@ -268,18 +268,18 @@ plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) random 
 # pca3d('st_pi_mppi_means')
 
 
-# # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%
-# if 'action_id' in df.columns:
-#     fig = plt.figure()
-#     for i, ng in enumerate(episodes):
-#         name, group = ng
-#         if i < max_episode:
-#             # plt.bar(group.index, group['action_id'])
-#             # plt.stem(group.index, group['action_id'])
-#             # plt.plot(group['action_id'], linewidth=0.1)
-#             # plt.bar(group.index, group['action_id'],linewidth=0.1)
-#             plt.bar(group.index,group['action_id'])
-#     plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
+# %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 1 - action id  %%%%%%%%%%%%%%%
+if 'action_id' in df.columns:
+    fig = plt.figure()
+    for i, ng in enumerate(episodes):
+        name, group = ng
+        if i < max_episode:
+            # plt.bar(group.index, group['action_id'])
+            # plt.stem(group.index, group['action_id'])
+            # plt.plot(group['action_id'], linewidth=0.1)
+            # plt.bar(group.index, group['action_id'],linewidth=0.1)
+            plt.bar(group.index,group['action_id'])
+    plt.title(f'first {min(i+1,max_episode)} episodes (each color = episode) y = action id x = time step (t)')
 
 
 # # %%%%%%%%%%%%% FIG 7+"K1"+"K2" + 2 - Q* at each state  %%%%%%%%%%%%%%%

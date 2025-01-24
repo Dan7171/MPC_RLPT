@@ -77,9 +77,11 @@ class trainSuit:
         # T = Max step num in episode
         if GLobalVars.rlpt_cfg is None:
             exit()
-        cfg = GLobalVars.rlpt_cfg['agent']['train_suit']
+        rlpt_cfg = GLobalVars.rlpt_cfg
+        self.seed = rlpt_cfg['seed']
+        
+        cfg = rlpt_cfg['agent']['train_suit']
         self.ddqn = ddqn
-        self.seed = seed
         self.gamma = cfg['gamma'] if 'gamma' in cfg else gamma
         self.batch_size = cfg['batch_size'] if 'batch_size' in cfg else batch_size
         self.eps_end = eps_end        

@@ -13,6 +13,7 @@ from threading import Thread
 from typing import Callable, Collection, Iterable, List, Tuple, Union
 import typing
 from click import BadArgumentUsage
+from BGU.Rlpt.drl.rainbow_rlpt.dqn_agent import DQNAgent
 from colorlog import root
 # from cv2 import norm
 from isaacgym import gymapi
@@ -30,7 +31,8 @@ import torch
 from traitlets import default
 # from BGU.Rlpt.drl.her import HindsightExperienceReplay
 # from BGU.Rlpt.monitor import Monitor
-from BGU.Rlpt.rlpt_agent import rlptAgent 
+from BGU.Rlpt.rlpt_agent import rlptAgent
+from BGU.Rlpt.rlpt_agent_base import rlptAgentBase 
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
 torch.backends.cudnn.benchmark = False
@@ -627,7 +629,7 @@ class MpcRobotInteractive:
         return env_selected
            
     
-    def episode(self, rlpt_agent:rlptAgent, episode_max_ts:int, ep_idx:int, include_etl:bool, training):
+    def episode(self, rlpt_agent:DQNAgent, episode_max_ts:int, include_etl:bool, training):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -642,7 +644,9 @@ class MpcRobotInteractive:
         ####################################
         ####### Setting up the episode #####
         ####################################  
-          
+        ep_idx = rlpt_agent.get_training_episodes_done()
+        color_print(f"episode at index = {ep_idx}, starting now...")       
+  
         # s0_as_tensor: torch.Tensor
         st: np.ndarray # 1d 
         s_next:np.ndarray # # 1d
@@ -679,9 +683,10 @@ class MpcRobotInteractive:
         ####### Starting Episode steps #####
         ####################################
         
-        episode_total_reward = 0
-        episode_start_time = time.time()
+        rewards = []
+        losses = []
         st = copy.deepcopy(s0)
+        episode_start_time = time.time()
         for ts in range(episode_max_ts):
             # rlpt - select a(t) 
             at_id, at, at_meta_data = rlpt_agent.select_action(as_1d_tensor(st))    
@@ -689,7 +694,8 @@ class MpcRobotInteractive:
             step_start_time = time.time()    
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_duration = time.time() - step_start_time # time it took to move from st to st+1. Used by reward function
-            
+            completed_steps = ts + 1
+
             # rlpt - compute the state you just moved to (next state, s(t+1)) 
             robot_dof_states_gym = self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL) # TODO may need to replace by 
             s_next_robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
@@ -712,39 +718,21 @@ class MpcRobotInteractive:
             # rlpt - compute reward (r(t))
             rt = rlpt_agent.compute_reward(s_next_ee_pos_error, s_next_ee_rot_error, s_next_contact_detected, step_duration)    
             rlpt_agent.store_transition(s_next, rt, terminated) # NOTE: HERE I changed a bit compared to oiriginal code. They passed "done" (terminated or tuncated), I passed only "terminated". See https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work   
-            episode_total_reward += rt
+            rewards.append(rt) # just for printing
             
-            # state = next_state
-            st = s_next
             
-            # score += reward
-            episode_total_reward += rt
             
             # NoisyNet: removed decrease of epsilon
+            rlpt_agent.set_training_steps_done(rlpt_agent.get_training_steps_done() + 1)
+            post_step_ops_meta_data = rlpt_agent.post_step_ops(max_ts_per_episode=episode_max_ts, max_episode_index=n_episodes_real)
+            optimization_meta_data = post_step_ops_meta_data['optimization']
+            losses.append(optimization_meta_data['loss'])
             
-            # PER: increase beta
-            # fraction = min(frame_idx / num_frames, 1.0)
-            rlpt_agent.post_step_ops(current_episode_index=ep_idx, max_ts_in_episode=episode_max_ts, current_ts=ts,max_episode_index=n_episodes_real)
-            # TODO: KEEP FROM HERE
-            # if episode ends
-            if done:
-                state, _ = self.env.reset(seed=self.seed)
-                scores.append(score)
-                score = 0
-
-            # if training is ready
-            if len(self.memory) >= self.batch_size:
-                loss = self.update_model()
-                losses.append(loss)
-                update_cnt += 1
-                
-                # if hard update is needed
-                if update_cnt % self.target_update == 0:
-                    self._target_hard_update()
-
             # plotting
-            if frame_idx % plotting_interval == 0:
-                self._plot(frame_idx, scores, losses)
+            if training:
+                training_steps_done = rlpt_agent.get_training_steps_done()
+                if training_steps_done % 200 == 0: # plotting interval
+                    rlpt_agent.plot(training_steps_done, rewards, losses)
             
             # log to etl
             if include_etl:             
@@ -757,32 +745,33 @@ class MpcRobotInteractive:
                     print("contact detected, escaping contact before learning continues")
                     self.step(at, prev_at)
                 
+    
+            if not args.external_run or (completed_steps%(episode_max_ts/10) == 0):
+                print_progress_bar(completed_steps, episode_max_ts, seconds_passed=time.time() - episode_start_time)
             
-            if terminated: # terminal state reached
+            if terminated: # terminal state reached TODO: they originaly implemented it breakout after "done" and not after "terminated" only
                 color_print(f'moved from s({ts}) to s({ts+1}) but s({ts+1}) is a terminal state! (goal / collision(contact))\n\
                     goal state:{s_next_is_goal_state} contact detected: {s_next_contact_detected}')
                 break
             
             st = s_next
             prev_at = at
-            ts_sim += 1                
-            if not args.external_run or (ts_sim%(episode_max_sim_ts/10) == 0):
-                print_progress_bar(ts_sim, episode_max_sim_ts, seconds_passed=time.time() - episode_start_time)
-                
-        
-        if include_HER:
-            HER.optimize(rlpt_agent)
             
+        
             
-        ########## end of episode ###########            
-        color_print(f'episode: {ep_idx} finished')
-        color_print(f'episode duration: {ts} time steps of {time.time()-episode_start_time} seconds')
-        color_print(f'episode total reward: {episode_total_reward}')
-        color_print(f'current buffer size: {len(rlpt_agent.train_suit.memory)}')
-        color_print(f'current epsilon: {rlpt_agent.train_suit.current_eps if training else 0}')
+        ########## end of episode ###########
+        episode_dur_sec = time.time() - episode_start_time      
+        color_print(f'episode at index {ep_idx} finished!')
+        color_print(f'- completed steps: {completed_steps}, seconds in total- {episode_dur_sec}, average step duration: {episode_dur_sec/ completed_steps}')
+        color_print(f'- rewards: total- {sum(rewards)}, average- {np.mean(rewards)}')
+        color_print(f'- rewards: {rewards}')
+        color_print(f'- losses: total- {sum(losses)}, average- {np.mean(losses)}')
+        color_print(f'- losses: {losses}')        
+        color_print(f'- current buffer size: {len(rlpt_agent.memory)}')
         
+        return completed_steps
         
-        return ts, forced_stopping 
+          
             
         
     def get_all_coll_obs_actor_names(self): # all including non participating
@@ -1023,18 +1012,21 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
     """
     
     # load configuration
-    mpc = mpc_ri     
     
- 
+    def query_training_episodes_done(rlpt_agent:Union[rlptAgentBase, None]):
+        if rlpt_agent is None:
+            return 0
+        else:
+            return rlpt_agent.get_training_episodes_done()
+    
+    mpc = mpc_ri      
     sample_objs_every_episode = cfg['sample_objs_every_episode'] 
     sample_obj_locs_every_episode = cfg['sample_obj_locs_every_episode']
     goal_pose_storm = cfg['default_goal_pose'] # in storm coordinates
-    
-    
-    
     all_col_objs_with_locs = mpc.get_all_objs_with_locs() # all collision objects (participating or not) with their locations
-    ep = 0 # episode index
-    while ep < n_episodes:
+    rlpt_agent = None
+    
+    while query_training_episodes_done(rlpt_agent) < n_episodes:
         # re-define participating and non-participating objects 
         particiating_storm = all_col_objs_with_locs
         not_participatig_storm = {}
@@ -1044,46 +1036,41 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
             particiating_storm, not_participatig_storm = select_obj_poses(particiating_storm, all_col_objs_with_locs) 
         # re-define ee goal pose
         if sample_goal_every_episode:        
-            goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if ep % 2 == 0 else list(MpcRobotInteractive.initial_ee_pose_storm_cs / 2)  # in storm coordinates
+            goal_pose_storm = [-0.37, -0.37, 0.3, 0, 2.5, 0, 1] if query_training_episodes_done(rlpt_agent) % 2 == 0 else list(MpcRobotInteractive.initial_ee_pose_storm_cs / 2)  # in storm coordinates
         # reset environment with selections
         _ = mpc.reset_environment(particiating_storm, goal_pose_storm) # reset environment and return its new specifications
        
        
         ###### pre-processing (only at the beginning) #####
-        if ep == 0:
+        if query_training_episodes_done(rlpt_agent) == 0:
             # Initialize the rlpt agent
             all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
-            all_col_objs_handles_dict = {pair[1]:pair[0] for pair in all_col_objs_handles_list} # {obj name (str): obj handle (int)} 
-            robot_base_pos_gym_np = np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])) # [0][0] is [base link index][pose index][pos] 
-            agent_type = rlpt_cfg['agent']['agent_type']
+            rainbow_agent_params = {**rlpt_cfg['agent']['rainbow_agent_settings']}
+            rainbow_agent_params['super_params'] =  {
+                'robot_base_pos_gym_np': np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])), # [0][0] is [base link index][pose index][pos]
+                'particiating_storm': particiating_storm,
+                'not_participatig_storm': not_participatig_storm,
+                'all_col_objs_handles_dict':  {pair[1]:pair[0] for pair in all_col_objs_handles_list}, # {obj name (str): obj handle (int)} 
+                'rlpt_action_space':rlpt_action_space, 
+                'training_mode':training
+            } 
             
-            if agent_type in ['dqn', 'ddqn']:
-                rlpt_agent = rlptAgent(robot_base_pos_gym_np, particiating_storm, not_participatig_storm, all_col_objs_handles_dict, rlpt_action_space, episode_idx=ep, max_episode=n_episodes_real,training_mode=training) # warning: don't change the obstacles input file, since the input shape to NN may be broken. 
-            elif agent_type == 'rainbow':
-                rlpt_agent = DQNAgent(*rlpt_cfg['agent']['rainbow_agent_settings'])
+            rlpt_agent = DQNAgent(**rainbow_agent_params) # rainbow agent
+            
             # load model from checkpoint
             if load_checkpoint_model:
-                loaded_model = rlpt_agent.load(model_file_path) # loading and inializing the checkpoint model 
-                ep = loaded_model['episode'] # current true episode index to start from (equals to the number of finished episodes by now in checkpoint)
-                color_print(f'Model loading completed! Using a model which as already trained for {ep} episodes')
+                _ = rlpt_agent.load(model_file_path) # loading and inializing the checkpoint model 
+                color_print(f'Model loading completed! Using a model which as already trained for {rlpt_agent.get_training_episodes_done()} episodes ({rlpt_agent.get_training_episodes_done()} steps)')
                 
             # initialize etl if required
             if include_etl and not os.path.exists(etl_file_path):
                 rlpt_agent.initialize_etl(etl_file_path)                
-
+        
         ###### run next episode ######
-        color_print(f"episode index = {ep}, starting now...")       
-        ts, keyboard_interupt = mpc.episode(rlpt_agent, episode_max_ts, ep_idx=ep, include_etl=include_etl,training=training) 
-        ##### episode post processing stesps ####### 
-        color_print(f'episode index = {ep} is over')
-        if keyboard_interupt:
-            raise KeyboardInterrupt() 
-        ep += 1 # update index of the next episode to start from 
-        # rlpt_agent.set_episode(ep) 
+        assert rlpt_agent is not None # only to remove red error underlines (no worries, it wont be done at this point)
+        completed_steps =  mpc.episode(rlpt_agent, episode_max_ts, include_etl=include_etl,training=training)  # type: ignore
         if training:
-            rlpt_agent.save(ep, model_file_path)           
-    
- 
+            rlpt_agent.training_episode_post_ops(model_file_path)
 
 
     

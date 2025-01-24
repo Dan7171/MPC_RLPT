@@ -35,14 +35,14 @@ def print_progress_bar(current, max_steps, bar_length=50,seconds_passed=-1.0):
     """
     if max_steps <= 0:
         raise ValueError("max_steps must be a positive integer.")
-    if current < 0 or current > max_steps:
-        raise ValueError(f"current must be between 0 and max_steps. but ,{current} was given and max_steps = {max_steps}")
+    if current <= 0 or current > max_steps:
+        raise ValueError(f"current must be between 1 and max_steps. but ,{current} was given and max_steps = {max_steps}")
     
     remaining_ratio = current / max_steps
     remaining_length = int(remaining_ratio * bar_length)
     bar = "[" + "=" * remaining_length + " " * (bar_length - remaining_length) + "]"
-    color_print(f"\r{bar} {current}/{max_steps} steps. Seconds passed: {seconds_passed if seconds_passed != -1 else 'unavailable'}", end="")
-
+    color_print(f"\r{bar} {current}/{max_steps} steps completed. Time: {seconds_passed if seconds_passed != -1 else '?'} seconds", end="")
+    
 
 
 

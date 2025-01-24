@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
-from segment_tree import MinSegmentTree, SumSegmentTree
+# from BGU.Rlpt.drl.rainbow_rlpt.segment_tree import MinSegmentTree, SumSegmentTree
 
 class NoisyLinear(nn.Module):
     """Noisy linear module for NoisyNet.

@@ -3,7 +3,7 @@ import random
 import gymnasium as gym
 import numpy as np
 import torch
-from Rlpt.drl.rainbow_rlpt_cartpole_example.dqn_agent import DQNAgent
+from BGU.Rlpt.drl.rainbow_rlpt_cartpole_example.dqn_agent import DQNAgent
 import base64
 import glob
 import io

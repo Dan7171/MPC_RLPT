@@ -1,17 +1,16 @@
-seed: 42
 agent:
   model: # The Neural network 
-    load_checkpoint: false
+    load_checkpoint: true
     checkpoint_path: '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:23(Thu)10:49:54/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
       robot_dofs_positions: true
       robot_dofs_velocities: true
-      goal_pose: false  # note: must be true if using HER  
+      goal_pose: true # note: must be true if using HER  
       coll_objs: false
       robot_base_pos: false
-      prev_action_idx: true
+      prev_action_idx: false
       pi_mppi_means: true
       pi_mppi_covs: false # currently disabled since it doesent change
     
@@ -41,28 +40,32 @@ agent:
   action_space:
     use_original_storm_params: false
     tuning_enabled: true # normal mode is true, false is for debug (when false, no parameter tuning. just using the initial episode parameter assignment)
-    # C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
+    C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
   
   
-  # agent_type: 'ddqn' # 'dqn', 'rainbow'
+  agent_type: 'ddqn' # 'dqn', 'rainbow'
 
 
   rainbow_agent_settings:
-    memory_size: 100000, # TODO 1M samples take about 30 seconds to load and save to memory (to solve this bug )
-    batch_size: 128, # TO SET
-    target_update: 100 # int. called 'C' in original DQN paper
-    # seed: 42 # int, # TO SET
-    gamma:  0.999 # discount factor (float) 
+    obs_dim: int, # TO SET 
+    action_dim: int, # TO SET
+    memory_size: int, # TO SET
+    batch_size: int, # TO SET
+    target_update: int, # TO SET
+    seed: int, # TO SET
+    gamma: float = 0.99,
     # PER parameters
-    alpha: 0.01 # step size (float)
-    beta: 0.6 # THe starting beta value in training (float). Beta determines how much importance sampling is used. Increased with training progress. For more info see https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb  
-    prior_eps: 1e-6 # The epsilon of PER (float) (aims to ensure that we are never setting a probability of 0 to select transitions with a td-error of 0).  
+    alpha: float = 0.2,
+    beta: float = 0.6,
+    prior_eps: float = 1e-6,
     # Categorical DQN parameters
-    v_min: 0.0 # (float) _____________
-    v_max: 200.0 # (float) _____________
-    atom_size: 51 # (int) _____________
+    v_min: float = 0.0,
+    v_max: float = 200.0,
+    atom_size: int = 51,
     # N-step Learning
-    n_step: 3 # (int) Number of steps to use when computing td error (of n-step td)
+    n_step: int = 3
+
+    
 
   
   train_suit: # dqn/ddqn agent settings
@@ -96,18 +99,16 @@ agent:
   training:
     run: true
     save_checkpoints: true
-    n_episodes: 600
+    n_episodes: 400
     max_ts: 1000
-    sample_objs_every_episode: false # renders new collision object identities
-    sample_obj_locs_every_episode: false # renders new collision object poses
-    sample_goal_every_episode: false # changing goal pose
-    reset_to_initial_state_every_episode: false # Note: when true must use external script (franka_reacher_rlpt_runner.py)
+    sample_objs_every_episode: false
+    sample_obj_locs_every_episode: false
+    sample_goal_every_episode: false
+    reset_to_initial_state_every_episode: true # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
-    
-    
     HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
-      include: false # to use the feature 
+      include: true # to use the feature 
       strategy: future # (argument name as in paper)
       k: 8 # (argument name as in paper)
       N: 256 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)

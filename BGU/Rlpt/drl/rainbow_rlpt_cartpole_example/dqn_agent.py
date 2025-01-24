@@ -10,9 +10,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
-from Rlpt.drl.rainbow_rlpt_cartpole_example.network import Network
-from Rlpt.drl.rainbow_rlpt_cartpole_example.prioritized_replay_buffer import PrioritizedReplayBuffer
-from Rlpt.drl.rainbow_rlpt_cartpole_example.replay_buffer import ReplayBuffer
+from BGU.Rlpt.drl.rainbow_rlpt_cartpole_example.network import Network
+from BGU.Rlpt.drl.rainbow_rlpt_cartpole_example.prioritized_replay_buffer import PrioritizedReplayBuffer
+from BGU.Rlpt.drl.rainbow_rlpt_cartpole_example.replay_buffer import ReplayBuffer
 from segment_tree import MinSegmentTree, SumSegmentTree
 
 

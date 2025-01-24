@@ -40,8 +40,10 @@ class rlptAgentBase:
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
         """
         
-        self.completed_optimization_steps_cntr = 0
+        # self.completed_optimization_steps_cntr = 0
         self.training_mode = training_mode
+        self.trainig_episodes_done = 0 # new
+        self.trainig_steps_done = 0 # new
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
         self.all_coll_obj_names_sorted:list = sorted(list(self.col_obj_handles.keys()), key=lambda x: self.col_obj_handles[x]) # sorted by obj handle
@@ -73,7 +75,7 @@ class rlptAgentBase:
         # define the state representation configuration
         rlpt_cfg = GLobalVars.rlpt_cfg
         assert rlpt_cfg is not None
-        
+        self.seed = rlpt_cfg['seed']
         state_represantation_config = rlpt_cfg['agent']['model']['state_representation'] 
         
         # add state components names. That's what determines the ordere of components int the long state which represented as 1d vecotr   
@@ -170,6 +172,7 @@ class rlptAgentBase:
             stop = component_range[1]
             out[component_name] = st[start:stop+1]
         return out
+    
     def print_state(self,st):
         
         st_parsed = self.parse_st(st)
@@ -181,7 +184,7 @@ class rlptAgentBase:
             print(f'{item_name}: {item_st}')
     
     @abstractmethod 
-    def _select_action(self,st:torch.Tensor, *args, **kwargs)->tuple[int,dict]:
+    def _select_action(self,st:torch.Tensor, *args, **kwargs)-> Tuple[int,dict]:
         """agent action selection - for implementention"""
         pass
     
@@ -214,46 +217,49 @@ class rlptAgentBase:
         """
         
         checkpoint = torch.load(checkpoint_path)
-        assert 'episode' in  checkpoint and checkpoint['episode'] >= 0, "checkpoint model must contain the episode index to start from (the number of completed episodes it was trained on)"
+        self.set_training_episodes_done(checkpoint['training_episodes_done'])
+        self.set_training_steps_done(checkpoint['training_steps_done'])
         self._load(checkpoint)        
         return checkpoint 
     
     @abstractmethod
-    def _make_model_to_save(self)->dict:
-        """
-        making a dict with the model items to save. Example:
-        {
-        'current_state_dict': self.train_suit.current.state_dict(), # Q network
-        'target_state_dict': self.train_suit.target.state_dict(), # Targets network
-        'optimizer_state_dict': self.train_suit.optimizer.state_dict(),
-        'memory':self.train_suit.memory,
-        'episode': ep,  
-        'completed_optimization_steps_cntr': self.completed_optimization_steps_cntr
-        }   
-        """
-        
-    def save(self,model_file_path):
-        """ saves model with relevant info to start the next episode""" 
+    def _get_items_to_save(self, *args, **kwargs)->dict:
+        pass 
     
-        torch.save(self._make_model_to_save(self),model_file_path)
+    def save(self, checkpoint_file_path, *args, **kwargs):
+        
+        """ 
+        saves a partially trained model with relevant info so training from the same state could resume      
+        """ 
+        training_episodes_done = self.get_training_episodes_done()
+        training_steps_done = self.get_training_steps_done()
+        assert training_episodes_done > 0 # assert 'training_episodes_done' in kwargs and kwargs['training_episodes_done'] > 0
+        assert training_steps_done > 0  # assert 'training_steps_done' in  kwargs and kwargs['training_steps_done'] > 0        
+        base_items = {
+            'training_episodes_done': training_episodes_done,
+            'training_steps_done': training_steps_done
+        }
+        agent_specific_items = self._get_items_to_save(*args, **kwargs)
+        items_to_save = {**base_items, **agent_specific_items} # syntax for merging two dicts
+        torch.save(items_to_save, checkpoint_file_path)
     
         
-    @abstractmethod    
-    def _optimize(self, *args, **kwargs) -> dict:
-        """optimization function of agent, to update network weights.
-        Returns optimization meta data
+    # @abstractmethod    
+    # def _optimize(self, *args, **kwargs) -> dict:
+    #     """optimization function of agent, to update network weights.
+    #     Returns optimization meta data
         
-        for example:
-        self.train_suit.optimize(self.completed_optimization_steps_cntr)"""
+    #     for example:
+    #     self.train_suit.optimize(self.completed_optimization_steps_cntr)"""
         
-    def optimize(self,*args, **kwargs) -> dict:
-        """a wrapper for the per-agent-implemented optimization step.
-        Returns optimization meta data
-        """
+    # def optimize(self,*args, **kwargs) -> dict:
+    #     """a wrapper for the per-agent-implemented optimization step.
+    #     Returns optimization meta data
+    #     """
         
-        optimization_meta_data = self._optimize(*args, **kwargs)
-        self.completed_optimization_steps_cntr += 1
-        return optimization_meta_data
+    #     optimization_meta_data = self._optimize(*args, **kwargs)
+    #     self.completed_optimization_steps_cntr += 1
+    #     return optimization_meta_data
     
         
     def flatten_sorted_coll_objs_states(self, col_obj_st_flat_states):
@@ -446,6 +452,47 @@ class rlptAgentBase:
         for action in self.action_space:
             cur_max = max(cur_max, action['mpc_params']['horizon'])
         return cur_max
+    
+    def set_training_episodes_done(self, training_episodes_done):
+        assert training_episodes_done > 0
+        self.trainig_episodes_done = training_episodes_done
         
-  
+    def get_training_episodes_done(self):
+        return self.trainig_episodes_done
+    
+    def set_training_steps_done(self, training_steps_done):
+        assert training_steps_done > 0
+        self.trainig_steps_done = training_steps_done
+        
+    def get_training_steps_done(self):
+        return self.trainig_steps_done
+    
+    @abstractmethod
+    def _training_step_post_ops(self,*args, **kwargs) -> Any:
+        pass    
+    
+    @abstractmethod
+    def _training_episode_post_ops(self,*args, **kwargs) -> Any:
+        pass    
+    
+    def post_step_ops(self, *args, **kwargs) -> Any:
+        
+        # update counter
+        self.set_training_steps_done(self.get_training_steps_done() + 1)
+    
+        # any extra inheriting class ops
+        ans = self._training_step_post_ops(*args, **kwargs)
+        return ans
+    
+    def training_episode_post_ops(self, checkpoint_file_path, *args, **kwargs) -> Any:
+        
+        # update counter
+        self.set_training_episodes_done(self.get_training_episodes_done() + 1)
+        
+        # save updated info
+        self.save(checkpoint_file_path)           
+        
+        # any extra inheriting class ops
+        ans = self._training_episode_post_ops(*args, **kwargs)
+        return ans
             

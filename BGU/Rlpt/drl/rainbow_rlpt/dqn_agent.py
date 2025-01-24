@@ -1,7 +1,7 @@
 
 import matplotlib.pyplot as plt
 from collections import deque
-from typing import Deque, Dict, List, Tuple
+from typing import Any, Deque, Dict, List, Tuple
 import gymnasium as gym
 import numpy as np
 import torch
@@ -10,11 +10,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
-from Rlpt.drl.rainbow_rlpt.network import Network
-from Rlpt.drl.rainbow_rlpt.prioritized_replay_buffer import PrioritizedReplayBuffer
-from Rlpt.drl.rainbow_rlpt.replay_buffer import ReplayBuffer
-from segment_tree import MinSegmentTree, SumSegmentTree
-from rlpt_agent_base import rlptAgent
+from BGU.Rlpt.drl.rainbow_rlpt.network import Network
+from BGU.Rlpt.drl.rainbow_rlpt.prioritized_replay_buffer import PrioritizedReplayBuffer
+from BGU.Rlpt.drl.rainbow_rlpt.replay_buffer import ReplayBuffer
+from rlpt_agent_base import rlptAgentBase
 
 class DQNAgent(rlptAgentBase):
     """DQN Agent interacting with environment.
@@ -42,6 +41,7 @@ class DQNAgent(rlptAgentBase):
         self, 
         obs_dim: int, # new
         action_dim: int, # new
+        super_params: dict, # new 
         memory_size: int,
         batch_size: int,
         target_update: int,
@@ -57,12 +57,15 @@ class DQNAgent(rlptAgentBase):
         atom_size: int = 51,
         # N-step Learning
         n_step: int = 3,
+
     ):
         """Initialization.
         
         Args:
             obs_dim: observation space length
             action_dim: action space length 
+            super_params': dict
+
             memory_size (int): length of memory
             batch_size (int): batch size for sampling
             target_update (int): period for target model's hard update
@@ -76,6 +79,7 @@ class DQNAgent(rlptAgentBase):
             atom_size (int): the unit number of support
             n_step (int): step number to calculate n-step td error
         """
+        super(DQNAgent, self).__init__(**super_params)  # initialize super
         # obs_dim = env.observation_space.shape[0]
         obs_dim = obs_dim
         # action_dim = env.action_space.n
@@ -83,7 +87,7 @@ class DQNAgent(rlptAgentBase):
         # self.env = env
         self.batch_size = batch_size
         self.target_update = target_update
-        self.seed = seed
+        # self.seed = seed
         self.gamma = gamma
         # NoisyNet: All attributes related to epsilon are removed
         
@@ -133,8 +137,10 @@ class DQNAgent(rlptAgentBase):
         self.transition = list()
         
         # mode: train / test
-        self.is_test = False
-
+        # self.is_test = False
+        self.is_test = not self.training_mode # from super
+        
+        
     def _select_action(self,st:torch.Tensor, *args, **kwargs)->tuple[int,dict]:
         """Select an action from the input state."""
         # NoisyNet: no epsilon greedy action selection
@@ -152,12 +158,12 @@ class DQNAgent(rlptAgentBase):
         return int(selected_action_idx), at_meta_data # turns an np array of 1 item to its val (an integer)
     
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
-        """Take an action and return the response of the env."""
-        next_state, reward, terminated, truncated, _ = self.env.step(action)
-        done = terminated or truncated    
-        self.store_transition(next_state, reward, done)
-        return next_state, reward, done
+    # def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
+    #     """Take an action and return the response of the env."""
+    #     next_state, reward, terminated, truncated, _ = self.env.step(action)
+    #     done = terminated or truncated    
+    #     self.store_transition(next_state, reward, done)
+    #     return next_state, reward, done
     
     def store_transition(self, next_state, reward, terminated):
         """Was seperated from step so it will be easy to use it from mpc rlpt"""
@@ -223,11 +229,30 @@ class DQNAgent(rlptAgentBase):
         fraction = min(training_steps_passed / traning_steps_limit, 1.0)
         self.beta = self.beta + fraction * (1.0 - self.beta)
  
-    def post_step_ops(self,*args, **kwargs):
+    def _training_step_post_ops(self, *args, **kwargs) -> Any:
         
-        training_steps_passed: int = kwargs['current_episode_index'] * kwargs['max_ts_in_episode'] + kwargs['current_ts'] 
-        traning_steps_limit: int = kwargs['max_episode_index'] * kwargs['max_ts_in_episode']
-        self._update_beta(training_steps_passed, traning_steps_limit)
+        # episode_completed_step_cnt = kwargs['completed_steps'] # how many steps were completed by now in episode
+        # self.training_steps_done = self.training_steps_done + episode_completed_step_cnt # update total training completed step cntr
+        
+        self._update_beta(self.training_steps_done, (kwargs['max_episode_index'] + 1) * kwargs['max_ts_per_episode'])
+        
+        if len(self.memory) >= self.batch_size:
+            loss = self.update_model()
+            if self.training_steps_done % self.target_update == 0:
+                self._target_hard_update()
+
+        meta_data = {'optimization': {'loss': loss}}    
+        return meta_data
+    
+    def _training_episode_post_ops(self,*args, **kwargs) -> Any:
+        pass
+    
+   
+    
+    
+        
+    
+    
         
         
         
@@ -274,7 +299,8 @@ class DQNAgent(rlptAgentBase):
 
             # plotting
             if frame_idx % plotting_interval == 0:
-                self._plot(frame_idx, scores, losses)
+                # self._plot(frame_idx, scores, losses)
+                self.plot(frame_idx, scores, losses)
                 
         self.env.close()
                 
@@ -355,19 +381,54 @@ class DQNAgent(rlptAgentBase):
         """Hard update: target <- local."""
         self.dqn_target.load_state_dict(self.dqn.state_dict())
                 
-    def _plot(
+    # def _plot(
+    def plot(
         self, 
-        frame_idx: int, 
-        scores: List[float], 
+        # frame_idx: int, 
+        training_steps_done: int,
+        # scores: List[float],
+        rewards: List[float], 
         losses: List[float],
     ):
         """Plot the training progresses."""
         clear_output(True)
         plt.figure(figsize=(20, 5))
         plt.subplot(131)
-        plt.title('frame %s. score: %s' % (frame_idx, np.mean(scores[-10:])))
-        plt.plot(scores)
+        # plt.title('frame %s. score: %s' % (frame_idx, np.mean(scores[-10:])))
+        plt.title('frame %s. score: %s' % (training_steps_done, np.mean(rewards[-10:])))
+        
+        # plt.plot(scores)
+        plt.plot(rewards)
         plt.subplot(132)
         plt.title('loss')
         plt.plot(losses)
         # plt.show()
+        
+        
+    def _load(self, checkpoint:dict) -> None: 
+        """ inheritance implementation
+
+        Args:
+            checkpoint (dict): _description_
+        """
+        self.dqn.load_state_dict(checkpoint['dqn']) 
+        if training:= (not self.is_test):
+            self.dqn_target.load_state_dict(checkpoint['dqn_target'])
+            self.memory = checkpoint['memory']
+            # self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+
+    def _get_items_to_save(self,*args, **kwargs):
+        """ inheritance implementation
+
+        Args:
+            checkpoint (dict): _description_
+        """
+        items_to_save = {
+            'dqn': self.dqn.state_dict(),
+            'dqn_target': self.dqn_target.state_dict(),
+            'memory': self.memory
+        }
+        return items_to_save
+    
+    
