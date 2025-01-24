@@ -219,23 +219,21 @@ class DQNAgent(rlptAgentBase):
 
         return loss.item()
     
-    def _update_beta(self, training_steps_passed, traning_steps_limit):
-        fraction = min(training_steps_passed / traning_steps_limit, 1.0)
+    def _update_beta(self, training_steps_done, traning_steps_limit):
+        fraction = min(training_steps_done / traning_steps_limit, 1.0)
         self.beta = self.beta + fraction * (1.0 - self.beta)
  
     def _training_step_post_ops(self, *args, **kwargs) -> Any:
         
-        # episode_completed_step_cnt = kwargs['completed_steps'] # how many steps were completed by now in episode
-        # self.training_steps_done = self.training_steps_done + episode_completed_step_cnt # update total training completed step cntr
-        
-        self._update_beta(self.training_steps_done, (kwargs['max_episode_index'] + 1) * kwargs['max_ts_per_episode'])
-        
+        meta_data = {'optimization': {'loss': None}} 
+        training_steps_done = self.get_training_steps_done()
+        self._update_beta(training_steps_done, (kwargs['max_episode_index'] + 1) * kwargs['max_ts_per_episode'])
         if len(self.memory) >= self.batch_size:
             loss = self.update_model()
-            if self.training_steps_done % self.target_update == 0:
+            meta_data['optimization']['loss'] = loss
+            if training_steps_done % self.target_update == 0:
                 self._target_hard_update()
-
-        meta_data = {'optimization': {'loss': loss}}    
+                
         return meta_data
     
     def _training_episode_post_ops(self,*args, **kwargs) -> Any:

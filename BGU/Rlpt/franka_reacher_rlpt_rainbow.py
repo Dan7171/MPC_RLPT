@@ -733,9 +733,9 @@ class MpcRobotInteractive:
                 if training_steps_done % 200 == 0: # plotting interval
                     rlpt_agent.plot(training_steps_done, rewards, losses)
             
-            # log to etl
-            if include_etl:             
-                rlpt_agent.update_etl(st, at_id,rt,ep_idx,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, s_next_is_goal_state)
+            # # log to etl
+            # if include_etl:             
+            #     rlpt_agent.update_etl(st, at_id,rt,ep_idx,ts,at_meta_data,s_next_contact_detected,step_duration,s_next_ee_pos_error, s_next_ee_rot_error,etl_file_path,forced_stopping, optimization_meta_data, s_next_is_goal_state)
             
                 
             # escape collision if necessary (change pose until no contact)
@@ -1046,11 +1046,11 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
             all_col_objs_handles_list = mpc.get_actor_group_from_env('cube') + mpc.get_actor_group_from_env('sphere') # [(name i , name i's handle)]  
             rainbow_agent_params = {**rlpt_cfg['agent']['rainbow_agent_settings']}
             rainbow_agent_params['super_params'] =  {
-                'robot_base_pos_gym_np': np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])), # [0][0] is [base link index][pose index][pos]
-                'particiating_storm': particiating_storm,
-                'not_participatig_storm': not_participatig_storm,
-                'all_col_objs_handles_dict':  {pair[1]:pair[0] for pair in all_col_objs_handles_list}, # {obj name (str): obj handle (int)} 
-                'rlpt_action_space':rlpt_action_space, 
+                'base_pos_gym': np.array(list(mpc.gym.get_actor_rigid_body_states(mpc.env_ptr,mpc.name_to_handle['robot'],gymapi.STATE_ALL)[0][0][0])), # [0][0] is [base link index][pose index][pos]
+                'participating_storm': particiating_storm,
+                'not_participating_storm': not_participatig_storm,
+                'col_obj_handles':  {pair[1]:pair[0] for pair in all_col_objs_handles_list}, # {obj name (str): obj handle (int)} 
+                'action_space':rlpt_action_space, 
                 'training_mode':training
             } 
             

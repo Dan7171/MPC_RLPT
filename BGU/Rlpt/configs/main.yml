@@ -48,8 +48,8 @@ agent:
 
 
   rainbow_agent_settings:
-    memory_size: 100000, # TODO 1M samples take about 30 seconds to load and save to memory (to solve this bug )
-    batch_size: 128, # TO SET
+    memory_size: 100000 # TODO 1M samples take about 30 seconds to load and save to memory (to solve this bug )
+    batch_size: 128 # TO SET
     target_update: 100 # int. called 'C' in original DQN paper
     # seed: 42 # int, # TO SET
     gamma:  0.999 # discount factor (float) 

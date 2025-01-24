@@ -38,6 +38,7 @@ class rlptAgentBase:
             not_participating_storm (dict): Not participating objects initial states {name: attributes}. Positions and orientations are in storm coordinate system.
             col_obj_handles dict: a dict which keys are the names of collision objects (participating or not) and values are the object's handle (int)
             action_space (list): a collection of all possible actions which can be selected (all combinations of hyper parameters that can be selected at a single stime step)
+            training_mode: (bool): if training or in test mode
         """
         
         # self.completed_optimization_steps_cntr = 0
