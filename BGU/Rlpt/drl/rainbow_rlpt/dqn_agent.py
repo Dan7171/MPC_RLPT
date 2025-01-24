@@ -141,7 +141,7 @@ class DQNAgent(rlptAgentBase):
         self.is_test = not self.training_mode # from super
         
         
-    def _select_action(self,st:torch.Tensor, *args, **kwargs)->tuple[int,dict]:
+    def _select_action(self,st:torch.Tensor, *args, **kwargs)-> Tuple[int,dict]:
         """Select an action from the input state."""
         # NoisyNet: no epsilon greedy action selection
         at_meta_data = {'eps':None, 'is_random': None } # due to the usage in noisy net

@@ -29,8 +29,6 @@ from storm_kit.mpc.cost import cost_base
 from sympy import Integer, im
 import torch
 from traitlets import default
-# from BGU.Rlpt.drl.her import HindsightExperienceReplay
-# from BGU.Rlpt.monitor import Monitor
 from BGU.Rlpt.rlpt_agent import rlptAgent
 from BGU.Rlpt.rlpt_agent_base import rlptAgentBase 
 torch.multiprocessing.set_start_method('spawn',force=True)
