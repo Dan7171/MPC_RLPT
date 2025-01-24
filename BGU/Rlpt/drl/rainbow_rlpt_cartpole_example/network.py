@@ -46,6 +46,7 @@ class Network(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward method implementation."""
+
         dist = self.dist(x)
         q = torch.sum(dist * self.support, dim=2)
         

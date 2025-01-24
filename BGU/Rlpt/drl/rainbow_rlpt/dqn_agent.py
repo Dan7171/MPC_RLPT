@@ -1,7 +1,7 @@
 
 import matplotlib.pyplot as plt
 from collections import deque
-from typing import Any, Deque, Dict, List, Tuple
+from typing import Any, Deque, Dict, List, Tuple, Union
 import gymnasium as gym
 import numpy as np
 import torch
@@ -48,13 +48,14 @@ class DQNAgent(rlptAgentBase):
         # PER parameters
         alpha: float = 0.2,
         beta: float = 0.6,
-        prior_eps: float = 1e-6,
+        prior_eps: Union[float,str] = 1e-6,
         # Categorical DQN parameters
         v_min: float = 0.0,
         v_max: float = 200.0,
         atom_size: int = 51,
         # N-step Learning
         n_step: int = 3,
+        device_dtype: str = "torch.float32" # new
 
     ):
         """Initialization.
@@ -73,8 +74,10 @@ class DQNAgent(rlptAgentBase):
             v_max (float): max value of support
             atom_size (int): the unit number of support
             n_step (int): step number to calculate n-step td error
+            
         """
         super(DQNAgent, self).__init__(**super_params)  # initialize super
+        
         # obs_dim = env.observation_space.shape[0]
         obs_dim:int = self.calc_obs_dim() # from super
         # action_dim = env.action_space.n
@@ -89,11 +92,13 @@ class DQNAgent(rlptAgentBase):
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
+        dtype_dict = {'torch.float32':torch.float32,'torch.float64':torch.float64}
+        self.device_dtype = dtype_dict[device_dtype]
         
         # PER
         # memory for 1-step Learning
         self.beta = beta
-        self.prior_eps = prior_eps
+        self.prior_eps = float(prior_eps) # in case its a string (like "1e-6")
         self.memory = PrioritizedReplayBuffer(
             obs_dim, memory_size, batch_size, alpha=alpha, gamma=gamma
         )
@@ -112,15 +117,15 @@ class DQNAgent(rlptAgentBase):
         self.atom_size = atom_size
         self.support = torch.linspace(
             self.v_min, self.v_max, self.atom_size
-        ).to(self.device)
+        ).to(self.device, dtype=self.device_dtype)
 
         # networks: dqn, dqn_target
         self.dqn = Network(
             obs_dim, action_dim, self.atom_size, self.support
-        ).to(self.device)
+        ).to(self.device,dtype=self.device_dtype)
         self.dqn_target = Network(
             obs_dim, action_dim, self.atom_size, self.support
-        ).to(self.device)
+        ).to(self.device,dtype=self.device_dtype)
         self.dqn_target.load_state_dict(self.dqn.state_dict())
         self.dqn_target.eval()
         
@@ -141,7 +146,7 @@ class DQNAgent(rlptAgentBase):
         at_meta_data = {'eps':None, 'is_random': None } # due to the usage in noisy net
         selected_action_idx = self.dqn(
             # torch.FloatTensor(st).to(self.device)
-            st.to(self.device)
+            st.to(self.device,dtype=self.device_dtype)
         ).argmax() # index of maximizing action
         selected_action_idx = selected_action_idx.detach().cpu().numpy() 
         
@@ -182,7 +187,7 @@ class DQNAgent(rlptAgentBase):
         samples = self.memory.sample_batch(self.beta)
         weights = torch.FloatTensor(
             samples["weights"].reshape(-1, 1)
-        ).to(self.device)
+        ).to(self.device,dtype=self.device_dtype)
         indices = samples["indices"]
         
         # 1-step Learning loss
@@ -325,11 +330,11 @@ class DQNAgent(rlptAgentBase):
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray], gamma: float) -> torch.Tensor:
         """Return categorical dqn loss."""
         device = self.device  # for shortening the following lines
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        state = torch.FloatTensor(samples["obs"]).to(device,dtype=self.device_dtype)
+        next_state = torch.FloatTensor(samples["next_obs"]).to(device,dtype=self.device_dtype)
         action = torch.LongTensor(samples["acts"]).to(device)
-        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
-        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device,dtype=self.device_dtype)
+        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device,dtype=self.device_dtype)
         
         # Categorical DQN algorithm
         delta_z = float(self.v_max - self.v_min) / (self.atom_size - 1)
@@ -353,9 +358,10 @@ class DQNAgent(rlptAgentBase):
                 .unsqueeze(1)
                 .expand(self.batch_size, self.atom_size)
                 .to(self.device)
+                # .to(self.device, dtype=self.device_dtype)
             )
-
-            proj_dist = torch.zeros(next_dist.size(), device=self.device)
+            # proj_dist = torch.zeros(next_dist.size(), device=self.device)
+            proj_dist = torch.zeros(next_dist.size(), device=self.device,dtype=self.device_dtype)
             proj_dist.view(-1).index_add_(
                 0, (l + offset).view(-1), (next_dist * (u.float() - b)).view(-1)
             )

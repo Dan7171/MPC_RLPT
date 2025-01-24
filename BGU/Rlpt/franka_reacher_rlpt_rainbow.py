@@ -688,7 +688,7 @@ class MpcRobotInteractive:
         episode_start_time = time.time()
         for ts in range(episode_max_ts):
             # rlpt - select a(t) 
-            at_id, at, at_meta_data = rlpt_agent.select_action(as_1d_tensor(st))    
+            at_id, at, at_meta_data = rlpt_agent.select_action(as_1d_tensor(st,dtype=torch.float32))    
             # mpc planner - perform action a(t) in environment 
             step_start_time = time.time()    
             self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
