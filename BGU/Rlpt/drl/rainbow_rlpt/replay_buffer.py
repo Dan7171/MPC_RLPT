@@ -63,7 +63,8 @@ class ReplayBuffer:
         )
         obs, act = self.n_step_buffer[0][:2]
         
-        self.obs_buf[self.ptr] = obs
+        # self.obs_buf[self.ptr] = obs
+        self.obs_buf[self.ptr] = obs.cpu()
         self.next_obs_buf[self.ptr] = next_obs
         self.acts_buf[self.ptr] = act
         self.rews_buf[self.ptr] = rew
