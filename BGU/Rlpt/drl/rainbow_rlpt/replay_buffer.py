@@ -43,9 +43,11 @@ class ReplayBuffer:
         act: np.ndarray, 
         rew: float, 
         next_obs: np.ndarray, 
-        done: bool,
+        # done: bool,
+        terminated: bool,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool]:
-        transition = (obs, act, rew, next_obs, done)
+        # transition = (obs, act, rew, next_obs, done)
+        transition = (obs, act, rew, next_obs, terminated)
         self.n_step_buffer.append(transition)
 
         # single step transition is not ready
@@ -53,7 +55,10 @@ class ReplayBuffer:
             return ()
         
         # make a n-step transition
-        rew, next_obs, done = self._get_n_step_info(
+        # rew, next_obs, done = self._get_n_step_info(
+        #     self.n_step_buffer, self.gamma
+        # )
+        rew, next_obs, terminated = self._get_n_step_info(
             self.n_step_buffer, self.gamma
         )
         obs, act = self.n_step_buffer[0][:2]
@@ -62,7 +67,9 @@ class ReplayBuffer:
         self.next_obs_buf[self.ptr] = next_obs
         self.acts_buf[self.ptr] = act
         self.rews_buf[self.ptr] = rew
-        self.done_buf[self.ptr] = done
+        # self.done_buf[self.ptr] = done
+        self.done_buf[self.ptr] = terminated 
+        
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
         
