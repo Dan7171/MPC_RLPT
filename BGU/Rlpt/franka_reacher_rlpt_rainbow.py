@@ -1,3 +1,7 @@
+from isaacgym import gymapi
+from isaacgym import gymutil
+from isaacgym import gymtorch
+
 import copy
 import datetime
 import gc
@@ -15,10 +19,7 @@ import typing
 from click import BadArgumentUsage
 from BGU.Rlpt.drl.rainbow_rlpt.dqn_agent import DQNAgent
 from colorlog import root
-# from cv2 import norm
-from isaacgym import gymapi
-from isaacgym import gymutil
-from isaacgym import gymtorch
+from cv2 import norm
 from matplotlib.transforms import Transform
 import psutil
 from pygame import Vector3
