@@ -39,13 +39,11 @@ class DQNAgent(rlptAgentBase):
 
     def __init__(
         self, 
-        obs_dim: int, # new
-        action_dim: int, # new
+
         super_params: dict, # new 
         memory_size: int,
         batch_size: int,
         target_update: int,
-        seed: int,
         gamma: float = 0.99,
         # PER parameters
         alpha: float = 0.2,
@@ -62,10 +60,7 @@ class DQNAgent(rlptAgentBase):
         """Initialization.
         
         Args:
-            obs_dim: observation space length
-            action_dim: action space length 
             super_params': dict
-
             memory_size (int): length of memory
             batch_size (int): batch size for sampling
             target_update (int): period for target model's hard update
@@ -81,13 +76,12 @@ class DQNAgent(rlptAgentBase):
         """
         super(DQNAgent, self).__init__(**super_params)  # initialize super
         # obs_dim = env.observation_space.shape[0]
-        obs_dim = obs_dim
+        obs_dim:int = self.calc_obs_dim() # from super
         # action_dim = env.action_space.n
-        action_dim = action_dim
+        action_dim:int = self.calc_action_dim() # from super
         # self.env = env
         self.batch_size = batch_size
         self.target_update = target_update
-        # self.seed = seed
         self.gamma = gamma
         # NoisyNet: All attributes related to epsilon are removed
         

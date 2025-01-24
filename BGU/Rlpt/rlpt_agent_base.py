@@ -41,7 +41,7 @@ class rlptAgentBase:
         """
         
         # self.completed_optimization_steps_cntr = 0
-        self.training_mode = training_mode
+        self.training_mode = training_mode # new
         self.trainig_episodes_done = 0 # new
         self.trainig_steps_done = 0 # new
         self.action_space:list = action_space
@@ -100,9 +100,9 @@ class rlptAgentBase:
         
         
         self.st_dim:int = sum(self.st_componentes_ordered_dims) # len of each state s(t) (NN input length)
+        self.at_dim: int = len(action_space) # new
         self.st_legend = self.get_states_legend() # readable shape of the state 
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
-        
         self.tuning_enabled = rlpt_cfg['agent']['action_space']['tuning_enabled'] if 'tuning_enabled' in rlpt_cfg['agent']['action_space'] else True 
 
     def initialize_etl(self,etl_file_path):
@@ -495,4 +495,18 @@ class rlptAgentBase:
         # any extra inheriting class ops
         ans = self._training_episode_post_ops(*args, **kwargs)
         return ans
-            
+    
+    def calc_obs_dim(self) -> int:
+        """
+        calculates observation space length
+
+        """
+        return self.st_dim
+    
+    def calc_action_dim(self) -> int:
+        """
+        calculates action  action space length
+        
+        """
+        return self.at_dim
+    
