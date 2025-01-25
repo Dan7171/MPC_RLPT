@@ -5,6 +5,7 @@ import csv
 from importlib import metadata
 from os import access
 import os
+import time
 from turtle import position
 from typing import Any, Dict, List, Set, Tuple, Union
 from click import BadArgumentUsage
@@ -172,114 +173,67 @@ class rlptAgentBase:
                 return []
             return list(transition_meta_data_in_cat.keys())
         
+
+        # print(f'debug 3: {len(episode_logging_info["t_ep"])}, {len(episode_logging_info["at_id"])}')
+        
         if not os.path.exists(etl_file_path):
-            
+        
             md_categories = ['st', 'at', 'rt', 's(t+1)','step', 'optim']
             md_labels = []
             for md_cat in md_categories:
                 md_labels.append(get_md_category_label_list(md_cat))
             self.etl_col_names = self.initialize_etl(etl_file_path, *md_labels, special_labels)
         
-            # st_metadata_labels = # list(episode_logging_info[f'st{META_DATA_SIGNATURE_ETL}'].keys())
-            # at_metadata_labels = # list(episode_logging_info[f'at{META_DATA_SIGNATURE_ETL}'].keys())
-            # rt_metadata_labels = # list(episode_logging_info[f'rt{META_DATA_SIGNATURE_ETL}'].keys())
-            # snext_metadata_labels = list(episode_logging_info[f's(t+1){META_DATA_SIGNATURE_ETL}'].keys())
-            # optim_metadata_labels = list(episode_logging_info[f'optim{META_DATA_SIGNATURE_ETL}'].keys())
-            # step_metadata_labels = list(episode_logging_info[f'step{META_DATA_SIGNATURE_ETL}'].keys())
-            # self.etl_col_names = self.initialize_etl(etl_file_path, st_metadata_labels, at_metadata_labels,rt_metadata_labels,snext_metadata_labels, step_metadata_labels, optim_metadata_labels, special_labels)
-        
-        # all_rows = [] # all transitions in episode
-        
-        
-        total_transition_num = len(episode_logging_info['t_ep']) # num of transitions in episode (num of rows to write)
-        
-        for transition_index in range(total_transition_num):
-            log_row = []
-            for i in range(len(self.etl_col_names)):
-                colname = self.etl_col_names[i]
-                # print(i, colname, log_row)
-
-                if META_DATA_SIGNATURE_ETL in colname:
-                    md_cat_with_signature = colname
-                    md_cat_wo_signature, key_in_category = md_cat_with_signature.split(META_DATA_SIGNATURE_ETL)
-                    logging_info_key = f'{md_cat_wo_signature}{META_DATA_SIGNATURE_ETL}'
-                    log_row.append(episode_logging_info[logging_info_key][transition_index][key_in_category])
-                    
-                elif colname.startswith('st_') and (i == 0 or not self.etl_col_names[i-1].startswith('st_')): # check if its the first signed val
-                    st_parsed = list(self.parse_st(episode_logging_info['st'][transition_index]).values()) 
-                    log_row.extend(st_parsed)
-                    
-                elif colname == 'at_id': # check if its the first signed val
-                    at_id = episode_logging_info[colname][transition_index]
-                    at_unique_features = []
-                    if len(self.unique_action_features_by_idx):
-                        at_unique_features = list(self.unique_action_features_by_idx[at_id].values())
-                    at_shared_features = []
-                    if len(self.shared_action_features):
-                        at_shared_features = list(self.shared_action_features.values())
-                    log_row.append(at_id)
-                    log_row.extend(at_unique_features)
-                    log_row.extend(at_shared_features)
-                
-                elif colname.startswith('at_') and not colname.startswith('at_id') or colname.startswith('st_'):
-                    continue
-                
-                elif colname == 'ep_id':
-                    log_row.append(self.get_episodes_done()) # the number of done episodes is the index at this moment, because the counter is increased after this logging    
-                
-                else:
-                    log_row.append(episode_logging_info[colname][transition_index])
-
-        
-            with open(etl_file_path, mode='a', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow(log_row)
-                
+        else:
+            with open(etl_file_path, mode='r') as file:
+                reader = csv.reader(file)
+                self.etl_col_names = next(reader)
+            
+        with open(etl_file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            total_transition_num = len(episode_logging_info['t_ep']) # num of transitions in episode (num of rows to write)
+            for transition_index in range(total_transition_num):
+                log_row = []
+                for i in range(len(self.etl_col_names)):
+                    colname = self.etl_col_names[i]
+                    if META_DATA_SIGNATURE_ETL in colname:
+                        md_cat_with_signature = colname
+                        md_cat_wo_signature, key_in_category = md_cat_with_signature.split(META_DATA_SIGNATURE_ETL)
+                        logging_info_key = f'{md_cat_wo_signature}{META_DATA_SIGNATURE_ETL}'
+                        log_row.append(episode_logging_info[logging_info_key][transition_index][key_in_category])
                         
+                    elif colname.startswith('st_') and (i == 0 or not self.etl_col_names[i-1].startswith('st_')): # check if its the first signed val
+                        st_parsed = list(self.parse_st(episode_logging_info['st'][transition_index]).values()) 
+                        log_row.extend(st_parsed)
+                        
+                    elif colname == 'at_id': # check if its the first signed val
+                        at_id = episode_logging_info[colname][transition_index]
+                        at_unique_features = []
+                        if len(self.unique_action_features_by_idx):
+                            at_unique_features = list(self.unique_action_features_by_idx[at_id].values())
+                        at_shared_features = []
+                        if len(self.shared_action_features):
+                            at_shared_features = list(self.shared_action_features.values())
+                        log_row.append(at_id)
+                        log_row.extend(at_unique_features)
+                        log_row.extend(at_shared_features)
                     
-                     
-                
-        
-        # state_list = episode_logging_info['episode_logging_info']['state']
-        # state_list_parsed = []
-        # for st in state_list:
-        #     st_parsed:list = list(self.parse_st(st).values()) 
-        #     state_list_parsed.append(st_parsed)
-        
-        # action_list = episode_logging_info['episode_logging_info']['action']
-        # for at in action_list:
-        #     action_id = at['at_id']
-        #     at_unique_features = []
-        #     if len(self.unique_action_features_by_idx):
-        #         at_unique_features = list(self.unique_action_features_by_idx[action_id].values())
+                    elif colname.startswith('at_') and not colname.startswith('at_id') or colname.startswith('st_'):
+                        continue
+                    
+                    elif colname == 'ep_id':
+                        log_row.append(self.get_episodes_done()) # the number of done episodes is the index at this moment, because the counter is increased after this logging    
+                    
+                    else:
+                        log_row.append(episode_logging_info[colname][transition_index])
 
-        #     at_shared_features = []
-        #     if len(self.shared_action_features):
-        #         at_shared_features = list(self.shared_action_features.values())
-        
-        # st_at = st_parsed + at_unique_features + at_shared_features                
-        
-        
-        # at_meta_data_keys_sorted = sorted(at_meta_data.keys())
-        # at_meta_data_vals_sorted = [at_meta_data[k] for k in at_meta_data_keys_sorted]
-        
-        # new_row = [ep_num, ts, *at_meta_data_vals_sorted, action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached]
-        
-             
-        
-        # if self.training_mode:
-        #     new_row.extend([at_meta_data['eps'], at_meta_data['is_random']])
-        #     optim_meta_data_labels = ['raw_grad_norm', 'clipped_grad_norm', 'use_clipped', 'loss']
-        #     optim_meta_data_log = ['' for _ in optim_meta_data_labels]
-        #     for i,label in enumerate(optim_meta_data_labels):
-        #         if label in optim_meta_data:
-        #             optim_meta_data_log[i] = optim_meta_data[label] 
-        #     new_row.extend(optim_meta_data_log)
+                
+                writer.writerow(log_row)
+               
                     
-        # with open(etl_file_path, mode='a', newline='') as file:
-        #     writer = csv.writer(file)
-        #     writer.writerow(new_row)
+                        
         
+                     
     
     def flatten_coll_obj_states(self, all_coll_objs_st):
         
@@ -349,7 +303,7 @@ class rlptAgentBase:
         self.set_test_steps_done(checkpoint['test_steps_done'])
         self._load(checkpoint)
         
-        color_print(f'Model loading completed! checkpoint details:\n{checkpoint}')
+        # color_print(f'Model loading completed! checkpoint details:\n{checkpoint}')
         
         return checkpoint 
     
@@ -657,6 +611,9 @@ class rlptAgentBase:
     def _test_step_post_ops(self,*args, **kwargs) -> Any:
         pass
     def post_episode_ops(self,*args, **kwargs)->Any:
+        
+        logging_info = kwargs["episode_logging_info"]
+        # print(f'debug 2: {len(logging_info["t_ep"])}, {len(logging_info["at_id"])}')
         
         if self.etl_logging:             
             special_labels = kwargs['special_labels'] if 'special_labels' in kwargs else []
