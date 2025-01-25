@@ -81,7 +81,9 @@ agent:
     goal_rot_thresh_dist: 0.05 # activation threshold of orientation part in goal state reward.  TODO: when working with poser reward, I think it'd be better to make it larger. 
     col_thresh_dist: 0.05 # activation threshold of collision detection, This distance found as a sweet spot for collision detection. It Should bot be changed unless having a good reason.
     time_reward: linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
-    pose_reward: true # false means no direct reward on goal state, learning just from time to goal and collisions
+    pose_reward: 
+      use: true # false means no direct reward on goal state, learning just from time to goal and collisions
+      type: fixed
     safety_w: 1000
     pose_w: 1000
     step_dur_w: 1
@@ -89,8 +91,8 @@ agent:
     terminal_goal: true
   
   goal_test:
-    goal_pos_thresh_dist: 0.01 # (world, not in reward function) activation thresold of position part in goal test (distance in meters)   
-    goal_rot_thresh_dist: 0.01 # (world, not in reward function) activation threshold of orientation part in goal state reward 
+    goal_pos_thresh_dist: 0.05 # (world, not in reward function) activation thresold of position part in goal test (distance in meters)   
+    goal_rot_thresh_dist: 0.05 # (world, not in reward function) activation threshold of orientation part in goal state reward 
     requirements: [pos, rot] # (or [pos] or [rot].) requires to pass threshold on every requirement to pass goal test
   
   training:

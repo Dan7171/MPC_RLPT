@@ -451,11 +451,11 @@ class rlptAgentBase:
         """ returns start index (inclusive) to end index (inclusive) int he oredered flatten state vector"""
         return self.component_to_location_dict[component_name]
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)-> Tuple[np.float32,dict]:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, goal_state)-> Tuple[np.float32,dict]:
         """ A weighted sum of reward terms
         Returns:
             a. np.float64: total reward of the transition from s(t) to s(t+1).
-            b. is goal_test
+            b. meta data
         """
         rlpt_cfg = GLobalVars.rlpt_cfg
         if rlpt_cfg is None:
@@ -474,16 +474,20 @@ class rlptAgentBase:
 
         # checking if the goal is reached (if the ee is close enough to the goal position and orientation)
         
-        if reward_config['pose_reward']:
-            passing_pose_threshold = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
-
-            # positive rewards for position  and orientation when close enough to goal position        
-            possition_reward =  max(0, goal_pos_thresh_dist - ee_pos_error) # "reversed relu" (greater when error is approaching 0, never negative)
-            orientation_reward = max(0, goal_rot_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0,  never negative)
+        if reward_config['pose_reward']['use']:
+            # passing_pose_threshold = ee_pos_error < goal_pos_thresh_dist and ee_rot_error < goal_rot_thresh_dist
             
+            # positive rewards for position  and orientation when close enough to goal position        
+            if not reward_config['pose_reward']['type'] == 'fixed':
+                possition_reward =  max(0, goal_pos_thresh_dist - ee_pos_error) # "reversed relu" (greater when error is approaching 0, never negative)
+                orientation_reward = max(0, goal_rot_thresh_dist - ee_rot_error) # "reversed relu" (greater when error is approaching 0,  never negative)
+                pose_term = possition_reward + orientation_reward
+                pose_reward = pose_term * int(goal_state) # int(passing_pose_threshold)   
+            else:
+                pose_reward = int(goal_state)
             # pose reward logic: we compute a positive reward for pose, only if both position and orientation are close enough to the goal
             # the pose reward is the sum of the position and orientation rewards,  
-            pose_reward = (possition_reward + orientation_reward) * int(passing_pose_threshold)         
+                  
             pose_reward *= pose_w
         else:
             pose_reward = 0   
