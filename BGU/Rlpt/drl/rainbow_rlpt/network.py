@@ -35,7 +35,19 @@ class Network(nn.Module):
             nn.Linear(in_dim, 128), 
             nn.ReLU(),
         )
-       
+        self.feature_layer2 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(),
+        )
+        self.feature_layer3 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(),
+        )
+        self.feature_layer4 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(),
+        )
+        
         # set advantage layer
         self.advantage_hidden_layer = NoisyLinear(128, 128)
         self.advantage_layer = NoisyLinear(128, out_dim * atom_size)
@@ -52,7 +64,11 @@ class Network(nn.Module):
     
     def dist(self, x: torch.Tensor) -> torch.Tensor:
         """Get distribution for atoms."""
-        feature = self.feature_layer(x) # TODO: To debug: the problam is that feature layer needs 64 byte but x is 32 (which is ok)
+        x = self.feature_layer(x)
+        x = self.feature_layer2(x)
+        x = self.feature_layer3(x)
+        feature = self.feature_layer4(x)
+        
         adv_hid = F.relu(self.advantage_hidden_layer(feature))
         val_hid = F.relu(self.value_hidden_layer(feature))
         

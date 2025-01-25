@@ -1,5 +1,6 @@
 seed: 42
 agent:
+  alg: 'rainbow'  # 'ddqn' # 'dqn', 'rainbow'
   model: # The Neural network 
     load_checkpoint: false
     checkpoint_path: '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:23(Thu)10:49:54/model.pth'
@@ -44,7 +45,6 @@ agent:
     # C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
   
   
-  # agent_type: 'ddqn' # 'dqn', 'rainbow'
 
 
   rainbow_agent_settings:
@@ -97,7 +97,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 600
-    max_ts: 1000
+    max_ts: 100
     sample_objs_every_episode: false # renders new collision object identities
     sample_obj_locs_every_episode: false # renders new collision object poses
     sample_goal_every_episode: false # changing goal pose

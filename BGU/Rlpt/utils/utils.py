@@ -41,7 +41,8 @@ def print_progress_bar(current, max_steps, bar_length=50,seconds_passed=-1.0):
     remaining_ratio = current / max_steps
     remaining_length = int(remaining_ratio * bar_length)
     bar = "[" + "=" * remaining_length + " " * (bar_length - remaining_length) + "]"
-    color_print(f"\r{bar} {current}/{max_steps} steps completed. Time: {seconds_passed if seconds_passed != -1 else '?'} seconds", end="")
+    
+    print(f"\r{bar} {current}/{max_steps} steps completed. Time: {seconds_passed if seconds_passed != -1 else '?'} seconds", end="")
     
 
 

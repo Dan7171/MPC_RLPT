@@ -9,7 +9,8 @@ from BGU.Rlpt.configs.default_main import load_config_with_defaults
 from BGU.Rlpt.utils.utils import color_print, make_model_path
 
 if __name__ == '__main__':
-    agent_cfg = load_config_with_defaults('BGU/Rlpt/configs/main.yml')['agent']
+    rlpt_cfg = load_config_with_defaults('BGU/Rlpt/configs/main.yml')
+    agent_cfg = rlpt_cfg['agent']
     training = agent_cfg['training']['run']
     testing = agent_cfg['testing']['run']
     assert xor(training, testing), 'in external mode, training xor testing only'
@@ -37,13 +38,13 @@ if __name__ == '__main__':
     
     # copy the config file of current run to the model dir
     
-    
+    script_name = 'franka_reacher_rlpt.py' if agent_cfg['alg'] == 'ddqn' else 'franka_reacher_rlpt_rainbow.py'
     for ep in range(ep_start, n_episodes):
         color_print(f'EXTERNAL RUNNER: episode: {ep} starts...', back_color='blue')        
         # Run the subprocess
         process = subprocess.Popen(
             # ['conda', 'run', '-n', 'storm_kit', 'python', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path],
-            ['conda', 'run','--no-capture-output', '-n', 'storm_kit', 'python','-u', '/home/dan/MPC_RLPT/BGU/Rlpt/franka_reacher_rlpt.py', '--external_run', 'True', '--model_path', model_file_path],
+            ['conda', 'run','--no-capture-output', '-n', 'storm_kit', 'python','-u', f'/home/dan/MPC_RLPT/BGU/Rlpt/{script_name}', '--external_run', 'True', '--model_path', model_file_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Combine stderr with stdout
             text=True,  

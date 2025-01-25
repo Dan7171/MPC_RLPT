@@ -4,6 +4,7 @@ import copy
 import csv
 from importlib import metadata
 from os import access
+import os
 from turtle import position
 from typing import Any, Dict, List, Set, Tuple, Union
 from click import BadArgumentUsage
@@ -15,7 +16,13 @@ from yaml import compose
 import numpy as np
 import pandas as pd
 from BGU.Rlpt.DebugTools.globs import GLobalVars
+from BGU.Rlpt.utils.error import pos_error, pose_as_ndarray, rot_error
+from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray
+from BGU.Rlpt.utils.utils import color_print, goal_test
 
+META_DATA_SIGNATURE_ETL = 'MD'
+# AT_SIGNATURE_ETL = 'AT'
+ST_SIGNATURE_ETL = 'ST'
 def get_obj_type(obj_properties):
     if 'radius' in obj_properties:
         return 'sphere'
@@ -28,7 +35,7 @@ def _merge_dict(original, update):
     return new
     
 class rlptAgentBase:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, training_mode=True):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, etl_logging:bool, training_mode=True ):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -45,6 +52,10 @@ class rlptAgentBase:
         self.training_mode = training_mode # new
         self.trainig_episodes_done = 0 # new
         self.trainig_steps_done = 0 # new
+        self.test_episodes_done = 0 # new
+        self.test_steps_done = 0 # new
+        
+        self.etl_logging = etl_logging
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
         self.all_coll_obj_names_sorted:list = sorted(list(self.col_obj_handles.keys()), key=lambda x: self.col_obj_handles[x]) # sorted by obj handle
@@ -105,55 +116,169 @@ class rlptAgentBase:
         self.st_legend = self.get_states_legend() # readable shape of the state 
         self.shared_action_features, self.unique_action_features_by_idx = self.action_space_info() # mostly for printing
         self.tuning_enabled = rlpt_cfg['agent']['action_space']['tuning_enabled'] if 'tuning_enabled' in rlpt_cfg['agent']['action_space'] else True 
-
-    def initialize_etl(self,etl_file_path):
-        st_titles = self.get_states_legend()
-        st_titles = ['st_' + pair[1] for pair in st_titles]
-        at_titles_unique_features = []
+        self.etl_col_names = []
+    
+    def initialize_etl(self,etl_file_path:str, st_metadata_labels:list,at_metadata_labels:list,rt_metadata_labels:list, snext_metadata_lables:list,step_metadata_labels:list, optim_metadata_labels:list=[],special_labels:list=[]):
+        """  
+        Initializing the etl file with proper lables
+        Args:
+            etl_file_path: path to etl (csv file)
+            st_metadata_labels : st meta data labels
+            at_metadata_labels : at meta data labels
+            rt_metadata_labels : rt meta data labels
+            snext_metadata_lables:s(t+1) meta data labels
+            optim_metadata_labels (list, optional): optimization meta data labels. Defaults to [].
+            step_metadata_labels: step (from st to st+1) meta data labeles
+            special_labels (list, optional): Any extra labels that user wants to add to etl. Defaults to [].
+        """        
+        
+        st_metadata_labels = [f'st{META_DATA_SIGNATURE_ETL}{title}' for title in st_metadata_labels]
+        at_metadata_labels = [f'at{META_DATA_SIGNATURE_ETL}{title}' for title in at_metadata_labels]
+        rt_metadata_labels = [f'rt{META_DATA_SIGNATURE_ETL}{title}' for title in rt_metadata_labels]
+        snext_metadata_labels = [f's(t+1){META_DATA_SIGNATURE_ETL}{title}' for title in snext_metadata_lables]
+        optim_metadata_labels = [f'optim{META_DATA_SIGNATURE_ETL}{title}' for title in optim_metadata_labels]
+        step_metadata_labels = [f'step{META_DATA_SIGNATURE_ETL}{title}' for title in step_metadata_labels]
+        
+        # st_labels = self.get_states_legend()
+        # st_labels = ['st_' + pair[1] for pair in st_labels]
+        st_labels = self.st_componentes_ordered
+        st_labels = ['st_' + labelname for labelname in st_labels]
+        at_labels_unique_features = []
         if len(self.unique_action_features_by_idx):
-            at_titles_unique_features = self.unique_action_features_by_idx[0].keys()
-        at_titles_unique_features = ['at_' + k for k in at_titles_unique_features]
-        at_titles_shared_features = []
+            at_labels_unique_features = self.unique_action_features_by_idx[0].keys()
+        at_labels_unique_features = ['at_' + k for k in at_labels_unique_features]
+        at_labels_shared_features = []
         if len(self.shared_action_features):
-            at_titles_shared_features = self.shared_action_features.keys()
-        at_titles_shared_features = ['at_' + k for k in at_titles_shared_features]
-        st_at_titles:list[str] = st_titles + at_titles_unique_features+at_titles_shared_features
-        col_names = ['ep', 't','q(w,st,all)','action_id', *st_at_titles, 'at_dur','rt', 'pos_er_s(t+1)','rot_er_s(t+1)','contact_s(t+1)', 'goal_reached_s(t+1)','forced_stopping']    
+            at_labels_shared_features = self.shared_action_features.keys()
+        at_labels_shared_features = ['at_' + k for k in at_labels_shared_features]
+        col_names = ['t_total', 'ep_id', 't_ep', *st_labels, *st_metadata_labels, 'at_id',  *at_labels_unique_features, *at_labels_shared_features, *at_metadata_labels,'rt',*rt_metadata_labels,*snext_metadata_labels, *step_metadata_labels]
         if self.training_mode:
-            col_names.extend(['at_epsilon','rand_at', 'optim_raw_grad_norm', 'optim_clipped_grad_norm', 'optim_use_clipped','optim_loss'])
+            col_names.extend(optim_metadata_labels)
+        col_names.extend(special_labels)     
         with open(etl_file_path, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(col_names)
-        print(f'new etl file was initialized: {etl_file_path}')    
+        print(f'new etl file was initialized: {etl_file_path}')
+        return col_names
+            
         
     
-    def update_etl(self, st, action_id,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path,forced_stopping, optim_meta_data, goal_reached):
+    # def update_etl(self, st, action_id,rt,ep_num,ts,at_meta_data,contact_detected,step_duration,ee_pos_error, ee_rot_error,etl_file_path, optim_meta_data, goal_reached):
+    def update_etl(self,etl_file_path, episode_logging_info,special_labels=[]):
         
-        st_parsed:list = list(self.parse_st(st).values()) 
-        at_unique_features = []
-        if len(self.unique_action_features_by_idx):
-            at_unique_features = list(self.unique_action_features_by_idx[action_id].values())
-        at_shared_features = []
-        if len(self.shared_action_features):
-            at_shared_features = list(self.shared_action_features.values())
-        st_at = st_parsed + at_unique_features + at_shared_features                
+        def get_md_category_label_list(md_category:str):
+            transition_meta_data_in_cat = episode_logging_info[f'{md_category}{META_DATA_SIGNATURE_ETL}'][0]
+            if not len(transition_meta_data_in_cat): # no meta data
+                return []
+            return list(transition_meta_data_in_cat.keys())
         
-        new_row = [ep_num, ts, at_meta_data['q(w,st,all)'], action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached, forced_stopping]
+        if not os.path.exists(etl_file_path):
+            
+            md_categories = ['st', 'at', 'rt', 's(t+1)','step', 'optim']
+            md_labels = []
+            for md_cat in md_categories:
+                md_labels.append(get_md_category_label_list(md_cat))
+            self.etl_col_names = self.initialize_etl(etl_file_path, *md_labels, special_labels)
+        
+            # st_metadata_labels = # list(episode_logging_info[f'st{META_DATA_SIGNATURE_ETL}'].keys())
+            # at_metadata_labels = # list(episode_logging_info[f'at{META_DATA_SIGNATURE_ETL}'].keys())
+            # rt_metadata_labels = # list(episode_logging_info[f'rt{META_DATA_SIGNATURE_ETL}'].keys())
+            # snext_metadata_labels = list(episode_logging_info[f's(t+1){META_DATA_SIGNATURE_ETL}'].keys())
+            # optim_metadata_labels = list(episode_logging_info[f'optim{META_DATA_SIGNATURE_ETL}'].keys())
+            # step_metadata_labels = list(episode_logging_info[f'step{META_DATA_SIGNATURE_ETL}'].keys())
+            # self.etl_col_names = self.initialize_etl(etl_file_path, st_metadata_labels, at_metadata_labels,rt_metadata_labels,snext_metadata_labels, step_metadata_labels, optim_metadata_labels, special_labels)
+        
+        # all_rows = [] # all transitions in episode
+        
+        
+        total_transition_num = len(episode_logging_info['t_ep']) # num of transitions in episode (num of rows to write)
+        
+        for transition_index in range(total_transition_num):
+            log_row = []
+            for i in range(len(self.etl_col_names)):
+                colname = self.etl_col_names[i]
+                # print(i, colname, log_row)
+
+                if META_DATA_SIGNATURE_ETL in colname:
+                    md_cat_with_signature = colname
+                    md_cat_wo_signature, key_in_category = md_cat_with_signature.split(META_DATA_SIGNATURE_ETL)
+                    logging_info_key = f'{md_cat_wo_signature}{META_DATA_SIGNATURE_ETL}'
+                    log_row.append(episode_logging_info[logging_info_key][transition_index][key_in_category])
+                    
+                elif colname.startswith('st_') and (i == 0 or not self.etl_col_names[i-1].startswith('st_')): # check if its the first signed val
+                    st_parsed = list(self.parse_st(episode_logging_info['st'][transition_index]).values()) 
+                    log_row.extend(st_parsed)
+                    
+                elif colname == 'at_id': # check if its the first signed val
+                    at_id = episode_logging_info[colname][transition_index]
+                    at_unique_features = []
+                    if len(self.unique_action_features_by_idx):
+                        at_unique_features = list(self.unique_action_features_by_idx[at_id].values())
+                    at_shared_features = []
+                    if len(self.shared_action_features):
+                        at_shared_features = list(self.shared_action_features.values())
+                    log_row.append(at_id)
+                    log_row.extend(at_unique_features)
+                    log_row.extend(at_shared_features)
+                
+                elif colname.startswith('at_') and not colname.startswith('at_id') or colname.startswith('st_'):
+                    continue
+                
+                elif colname == 'ep_id':
+                    log_row.append(self.get_episodes_done()) # the number of done episodes is the index at this moment, because the counter is increased after this logging    
+                
+                else:
+                    log_row.append(episode_logging_info[colname][transition_index])
+
+        
+            with open(etl_file_path, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(log_row)
+                
+                        
+                    
+                     
+                
+        
+        # state_list = episode_logging_info['episode_logging_info']['state']
+        # state_list_parsed = []
+        # for st in state_list:
+        #     st_parsed:list = list(self.parse_st(st).values()) 
+        #     state_list_parsed.append(st_parsed)
+        
+        # action_list = episode_logging_info['episode_logging_info']['action']
+        # for at in action_list:
+        #     action_id = at['at_id']
+        #     at_unique_features = []
+        #     if len(self.unique_action_features_by_idx):
+        #         at_unique_features = list(self.unique_action_features_by_idx[action_id].values())
+
+        #     at_shared_features = []
+        #     if len(self.shared_action_features):
+        #         at_shared_features = list(self.shared_action_features.values())
+        
+        # st_at = st_parsed + at_unique_features + at_shared_features                
+        
+        
+        # at_meta_data_keys_sorted = sorted(at_meta_data.keys())
+        # at_meta_data_vals_sorted = [at_meta_data[k] for k in at_meta_data_keys_sorted]
+        
+        # new_row = [ep_num, ts, *at_meta_data_vals_sorted, action_id, *st_at, step_duration, rt, ee_pos_error, ee_rot_error, contact_detected, goal_reached]
         
              
         
-        if self.training_mode:
-            new_row.extend([at_meta_data['eps'], at_meta_data['is_random']])
-            optim_meta_data_labels = ['raw_grad_norm', 'clipped_grad_norm', 'use_clipped', 'loss']
-            optim_meta_data_log = ['' for _ in optim_meta_data_labels]
-            for i,label in enumerate(optim_meta_data_labels):
-                if label in optim_meta_data:
-                    optim_meta_data_log[i] = optim_meta_data[label] 
-            new_row.extend(optim_meta_data_log)
+        # if self.training_mode:
+        #     new_row.extend([at_meta_data['eps'], at_meta_data['is_random']])
+        #     optim_meta_data_labels = ['raw_grad_norm', 'clipped_grad_norm', 'use_clipped', 'loss']
+        #     optim_meta_data_log = ['' for _ in optim_meta_data_labels]
+        #     for i,label in enumerate(optim_meta_data_labels):
+        #         if label in optim_meta_data:
+        #             optim_meta_data_log[i] = optim_meta_data[label] 
+        #     new_row.extend(optim_meta_data_log)
                     
-        with open(etl_file_path, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(new_row)
+        # with open(etl_file_path, mode='a', newline='') as file:
+        #     writer = csv.writer(file)
+        #     writer.writerow(new_row)
         
     
     def flatten_coll_obj_states(self, all_coll_objs_st):
@@ -220,7 +345,12 @@ class rlptAgentBase:
         checkpoint = torch.load(checkpoint_path)
         self.set_training_episodes_done(checkpoint['training_episodes_done'])
         self.set_training_steps_done(checkpoint['training_steps_done'])
-        self._load(checkpoint)        
+        self.set_test_episodes_done(checkpoint['test_episodes_done'])
+        self.set_test_steps_done(checkpoint['test_steps_done'])
+        self._load(checkpoint)
+        
+        color_print(f'Model loading completed! checkpoint details:\n{checkpoint}')
+        
         return checkpoint 
     
     @abstractmethod
@@ -234,12 +364,20 @@ class rlptAgentBase:
         """ 
         training_episodes_done = self.get_training_episodes_done()
         training_steps_done = self.get_training_steps_done()
-        assert training_episodes_done > 0 # assert 'training_episodes_done' in kwargs and kwargs['training_episodes_done'] > 0
-        assert training_steps_done > 0  # assert 'training_steps_done' in  kwargs and kwargs['training_steps_done'] > 0        
+        test_episodes_done = self.get_test_episodes_done()
+        test_steps_done = self.get_test_steps_done()
+        
+        # assert training_episodes_done > 0 # assert 'training_episodes_done' in kwargs and kwargs['training_episodes_done'] > 0
+        # assert training_steps_done > 0  # assert 'training_steps_done' in  kwargs and kwargs['training_steps_done'] > 0        
+        
         base_items = {
             'training_episodes_done': training_episodes_done,
-            'training_steps_done': training_steps_done
+            'training_steps_done': training_steps_done,
+            'test_episodes_done': test_episodes_done,
+            'test_steps_done': test_steps_done,
+            
         }
+        
         agent_specific_items = self._get_items_to_save(*args, **kwargs)
         items_to_save = {**base_items, **agent_specific_items} # syntax for merging two dicts
         torch.save(items_to_save, checkpoint_file_path)
@@ -359,7 +497,7 @@ class rlptAgentBase:
         """ returns start index (inclusive) to end index (inclusive) int he oredered flatten state vector"""
         return self.component_to_location_dict[component_name]
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)-> np.float32:
+    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration)-> Tuple[np.float32,dict]:
         """ A weighted sum of reward terms
         Returns:
             a. np.float64: total reward of the transition from s(t) to s(t+1).
@@ -403,7 +541,8 @@ class rlptAgentBase:
             step_duration_reward = -1
 
         total_reward = pose_reward + safety_reward + step_duration_reward
-        return np.float32(total_reward)
+        reward_metadata = {'pose_r_weighted': pose_reward, 'safety_r_weighted': safety_reward, 'dur_r_weighted': step_duration_reward}
+        return np.float32(total_reward), reward_metadata
 
     def action_space_info(self):
         
@@ -454,12 +593,45 @@ class rlptAgentBase:
             cur_max = max(cur_max, action['mpc_params']['horizon'])
         return cur_max
     
+    def set_episodes_done(self, episodes_done):
+        if self.training_mode:
+            self.set_training_episodes_done(episodes_done)
+        else:
+            self.set_test_episodes_done(episodes_done)        
+    
+    def set_steps_done(self, steps):
+        if self.training_mode:
+            self.set_training_steps_done(steps)
+        else:
+            self.set_test_steps_done(steps)       
+    
+    def get_episodes_done(self):
+        if self.training_mode:
+            return self.get_training_episodes_done()
+        else:
+            return self.get_test_episodes_done()
+        
+        
+    def get_steps_done(self):
+        if self.training_mode:
+            return self.get_training_steps_done()
+        else:
+            return self.get_test_steps_done()
+        
+            
     def set_training_episodes_done(self, training_episodes_done):
         assert training_episodes_done > 0
         self.trainig_episodes_done = training_episodes_done
-        
+    
+    
     def get_training_episodes_done(self):
         return self.trainig_episodes_done
+    
+    def set_test_episodes_done(self, episodes_done):
+        self.test_episodes_done = episodes_done
+        
+    def get_test_episodes_done(self):    
+        return self.test_episodes_done
     
     def set_training_steps_done(self, training_steps_done):
         assert training_steps_done > 0
@@ -468,6 +640,12 @@ class rlptAgentBase:
     def get_training_steps_done(self):
         return self.trainig_steps_done
     
+    def set_test_steps_done(self, steps_done):
+        self.test_steps_done = steps_done
+        
+    def get_test_steps_done(self):
+        return self.test_steps_done
+    
     @abstractmethod
     def _training_step_post_ops(self,*args, **kwargs) -> Any:
         pass    
@@ -475,6 +653,21 @@ class rlptAgentBase:
     @abstractmethod
     def _training_episode_post_ops(self,*args, **kwargs) -> Any:
         pass    
+    @abstractmethod
+    def _test_step_post_ops(self,*args, **kwargs) -> Any:
+        pass
+    def post_episode_ops(self,*args, **kwargs)->Any:
+        
+        if self.etl_logging:             
+            special_labels = kwargs['special_labels'] if 'special_labels' in kwargs else []
+            self.update_etl(kwargs['etl_file_path'], kwargs['episode_logging_info'],special_labels)
+
+        self.set_episodes_done(self.get_episodes_done() + 1) # update episode cntr    
+        if self.training_mode:
+            ans = self.training_episode_post_ops(*args, **kwargs)
+        else:
+            ans = self.test_episode_post_ops(*args, **kwargs)
+        return ans
     
     def post_step_ops(self, *args, **kwargs) -> Any:
         
@@ -482,19 +675,39 @@ class rlptAgentBase:
         self.set_training_steps_done(self.get_training_steps_done() + 1)
     
         # any extra inheriting class ops
-        ans = self._training_step_post_ops(*args, **kwargs)
+        if self.training_mode:
+            ans = self._training_step_post_ops(*args, **kwargs)
+        else:
+            ans = self._test_step_post_ops(*args, **kwargs)
         return ans
+        
     
     def training_episode_post_ops(self, checkpoint_file_path, *args, **kwargs) -> Any:
         
-        # update counter
-        self.set_training_episodes_done(self.get_training_episodes_done() + 1)
+        # # update counter
+        # self.set_training_episodes_done(self.get_training_episodes_done() + 1)
         
         # save updated info
         self.save(checkpoint_file_path)           
         
+                
         # any extra inheriting class ops
         ans = self._training_episode_post_ops(*args, **kwargs)
+        
+        
+        return ans
+    
+    def test_episode_post_ops(self,checkpoint_file_path, *args, **kwargs) -> Any:
+        
+
+        # save updated info
+        self.save(checkpoint_file_path)           
+        
+                
+        # any extra inheriting class ops
+        # ans = self._test_episodes(*args, **kwargs)
+        ans = None
+        
         return ans
     
     def calc_obs_dim(self) -> int:
@@ -511,3 +724,28 @@ class rlptAgentBase:
         """
         return self.at_dim
     
+    
+    def calc_state(self, mpc, robot_handle, gymapi_state_all, sniffer, prev_action_idx) -> np.ndarray:
+        # rlpt - compute the state you just moved to (next state, s(t+1)) 
+        robot_dof_states_gym = mpc.gym.get_actor_dof_states(mpc.env_ptr, robot_handle, gymapi_state_all)# gymapi.STATE_ALL) # TODO may need to replace by 
+        robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
+        robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
+        goal_ee_pose_gym = mpc.get_body_pose(mpc.obj_body_handle, "gym") # in gym coordinate system
+        goal_ee_pose_gym_np = pose_as_ndarray(goal_ee_pose_gym)        
+        pi_mppi_means, pi_mppi_covs = sniffer.get_current_mppi_policy() 
+        pi_mppi_means_np = torch_tensor_to_ndarray(pi_mppi_means)
+        pi_mppi_covs_np = torch_tensor_to_ndarray(pi_mppi_covs).flatten() # [1,7] to [7]
+        state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np,prev_action_idx) # converting the state to a form that agent would feel comfortable with
+        return state_np
+    
+     
+    def check_for_termination(self, sniffer, state_ee_pose_gym, goal_ee_pose_gym, goal_test_cfg):
+        ee_pos_error = pos_error(state_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
+        ee_rot_error = rot_error(state_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
+        contact_detected = sniffer.is_contact_real_world or sniffer.is_self_contact_real_world
+        is_goal_state = goal_test(ee_pos_error, ee_rot_error, goal_test_cfg) # rlpt_cfg['agent']['goal_test']
+        terminated = is_goal_state or contact_detected # reached a terminal state (of environment)
+        
+        return terminated, is_goal_state, contact_detected, ee_pos_error, ee_rot_error
+        
+        

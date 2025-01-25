@@ -1,5 +1,5 @@
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from collections import deque
 from typing import Deque, Dict, List, Tuple
 import gymnasium as gym
@@ -351,4 +351,4 @@ class DQNAgent:
         plt.subplot(132)
         plt.title('loss')
         plt.plot(losses)
-        # plt.show()
+        plt.show()

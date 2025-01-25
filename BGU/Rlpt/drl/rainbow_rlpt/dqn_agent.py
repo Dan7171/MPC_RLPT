@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from IPython.display import clear_output
+from IPython.display import HTML, display
 from torch.nn.utils import clip_grad_norm_
 from BGU.Rlpt.drl.rainbow_rlpt.network import Network
 from BGU.Rlpt.drl.rainbow_rlpt.prioritized_replay_buffer import PrioritizedReplayBuffer
@@ -143,11 +144,14 @@ class DQNAgent(rlptAgentBase):
     def _select_action(self,st:torch.Tensor, *args, **kwargs)-> Tuple[int,dict]:
         """Select an action from the input state."""
         # NoisyNet: no epsilon greedy action selection
-        at_meta_data = {'eps':None, 'is_random': None } # due to the usage in noisy net
-        selected_action_idx = self.dqn(
+        at_meta_data = {} # due to the usage in noisy net
+        
+        q_wt_st_all = self.dqn(
             # torch.FloatTensor(st).to(self.device)
             st.to(self.device,dtype=self.device_dtype)
-        ).argmax() # index of maximizing action
+        ) # all q values for s(t) and w(t)
+        at_meta_data['q(w,st,all)'] = q_wt_st_all
+        selected_action_idx = q_wt_st_all.argmax() # index of maximizing action
         selected_action_idx = selected_action_idx.detach().cpu().numpy() 
         
         if not self.is_test:
@@ -230,7 +234,7 @@ class DQNAgent(rlptAgentBase):
  
     def _training_step_post_ops(self, *args, **kwargs) -> Any:
         
-        meta_data = {'optimization': {'loss': None}} 
+        meta_data = {'optimization': {'loss': -1}} 
         training_steps_done = self.get_training_steps_done()
         self._update_beta(training_steps_done, (kwargs['max_episode_index'] + 1) * kwargs['max_ts_per_episode'])
         if len(self.memory) >= self.batch_size:
@@ -244,88 +248,90 @@ class DQNAgent(rlptAgentBase):
     def _training_episode_post_ops(self,*args, **kwargs) -> Any:
         pass
     
+    def _test_episode_post_ops(self,*args, **kwargs) -> Any:
+        pass
+    
    
     
-    
         
     
     
         
         
         
-    def train(self, num_frames: int, plotting_interval: int = 200):
-        """Train the agent."""
-        self.is_test = False
+    # def train(self, num_frames: int, plotting_interval: int = 200):
+    #     """Train the agent."""
+    #     self.is_test = False
         
-        state, _ = self.env.reset(seed=self.seed)
-        update_cnt = 0
-        losses = []
-        scores = []
-        score = 0
+    #     state, _ = self.env.reset(seed=self.seed)
+    #     update_cnt = 0
+    #     losses = []
+    #     scores = []
+    #     score = 0
             
-        for frame_idx in range(1, num_frames + 1):
-            if frame_idx%100 == 0:
-                print(f'debug: reached {frame_idx} traning steps')
-            action = self.select_action(state)
-            next_state, reward, done = self.step(action)
+    #     for frame_idx in range(1, num_frames + 1):
+    #         if frame_idx%100 == 0:
+    #             print(f'debug: reached {frame_idx} traning steps')
+    #         action = self.select_action(state)
+    #         next_state, reward, done = self.step(action)
 
-            state = next_state
-            score += reward
+    #         state = next_state
+    #         score += reward
             
-            # NoisyNet: removed decrease of epsilon
+    #         # NoisyNet: removed decrease of epsilon
             
-            # PER: increase beta
-            fraction = min(frame_idx / num_frames, 1.0)
-            self.beta = self.beta + fraction * (1.0 - self.beta)
+    #         # PER: increase beta
+    #         fraction = min(frame_idx / num_frames, 1.0)
+    #         self.beta = self.beta + fraction * (1.0 - self.beta)
 
-            # if episode ends
-            if done:
-                state, _ = self.env.reset(seed=self.seed)
-                scores.append(score)
-                score = 0
+    #         # if episode ends
+    #         if done:
+    #             state, _ = self.env.reset(seed=self.seed)
+    #             scores.append(score)
+    #             score = 0
 
-            # if training is ready
-            if len(self.memory) >= self.batch_size:
-                loss = self.update_model()
-                losses.append(loss)
-                update_cnt += 1
+    #         # if training is ready
+    #         if len(self.memory) >= self.batch_size:
+    #             loss = self.update_model()
+    #             losses.append(loss)
+    #             update_cnt += 1
                 
-                # if hard update is needed
-                if update_cnt % self.target_update == 0:
-                    self._target_hard_update()
+    #             # if hard update is needed
+    #             if update_cnt % self.target_update == 0:
+    #                 self._target_hard_update()
 
-            # plotting
-            if frame_idx % plotting_interval == 0:
-                # self._plot(frame_idx, scores, losses)
-                self.plot(frame_idx, scores, losses)
+    #         # plotting
+    #         if frame_idx % plotting_interval == 0:
+    #             # self._plot(frame_idx, scores, losses)
+    #             self.plot(frame_idx, scores, losses)
                 
-        self.env.close()
+    #     self.env.close()
                 
-    def test(self, video_folder: str) -> None:
-        """Test the agent."""
-        self.is_test = True
+    # def test(self, video_folder: str) -> None:
+    #     """Test the agent."""
+    #     self.is_test = True
         
-        # for recording a video
-        naive_env = self.env
-        # self.env = gym.wrappers.RecordVideo(self.env, video_folder=video_folder)
-        self.env = env = gym.make("CartPole-v1", max_episode_steps=200, render_mode="human")
+    #     # for recording a video
+    #     naive_env = self.env
+    #     # self.env = gym.wrappers.RecordVideo(self.env, video_folder=video_folder)
+    #     self.env = env = gym.make("CartPole-v1", max_episode_steps=200, render_mode="human")
 
-        state, _ = self.env.reset(seed=self.seed)
-        done = False
-        score = 0
+    #     state, _ = self.env.reset(seed=self.seed)
+    #     done = False
+    #     score = 0
         
-        while not done:
-            action = self.select_action(state)
-            next_state, reward, done = self.step(action)
+    #     while not done:
+    #         action = self.select_action(state)
+    #         next_state, reward, done = self.step(action)
 
-            state = next_state
-            score += reward
+    #         state = next_state
+    #         score += reward
         
-        print("score: ", score)
-        self.env.close()
+    #     print("score: ", score)
+    #     self.env.close()
         
-        # reset
-        self.env = naive_env
+    #     # reset
+    #     self.env = naive_env
 
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray], gamma: float) -> torch.Tensor:
         """Return categorical dqn loss."""
@@ -382,25 +388,27 @@ class DQNAgent(rlptAgentBase):
     # def _plot(
     def plot(
         self, 
-        # frame_idx: int, 
         training_steps_done: int,
-        # scores: List[float],
         rewards: List[float], 
         losses: List[float],
+        make_figure
     ):
         """Plot the training progresses."""
-        clear_output(True)
-        plt.figure(figsize=(20, 5))
-        plt.subplot(131)
-        # plt.title('frame %s. score: %s' % (frame_idx, np.mean(scores[-10:])))
-        plt.title('frame %s. score: %s' % (training_steps_done, np.mean(rewards[-10:])))
         
-        # plt.plot(scores)
+        clear_output(True)
+        if make_figure:
+            plt.figure(figsize=(20, 5))
+        plt.subplot(131)
+        plt.title('time step %s. score: %s' % (training_steps_done, np.mean(rewards[-10:])))
+        
         plt.plot(rewards)
         plt.subplot(132)
         plt.title('loss')
         plt.plot(losses)
         # plt.show()
+        plt.draw()   
+        plt.pause(0.05)
+
         
         
     def _load(self, checkpoint:dict) -> None: 
@@ -410,10 +418,9 @@ class DQNAgent(rlptAgentBase):
             checkpoint (dict): _description_
         """
         self.dqn.load_state_dict(checkpoint['dqn']) 
-        if training:= (not self.is_test):
+        if not self.is_test:
             self.dqn_target.load_state_dict(checkpoint['dqn_target'])
             self.memory = checkpoint['memory']
-            # self.train_suit.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             
 
     def _get_items_to_save(self,*args, **kwargs):
@@ -422,11 +429,16 @@ class DQNAgent(rlptAgentBase):
         Args:
             checkpoint (dict): _description_
         """
-        items_to_save = {
-            'dqn': self.dqn.state_dict(),
-            'dqn_target': self.dqn_target.state_dict(),
-            'memory': self.memory
-        }
+        
+        if not self.is_test:
+            items_to_save = {
+                'dqn': self.dqn.state_dict(),
+                'dqn_target': self.dqn_target.state_dict(),
+                'memory': self.memory
+            }
+        else:
+            items_to_save = {}
         return items_to_save
+    
     
     
