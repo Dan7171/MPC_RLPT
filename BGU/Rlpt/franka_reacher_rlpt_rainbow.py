@@ -696,7 +696,7 @@ class MpcRobotInteractive:
             s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id)            
             terminated, goal_state, contact_detected, ee_pos_error, ee_rot_error = rlpt_agent.check_for_termination(sniffer, self.get_body_pose(self.ee_body_handle, "gym"),self.get_body_pose(self.obj_body_handle, "gym"),rlpt_cfg['agent']['goal_test'])
             rt, rt_metadata = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration)    
-            snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected}
+            snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected} # TODO: add goal_state to the dict
             
             rlpt_agent.store_transition(s_next, rt, terminated) # NOTE: HERE I changed a bit compared to oiriginal code. They passed "done" (terminated or tuncated), I passed only "terminated". See https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work   
             

@@ -2,8 +2,8 @@ seed: 42
 agent:
   alg: 'rainbow'  # 'ddqn' # 'dqn', 'rainbow'
   model: # The Neural network 
-    load_checkpoint: true
-    checkpoint_path: '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:25(Sat)18:56:12/model.pth'
+    load_checkpoint: false
+    checkpoint_path: '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:23(Thu)10:49:54/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
