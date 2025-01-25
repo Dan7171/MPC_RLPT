@@ -744,12 +744,17 @@ class MpcRobotInteractive:
         
         ########## end of episode ###########
         losses = [optim_metadata['loss'] for optim_metadata in logging_info[optim_metadata_keyname]]
+        all_q_vals_all_transitions = [atmd["q(w,st,all)"] for atmd in logging_info[at_metadata_keyname]] 
+        q_vals_means = [np.mean(qvals) for qvals in all_q_vals_all_transitions]
+        q_vals_mean = np.mean(q_vals_means)
+        
         episode_dur_sec = time.time() - episode_start_time      
         color_print(f'episode at index {ep_idx} finished!')
         color_print(f'- completed steps: {(ts + 1)}, seconds in total- {episode_dur_sec}, average step duration: {episode_dur_sec/ (ts + 1)}')
         color_print(f'- rewards: total- {sum(logging_info["rt"])}, average- {np.mean(logging_info["rt"])}')
         color_print(f'- losses: total- {sum(losses)}, average: {np.mean(losses)}')
         color_print(f'- current buffer size: {len(rlpt_agent.memory)}')
+        color_print(f'- mean q val in all visited states: {q_vals_mean}')
         
         # print(f'debug 1: {len(logging_info["t_ep"])}, {len(logging_info["at_id"])}')
         return logging_info

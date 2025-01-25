@@ -150,7 +150,7 @@ class DQNAgent(rlptAgentBase):
             # torch.FloatTensor(st).to(self.device)
             st.to(self.device,dtype=self.device_dtype)
         ) # all q values for s(t) and w(t)
-        at_meta_data['q(w,st,all)'] = q_wt_st_all
+        at_meta_data['q(w,st,all)'] = list(q_wt_st_all[0].cpu().detach().numpy())
         selected_action_idx = q_wt_st_all.argmax() # index of maximizing action
         selected_action_idx = selected_action_idx.detach().cpu().numpy() 
         

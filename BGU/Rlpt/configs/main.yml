@@ -97,7 +97,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 2000
-    max_ts: 100
+    max_ts: 1500
     sample_objs_every_episode: false # renders new collision object identities
     sample_obj_locs_every_episode: false # renders new collision object poses
     sample_goal_every_episode: false # changing goal pose
