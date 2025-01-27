@@ -676,11 +676,17 @@ class MpcRobotInteractive:
                         optim_metadata_keyname : [], # dictionary: {loss:float, grad:float, alpha:float, beta:float} : float
                         step_metadata_keyname: [] # dictionary: {duration:float}
                         }
-          
+        # live plotting
+        at_live_ticks = 50
+        at_live_plt = {'particles':[], 'pos_w': [], 'rot_w': []}
+        # at2 = {'prem_col_w': [],'self_col_w': []}
+        #  {'cost_weights': {'goal_pose': (1.0, 300.0), 'zero_vel': 0.0, 'zero_acc': 0.0, 'joint_l2': 0.0, 'robot_self_collision': 100, 'primitive_collision': 2000, 'voxel_collision': 0.0, 'null_space': 1.0, 'manipulability': 30, 'ee_vel': 0.0, 'stop_cost': (120.0, 1.5), 'stop_cost_acc': (0.0, 0.1), 'smooth': 1.0, 'state_bound': 1000.0}, 'mpc_params': {'horizon': 30, 'particles': 800, 'n_iters': 1}}
         
         ####################################
         ####### Starting Episode steps #####
         ####################################
+        fig = plt.figure()
+        plt.ion()
         prev_at = {}
         prev_at_id = -1
         st = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL,sniffer, prev_at_id)                        
@@ -706,7 +712,7 @@ class MpcRobotInteractive:
             
             logging_info['t_ep'].append(ts)
             logging_info['at_id'].append(at_id)
-            logging_info[at_metadata_keyname].append(at_metadata)
+            logging_info[at_metadata_keyname].append(at_metadata) 
             logging_info['st'].append(st)         
             logging_info[st_metadata_keyname].append({})
             logging_info['rt'].append(rt)
@@ -714,6 +720,8 @@ class MpcRobotInteractive:
             logging_info[snext_metadata_keyname].append(snext_metadata)   
             logging_info[optim_metadata_keyname].append(optim_metadata)
             logging_info[step_metadata_keyname].append(step_metadata)
+            
+            
             
             # # plotting
             # time_interval = ts if not rlpt_agent.training_mode else rlpt_agent.get_training_steps_done()
@@ -736,11 +744,28 @@ class MpcRobotInteractive:
                 color_print(f'termination reward: {rt}')
                 break
             
+            at_live_plt['particles'].append(at['mpc_params']['particles'])
+            at_live_plt['rot_w'].append(at['cost_weights']['goal_pose'][0])
+            at_live_plt['pos_w'].append(at['cost_weights']['goal_pose'][1])
+            
+            if ts % at_live_ticks == 0:
+                fig.clear()
+                # plt.plot(logging_info['at_id'],label='action id')
+                plt.plot(logging_info['rt'],label='reward')
+                plt.plot(at_live_plt['particles'],label='particles')
+                plt.plot(at_live_plt['rot_w'],label='rot_w')
+                plt.plot(at_live_plt['pos_w'],label='pos_w')
+                plt.legend()
+                plt.title(f'episode run time: {time.time()-episode_start_time}')
+                plt.pause(0.000000000000001)
+                
+            
             st = s_next
             prev_at = at
             prev_at_id = at_id
             
-        
+            
+            
         
         ########## end of episode ###########
         losses = [optim_metadata['loss'] for optim_metadata in logging_info[optim_metadata_keyname]]
@@ -755,6 +780,7 @@ class MpcRobotInteractive:
         color_print(f'- losses: total- {sum(losses)}, average: {np.mean(losses)}')
         color_print(f'- current buffer size: {len(rlpt_agent.memory)}')
         color_print(f'- mean q val in all visited states: {q_vals_mean}')
+        
         
         # print(f'debug 1: {len(logging_info["t_ep"])}, {len(logging_info["at_id"])}')
         return logging_info

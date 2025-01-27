@@ -8,8 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from tomlkit import item
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)18:56:12/training_etl.csv'
-
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)18:56:12/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)23:05:28/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
@@ -49,6 +49,14 @@ def q0_star_plot(df):
     plt.title('q*(s0)')
     plt.plot(q0_star)
 
+def plt_with_label_markers(y,label_markers,x=None):
+    if x is None:
+        x = range(len(y))
+        for x, y, text in zip(x, y, label_markers):
+            plt.text(x, y, text)
+        
+
+    
 def q0_star_mean_scatter(df):
     plt.figure()
     episodes = df.groupby('ep_id')
@@ -62,9 +70,12 @@ def q0_star_mean_scatter(df):
         a0_star.append(np.argmax(s0_all_q))
         q0_mean.append(np.mean(s0_all_q))
         
-    plt.scatter(range(len(episodes)),q0_star, label='q*(s0)*')
-    plt.scatter(range(len(episodes)),a0_star, label='a*(s0)')
-    plt.scatter(range(len(episodes)),q0_mean, label='q-mean(s0)')
+    # plt.scatter(range(len(episodes)),q0_star, label='q*(s0)')
+    # plt.scatter(range(len(episodes)),a0_star, label='a*(s0)')
+    # plt.scatter(range(len(episodes)),q0_mean, label='q-mean(s0)')
+    plt.plot(range(len(episodes)),q0_star,marker='s', label='q*(s0)',markersize=2)
+    plt.plot(range(len(episodes)),a0_star,marker='s', label='a*(s0)',markersize=2)
+    plt.plot(range(len(episodes)),q0_mean,marker='s', label='q-mean(s0)',markersize=2)
     
     plt.legend()
     
@@ -78,11 +89,38 @@ def qt_with_var(df):
         qt_min = qvals_col.apply(lambda x: np.min(x))
         qt_star = qvals_col.apply(lambda x: np.max(x))
         # qt = qvals_col[group['at_id']]
-        plt.scatter(group.index,qt_mean,linewidths=0.001)
-        plt.scatter(group.index,qt_star,linewidths=0.001)
-        plt.scatter(group.index,qt_min,linewidths=0.001)
+        # plt.scatter(group.index,qt_mean,linewidths=0.001)
+        # plt.scatter(group.index,qt_star,linewidths=0.001)
+        # plt.scatter(group.index,qt_min,linewidths=0.001)
+        plt.plot(qt_mean)
+        plt.plot(qt_min)
+        plt.plot(qt_star)
+    plt.title('q(t) min, q(t) avg, q*(t) ')
+
+
+
+def reward_sum_with_labels(df):
+    episodes = df.groupby('ep_id')
+    plt.figure()
+    x = range(len(episodes))
+    labels = [str(i) for i in x]
+    y = []
+    for i, ng_tuple in enumerate(episodes):
+        name, group = ng_tuple 
+        y.append(np.sum(group['rt']))   
+    plt_with_label_markers(x,y,labels)
         
-        
+
+# def live_plot():
+#     fig = plt.figure()
+#     from numpy import cos
+#     plt.ion()
+#     for i in range(100000):
+#         fig.clear()
+#         plt.plot(range(i),np.cos(range(i)))
+#         plt.pause(0.0001) # Gi
+
+# live_plot()     
         
         
         
@@ -172,7 +210,6 @@ def action_feature_grouped(df,feature_name):
     plt.xlabel('t')
     plt.title(f'{feature_name}')
 
-
 # rt_bar(df)
 # q0_star_plot(df)
 rt_ep_sum_bar(df)
@@ -184,6 +221,7 @@ episode_mean_step_time(df)
 step_times_grouped_plt(df)
 action_feature_grouped(df,'at_particles')
 qt_with_var(df)
+# reward_sum_with_labels(df)
 # print(df.value_counts())
 ###########
 ###########
