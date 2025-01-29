@@ -612,7 +612,7 @@ class MpcRobotInteractive:
         return env_selected
            
     
-    def episode(self, rlpt_agent:DQNAgent, episode_max_ts:int):
+    def episode(self, rlpt_agent:DQNAgent, episode_max_ts:int, interactive_plot=True):
         
         """
         Operating a final episode of the robot using STORM system (a final contol loop, from an initial state of the robot to some final state where its over at). 
@@ -623,7 +623,15 @@ class MpcRobotInteractive:
         
         """
         
-        
+        if interactive_plot:
+            fig = plt.figure()
+            plt.ion()
+             # live plotting
+            at_live_ticks = 50
+            at_live_plt = {'particles':[], 'pos_w': [], 'rot_w': []}
+            # at2 = {'prem_col_w': [],'self_col_w': []}
+            #  {'cost_weights': {'goal_pose': (1.0, 300.0), 'zero_vel': 0.0, 'zero_acc': 0.0, 'joint_l2': 0.0, 'robot_self_collision': 100, 'primitive_collision': 2000, 'voxel_collision': 0.0, 'null_space': 1.0, 'manipulability': 30, 'ee_vel': 0.0, 'stop_cost': (120.0, 1.5), 'stop_cost_acc': (0.0, 0.1), 'smooth': 1.0, 'state_bound': 1000.0}, 'mpc_params': {'horizon': 30, 'particles': 800, 'n_iters': 1}}
+            
         ####################################
         ####### Setting up the episode #####
         ####################################  
@@ -676,17 +684,11 @@ class MpcRobotInteractive:
                         optim_metadata_keyname : [], # dictionary: {loss:float, grad:float, alpha:float, beta:float} : float
                         step_metadata_keyname: [] # dictionary: {duration:float}
                         }
-        # live plotting
-        at_live_ticks = 50
-        at_live_plt = {'particles':[], 'pos_w': [], 'rot_w': []}
-        # at2 = {'prem_col_w': [],'self_col_w': []}
-        #  {'cost_weights': {'goal_pose': (1.0, 300.0), 'zero_vel': 0.0, 'zero_acc': 0.0, 'joint_l2': 0.0, 'robot_self_collision': 100, 'primitive_collision': 2000, 'voxel_collision': 0.0, 'null_space': 1.0, 'manipulability': 30, 'ee_vel': 0.0, 'stop_cost': (120.0, 1.5), 'stop_cost_acc': (0.0, 0.1), 'smooth': 1.0, 'state_bound': 1000.0}, 'mpc_params': {'horizon': 30, 'particles': 800, 'n_iters': 1}}
-        
+       
         ####################################
         ####### Starting Episode steps #####
         ####################################
-        fig = plt.figure()
-        plt.ion()
+        
         prev_at = {}
         prev_at_id = -1
         st = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL,sniffer, prev_at_id)                        
@@ -722,12 +724,7 @@ class MpcRobotInteractive:
             logging_info[step_metadata_keyname].append(step_metadata)
             
             
-            
-            # # plotting
-            # time_interval = ts if not rlpt_agent.training_mode else rlpt_agent.get_training_steps_done()
-            # if time_interval % 200 == 0: # plotting interval
-            #     rlpt_agent.plot(time_interval, logging_info['reward'], logging_info['loss'],make_figure= time_interval == 200)
-            
+        
             # escape collision if necessary (change pose until no contact)
             if not (reset_state or sample_goal_every_episode):    
                 while sniffer.is_contact_real_world or sniffer.is_self_contact_real_world: # while still colliding
@@ -744,21 +741,22 @@ class MpcRobotInteractive:
                 color_print(f'termination reward: {rt}')
                 break
             
-            at_live_plt['particles'].append(at['mpc_params']['particles'])
-            at_live_plt['rot_w'].append(at['cost_weights']['goal_pose'][0])
-            at_live_plt['pos_w'].append(at['cost_weights']['goal_pose'][1])
-            
-            if ts % at_live_ticks == 0:
-                fig.clear()
-                # plt.plot(logging_info['at_id'],label='action id')
-                plt.plot(logging_info['rt'],label='reward')
-                plt.plot(at_live_plt['particles'],label='particles')
-                plt.plot(at_live_plt['rot_w'],label='rot_w')
-                plt.plot(at_live_plt['pos_w'],label='pos_w')
-                plt.legend()
-                plt.title(f'episode run time: {time.time()-episode_start_time}')
-                plt.pause(0.000000000000001)
+            if interactive_plot:    
+                at_live_plt['particles'].append(at['mpc_params']['particles'])
+                at_live_plt['rot_w'].append(at['cost_weights']['goal_pose'][0])
+                at_live_plt['pos_w'].append(at['cost_weights']['goal_pose'][1])
                 
+                if ts % at_live_ticks == 0:
+                    fig.clear()
+                    # plt.plot(logging_info['at_id'],label='action id')
+                    plt.plot(logging_info['rt'],label='reward')
+                    plt.plot(at_live_plt['particles'],label='particles')
+                    plt.plot(at_live_plt['rot_w'],label='rot_w')
+                    plt.plot(at_live_plt['pos_w'],label='pos_w')
+                    plt.legend()
+                    plt.title(f'episode run time: {time.time()-episode_start_time}')
+                    plt.pause(0.000000000000001)
+                    
             
             st = s_next
             prev_at = at
@@ -1069,7 +1067,8 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
                 'col_obj_handles':  {pair[1]:pair[0] for pair in all_col_objs_handles_list}, # {obj name (str): obj handle (int)} 
                 'action_space':rlpt_action_space, 
                 'training_mode':training,
-                'etl_logging': include_etl
+                'etl_logging': include_etl,
+                'milestone_reward_cfg': rlpt_cfg['agent']['reward']['pose_reward']['pose_err_milestones']
             } 
             
             rlpt_agent = DQNAgent(**rainbow_agent_params) # rainbow agent

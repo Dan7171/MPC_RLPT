@@ -7,7 +7,15 @@ def make_model_path(models_dst_dir):
     training_starttime = time.strftime('%Y:%m:%d(%a)%H:%M:%S')
     model_file_path = os.path.join(models_dst_dir, training_starttime, 'model.pth')  
     return model_file_path
- 
+
+def is_sorted_decreasing(array):
+    decreasing = True
+    for i in range(1,len(array)):
+        if not (array[i] < array[i-1]):
+            decreasing = False
+            break
+    return decreasing
+        
 
 def kill_zombie_processes():
     parent = psutil.Process(os.getpid())

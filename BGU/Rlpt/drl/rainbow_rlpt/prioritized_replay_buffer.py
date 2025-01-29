@@ -119,7 +119,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             upperbound = random.uniform(a, b)
             idx = self.sum_tree.retrieve(upperbound)
             indices.append(idx)
-            
+        
         return indices
     
     def _calculate_weight(self, idx: int, beta: float):

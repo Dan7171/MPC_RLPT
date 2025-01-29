@@ -194,6 +194,7 @@ class DQNAgent(rlptAgentBase):
         ).to(self.device,dtype=self.device_dtype)
         indices = samples["indices"]
         
+        
         # 1-step Learning loss
         elementwise_loss = self._compute_dqn_loss(samples, self.gamma)
         

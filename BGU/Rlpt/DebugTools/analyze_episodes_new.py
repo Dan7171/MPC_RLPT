@@ -9,7 +9,10 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from tomlkit import item
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)18:56:12/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)23:05:28/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)23:05:28/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:17:42/training_etl.csv' # storm original
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:29:57/training_etl.csv' # storm original
+path = 'Rlpt/favorite_models/2025:01:28(Tue)00:04:53/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
@@ -97,7 +100,18 @@ def qt_with_var(df):
         plt.plot(qt_star)
     plt.title('q(t) min, q(t) avg, q*(t) ')
 
-
+def ee_errors(df):
+    pos_err = 's(t+1)MDpos_err'
+    rot_err = 's(t+1)MDrot_err'
+    episodes = df.groupby('ep_id')
+    plt.figure()
+    for i, ng_tuple in enumerate(episodes):
+        name, group = ng_tuple 
+        plt.plot(group[pos_err],label='ee position error (meters)')   
+        plt.plot(group[rot_err],label='ee orientation error')   
+    
+    plt.legend()
+    plt.show()
 
 def reward_sum_with_labels(df):
     episodes = df.groupby('ep_id')
@@ -109,7 +123,8 @@ def reward_sum_with_labels(df):
         name, group = ng_tuple 
         y.append(np.sum(group['rt']))   
     plt_with_label_markers(x,y,labels)
-        
+
+
 
 # def live_plot():
 #     fig = plt.figure()
@@ -209,7 +224,13 @@ def action_feature_grouped(df,feature_name):
         # plt.scatter(group.index, action,linewidths=0.01)
     plt.xlabel('t')
     plt.title(f'{feature_name}')
-
+    
+def action_index(df):
+    plt.figure()
+    plt.xlabel('t')
+    plt.ylabel(f'action index')
+    plt.plot(df['at_id'])
+    
 # rt_bar(df)
 # q0_star_plot(df)
 rt_ep_sum_bar(df)
@@ -220,7 +241,10 @@ episode_action_changing_freq_bar(df)
 episode_mean_step_time(df)
 step_times_grouped_plt(df)
 action_feature_grouped(df,'at_particles')
+action_index(df)
 qt_with_var(df)
+action_index(df)
+ee_errors(df)
 # reward_sum_with_labels(df)
 # print(df.value_counts())
 ###########
