@@ -148,7 +148,7 @@ agent:
     HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
       include: false # to use the feature 
       strategy: future # (argument name as in paper)
-      k: 8 # (argument name as in paper)
+      k: 4 # (argument name as in paper)
       N: 256 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
 
   testing:

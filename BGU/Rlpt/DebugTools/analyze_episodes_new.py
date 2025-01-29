@@ -12,7 +12,8 @@ from tomlkit import item
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)23:05:28/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:17:42/training_etl.csv' # storm original
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:29:57/training_etl.csv' # storm original
-path = 'Rlpt/favorite_models/2025:01:28(Tue)00:04:53/training_etl.csv'
+# path = 'Rlpt/favorite_models/2025:01:28(Tue)00:04:53/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:29(Wed)17:16:13/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
@@ -107,10 +108,9 @@ def ee_errors(df):
     plt.figure()
     for i, ng_tuple in enumerate(episodes):
         name, group = ng_tuple 
-        plt.plot(group[pos_err],label='ee position error (meters)')   
-        plt.plot(group[rot_err],label='ee orientation error')   
-    
-    plt.legend()
+        plt.plot(group[pos_err])   
+        plt.plot(group[rot_err])   
+    plt.title('ee errors (pos, rot)')
     plt.show()
 
 def reward_sum_with_labels(df):
@@ -150,13 +150,20 @@ def rt_ep_sum_bar(df):
     plt.figure()
     q0_star = []
     rsums = []
+    r_accumulate = [0]
     for i, ng_tuple in enumerate(episodes):
         name, group = ng_tuple 
         # s0_all_q = get_qvals_at_idx(group,0)
         rsums.append(np.sum(group['rt']))
         # plt.bar(group.index, np.sum(group['rt']))
+        if i == 0:
+            r_accumulate.append(rsums[0])
+        else:
+            r_accumulate.append(r_accumulate[-1] + rsums[i])
     plt.title('reward sum over episodes')
     plt.bar(range(len(rsums)), rsums)
+    plt.plot(r_accumulate)
+    
 
 def episode_losses_bar(df):
     episodes = df.groupby('ep_id')
@@ -226,28 +233,84 @@ def action_feature_grouped(df,feature_name):
     plt.title(f'{feature_name}')
     
 def action_index(df):
+    episodes = df.groupby('ep_id')
     plt.figure()
     plt.xlabel('t')
     plt.ylabel(f'action index')
-    plt.plot(df['at_id'])
+    # plt.plot(df['at_id'])
+    for i, ng_tuple in enumerate(episodes):
+        name, group = ng_tuple 
+        action = group['at_id'] 
+        # plt.scatter(group.index, action)
+        a0 = action[action == 0]
+        a1 = action[action == 1]
+        a2 = action[action == 2]
+        plt.scatter(a0.index, a0, c='red', linewidths=0.001)
+        plt.scatter(a1.index, a1, c='blue',linewidths=0.001)
+        plt.scatter(a2.index,a2, c='green',linewidths=0.001)
+        
+        
+def qsa_all(df,ep_id):
+    plt.figure()
+    ep = df[df['ep_id'] == ep_id]
+    qvals = parse_qvals_col(ep)
+    qsa_by_a = []
+    n_actions = df['at_id'].nunique()
+    for i in range(n_actions):
+        q_action = qvals.apply(lambda x:x[i])
+        qsa_by_a.append(q_action)
     
+    for i in range(n_actions):
+        plt.plot(qsa_by_a[i],label = f'action {i}')
+    plt.legend()
+    
+# 
+        
+# qsa_all(df, 0)
+# qsa_all(df, 30)
+# qsa_all(df, 30)
+# qsa_all(df, 90)
+# qsa_all(df, 120)
+# qsa_all(df, 150)
+# qsa_all(df, 180)
+# qsa_all(df, 210)
+
+
+
+# success traces
+# action_index(df[df['ep_id'] == 79])
+# action_index(df[df['ep_id'] == 93])
+# action_index(df[df['ep_id'] == 140])
+# action_index(df[df['ep_id'] == 141])
+
+
 # rt_bar(df)
 # q0_star_plot(df)
 rt_ep_sum_bar(df)
-rt_plot_grouped(df)
+# rt_plot_grouped(df)
 q0_star_mean_scatter(df)
 episode_losses_bar(df)
-episode_action_changing_freq_bar(df)
-episode_mean_step_time(df)
-step_times_grouped_plt(df)
-action_feature_grouped(df,'at_particles')
-action_index(df)
-qt_with_var(df)
-action_index(df)
-ee_errors(df)
+# episode_action_changing_freq_bar(df)
+# episode_mean_step_time(df)
+# step_times_grouped_plt(df)
+# # action_feature_grouped(df,'at_particles')
+# action_feature_grouped(df,'at_particles')
+# action_index(df)
+# qt_with_var(df)
+# ee_errors(df)
 # reward_sum_with_labels(df)
 # print(df.value_counts())
-###########
+def reward_sum(df):
+    plt.figure()
+    rewards = df['rt']
+    rsums = [0]
+    for i in range(1,len(rewards.index)):
+        rsums.append(rsums[i-1] + df['rt'][i])
+    plt.plot(rsums,label='reward sum')
+    plt.plot(df['rt'],label='rt')
+    plt.title('rewards over training')
+    plt.legend()
+reward_sum(df)
 ###########
 plt.show()
 ##########

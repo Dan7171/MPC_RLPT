@@ -742,19 +742,19 @@ class MpcRobotInteractive:
                 break
             
             if interactive_plot:    
-                at_live_plt['particles'].append(at['mpc_params']['particles'])
-                at_live_plt['rot_w'].append(at['cost_weights']['goal_pose'][0])
-                at_live_plt['pos_w'].append(at['cost_weights']['goal_pose'][1])
+                # at_live_plt['particles'].append(at['mpc_params']['particles'])
+                # at_live_plt['rot_w'].append(at['cost_weights']['goal_pose'][0])
+                # at_live_plt['pos_w'].append(at['cost_weights']['goal_pose'][1])
                 
                 if ts % at_live_ticks == 0:
                     fig.clear()
-                    # plt.plot(logging_info['at_id'],label='action id')
+                    plt.plot(logging_info['at_id'],label='action id')
                     plt.plot(logging_info['rt'],label='reward')
-                    plt.plot(at_live_plt['particles'],label='particles')
-                    plt.plot(at_live_plt['rot_w'],label='rot_w')
-                    plt.plot(at_live_plt['pos_w'],label='pos_w')
+                    # plt.plot(at_live_plt['particles'],label='particles')
+                    # plt.plot(at_live_plt['rot_w'],label='rot_w')
+                    # plt.plot(at_live_plt['pos_w'],label='pos_w')
                     plt.legend()
-                    plt.title(f'episode run time: {time.time()-episode_start_time}')
+                    plt.title(f'episode {ep_idx} run time: {time.time()-episode_start_time}')
                     plt.pause(0.000000000000001)
                     
             

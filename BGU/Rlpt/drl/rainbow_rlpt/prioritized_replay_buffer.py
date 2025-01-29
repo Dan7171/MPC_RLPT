@@ -76,13 +76,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert beta > 0
         
         indices = self._sample_proportional()
-        
         obs = self.obs_buf[indices]
         next_obs = self.next_obs_buf[indices]
         acts = self.acts_buf[indices]
         rews = self.rews_buf[indices]
         done = self.done_buf[indices]
         weights = np.array([self._calculate_weight(i, beta) for i in indices])
+        
+        
+        # print('debug')
+        # batch_elementwise_weight_in_optimization = list(weights)
+        # batch_rewards = rews
+        # print('batch_elementwise_weight_in_optimization')
+        # print(batch_elementwise_weight_in_optimization)
+        # print('batch_rewards')
+        # print(batch_rewards)
+        # print('debug end')
         
         return dict(
             obs=obs,

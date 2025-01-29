@@ -104,6 +104,7 @@ class DQNAgent(rlptAgentBase):
             obs_dim, memory_size, batch_size, alpha=alpha, gamma=gamma
         )
         
+        
         # memory for N-step Learning
         self.use_n_step = True if n_step > 1 else False
         if self.use_n_step:
@@ -170,9 +171,28 @@ class DQNAgent(rlptAgentBase):
     
     def store_transition(self, next_state, reward, terminated):
         """Was seperated from step so it will be easy to use it from mpc rlpt"""
+        
+        # # new - n insertions
+        # n_repeats_success = 100
+        # self.transition += [reward, next_state, terminated]
+        # if reward > 0:
+        #     n_repeats = n_repeats_success
+        # else:
+        #     n_repeats = 1     
+        # for i in range(n_repeats):  
+        #     # N-step transition
+        #     if self.use_n_step:
+        #         one_step_transition = self.memory_n.store(*self.transition)
+        #     # 1-step transition
+        #     else:
+        #         one_step_transition = self.transition
+
+        #     # add a single step transition
+        #     if one_step_transition:
+        #         self.memory.store(*one_step_transition)
+        
         if not self.is_test:
             self.transition += [reward, next_state, terminated]
-            
             # N-step transition
             if self.use_n_step:
                 one_step_transition = self.memory_n.store(*self.transition)
@@ -188,18 +208,18 @@ class DQNAgent(rlptAgentBase):
     def update_model(self) -> torch.Tensor:
         """Update the model by gradient descent."""
         # PER needs beta to calculate weights
-        samples = self.memory.sample_batch(self.beta)
-        weights = torch.FloatTensor(
+        samples = self.memory.sample_batch(self.beta) # minibatch of transitions, sampled with importance sampling
+        weights = torch.FloatTensor( # weight of each transition in batch (wi in paper)
             samples["weights"].reshape(-1, 1)
         ).to(self.device,dtype=self.device_dtype)
-        indices = samples["indices"]
+        indices = samples["indices"] 
         
         
         # 1-step Learning loss
-        elementwise_loss = self._compute_dqn_loss(samples, self.gamma)
+        elementwise_loss = self._compute_dqn_loss(samples, self.gamma)  
         
         # PER: importance sampling before average
-        loss = torch.mean(elementwise_loss * weights)
+        loss = torch.mean(elementwise_loss * weights) 
         
         # N-step Learning loss
         # we are gonna combine 1-step loss and n-step loss so as to
@@ -218,10 +238,33 @@ class DQNAgent(rlptAgentBase):
         clip_grad_norm_(self.dqn.parameters(), 10.0)
         self.optimizer.step()
         
+        # debug
+        batch = list(indices)
+        weights_as_arr = weights.flatten()
+        pos_transitions_in_batch = [self.memory.rews_buf[i] for i in indices if self.memory.rews_buf[i] > 0]
+        # pos_transitions_in_mem =  [self.memory.rews_buf[i] for i in range(len(self.memory)) if self.memory.rews_buf[i] > 0]
+        # pos_to_all_ratio_in_mem = len(pos_transitions_in_mem) / len(self.memory)
+        pos_to_all_ratio_in_batch = len(pos_transitions_in_batch) / len(batch)
+        
+        # if pos_to_all_ratio_in_batch > 0.1:
+        #     print('debug')
+        #     print('pos_transitions_in_batch, pos_to_all_ratio_in_mem')
+        #     pos_transitions_in_mem =  [self.memory.rews_buf[i] for i in range(len(self.memory)) if self.memory.rews_buf[i] > 0]
+        #     pos_to_all_ratio_in_mem = len(pos_transitions_in_mem) / len(self.memory)
+        #     print(pos_to_all_ratio_in_batch, pos_to_all_ratio_in_mem)
+        #     batch_positives_mem_idx = [i for  i in batch if self.memory.rews_buf[i] > 0] # sampled elements in batch (which sampled from indexes from whole memory), of the items which have positive rewards 
+        #     batch_positives_batch_idx = [batch.index(batch_positives_mem_idx[i]) for i in range(len(batch_positives_mem_idx))] # the indices of those sampled elements in the sampling (in the batch)
+        #     # print(f'see positive rewards at indices: {batch_positives_batch_idx}')
+        #     batch_positives_weight_in_optim = [weights_as_arr[i].item() for i in batch_positives_batch_idx]
+        #     batch_mean_weight_in_optim =  torch.mean(weights_as_arr).item()
+        #     print(f'transition optimization weight for positive reward transitions in batch: {batch_positives_weight_in_optim}')
+        #     print(f'mean transition optimization weight in batch (positive and not): {batch_mean_weight_in_optim}')    
+        #     print('debug end')
+        
         # PER: update priorities
-        loss_for_prior = elementwise_loss.detach().cpu().numpy()
-        new_priorities = loss_for_prior + self.prior_eps
-        self.memory.update_priorities(indices, new_priorities)
+        loss_for_prior = elementwise_loss.detach().cpu().numpy() # computes loss for priority pi (td-error i)
+        new_priorities = loss_for_prior + self.prior_eps # priority pi = td_err(i) + epsilon
+        self.memory.update_priorities(indices, new_priorities) # pi -> pi ** alpha (see paper)
         
         # NoisyNet: reset noise
         self.dqn.reset_noise()
@@ -422,6 +465,7 @@ class DQNAgent(rlptAgentBase):
         if not self.is_test:
             self.dqn_target.load_state_dict(checkpoint['dqn_target'])
             self.memory = checkpoint['memory']
+            
             
 
     def _get_items_to_save(self,*args, **kwargs):
