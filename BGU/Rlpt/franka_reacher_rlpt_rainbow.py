@@ -69,7 +69,7 @@ from multiprocessing import Process
 import csv
 from BGU.Rlpt.utils.type_operations import torch_tensor_to_ndarray, as_2d_tensor, as_1d_tensor
 from BGU.Rlpt.utils.utils import make_model_path, color_print, print_progress_bar, goal_test
-from BGU.Rlpt.utils.error import pos_error, rot_error, pose_as_ndarray
+from BGU.Rlpt.utils.error import pos_as_ndarray, pos_error, rot_error, pose_as_ndarray
 import psutil
 import os
 from BGU.Rlpt.rlpt_agent_base import META_DATA_SIGNATURE_ETL
@@ -701,11 +701,12 @@ class MpcRobotInteractive:
             # rlpt - reset the hyper parameters and mpc planner: perform action a(t, new_parameters) in environment   
             step_duration = self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_metadata = {'duration': step_duration}
-            s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id)            
-            terminated, goal_state, contact_detected, ee_pos_error, ee_rot_error = rlpt_agent.check_for_termination(sniffer, self.get_body_pose(self.ee_body_handle, "gym"),self.get_body_pose(self.obj_body_handle, "gym"),rlpt_cfg['agent']['goal_test'])
+            s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id)
+            s_next_ee_pos = self.get_body_pose(self.ee_body_handle, "gym")
+            s_next_goal_pos = self.get_body_pose(self.obj_body_handle, "gym")            
+            terminated, goal_state, contact_detected, ee_pos_error, ee_rot_error = rlpt_agent.check_for_termination(sniffer, s_next_ee_pos,s_next_goal_pos,rlpt_cfg['agent']['goal_test'])
             rt, rt_metadata = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration,goal_state)    
-            snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected, 'goal_state': goal_state} 
-            
+            snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected, 'goal_state': goal_state, 'ee_pose_gym_cs':pose_as_ndarray(s_next_ee_pos)} 
             rlpt_agent.store_transition(s_next, rt, terminated) # NOTE: HERE I changed a bit compared to oiriginal code. They passed "done" (terminated or tuncated), I passed only "terminated". See https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work   
             
             # NoisyNet: removed decrease of epsilon
@@ -1079,7 +1080,7 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
 
         ###### run next episode ######
         assert rlpt_agent is not None # only to remove red error underlines (no worries, it wont be done at this point)
-        episode_logging_info = mpc.episode(rlpt_agent, episode_max_ts)  # type: ignore
+        episode_logging_info = mpc.episode(rlpt_agent, episode_max_ts,interactive_plot=rlpt_cfg['gui']['interactive_plot'])  # type: ignore
         rlpt_agent.post_episode_ops(model_file_path,etl_file_path=etl_file_path,episode_logging_info=episode_logging_info)
 
     
@@ -1110,14 +1111,14 @@ if __name__ == '__main__':
         args.physics_engine_yml_relative = 'rlpt/experiments/experiment1/physx.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml' # under /home/dan/MPC_RLPT/storm/content/configs/mpc     
-    if args.env_yml_relative == '':
-        args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_2.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
-    env_file = args.env_yml_relative
+    # if args.env_yml_relative == '':
+    #     args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_2.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
+    # env_file = args.env_yml_relative
     task_file = args.task_yml_relative
     
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
-                    
+                        
     # rlpt setup
     if not GLobalVars.is_defined('rlpt_cfg'):
         GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
@@ -1125,7 +1126,7 @@ if __name__ == '__main__':
     
     sim_params['headless'] = rlpt_cfg['gui']['headless'] # run with no gym gui
     include_etl = rlpt_cfg['agent']['model']['include_etl']
-    
+    env_file = rlpt_cfg['external_cfgs']['env_yml_relative']
                 
     sniffer_params:dict = copy.deepcopy(rlpt_cfg['cost_sniffer'])
     GLobalVars.cost_sniffer = CostFnSniffer(**sniffer_params)

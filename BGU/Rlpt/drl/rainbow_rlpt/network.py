@@ -47,6 +47,14 @@ class Network(nn.Module):
             nn.Linear(128, 128), 
             nn.ReLU(),
         )
+        self.feature_layer5 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(),
+        )
+        self.feature_layer6 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(),
+        )
         
         # set advantage layer
         self.advantage_hidden_layer = NoisyLinear(128, 128)
@@ -67,7 +75,9 @@ class Network(nn.Module):
         x = self.feature_layer(x)
         x = self.feature_layer2(x)
         x = self.feature_layer3(x)
-        feature = self.feature_layer4(x)
+        x = self.feature_layer4(x)
+        x = self.feature_layer5(x)
+        feature = self.feature_layer6(x)
         
         adv_hid = F.relu(self.advantage_hidden_layer(feature))
         val_hid = F.relu(self.value_hidden_layer(feature))

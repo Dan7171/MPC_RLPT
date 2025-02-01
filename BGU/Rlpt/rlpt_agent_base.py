@@ -72,9 +72,21 @@ class rlptAgentBase:
         col_obj_s0_sorted_concat:np.ndarray = self.flatten_sorted_coll_objs_states(self.col_obj_s0_flat_states) # concatenated flattened objected states sorted by obj handle
         self.max_horizon = self._get_max_h() # maximun horizon in action space
         
-        
-        
+        # define the state representation configuration
+        rlpt_cfg = GLobalVars.rlpt_cfg
+        assert rlpt_cfg is not None
+        self.seed = rlpt_cfg['seed']
+        state_represantation_config = rlpt_cfg['agent']['model']['state_representation']
+         
         # all possible state representation components and their dimensions
+        if state_represantation_config['pi_mppi_means'] == 'max':
+            self.pi_mppi_means_horizon_in_st = self.max_horizon 
+        elif not state_represantation_config['pi_mppi_means']:
+            self.pi_mppi_means_horizon_in_st = 0
+        else:
+            assert state_represantation_config['pi_mppi_means'] == int(state_represantation_config['pi_mppi_means'])
+            self.pi_mppi_means_horizon_in_st = state_represantation_config['pi_mppi_means']
+        
         state_var_to_dim =  {
             'robot_dofs_positions': 7, # 1 scalar (angular position w.r to origin (0)) for each dof (joint) of the 7 dofs ,
             'robot_dofs_velocities': 7, # similarly to positions, an angular velocity on each dof 
@@ -82,16 +94,12 @@ class rlptAgentBase:
             'coll_objs': 7 * len(col_obj_s0_sorted_concat), # obj size (7) times num of collision objs
             'robot_base_pos': 3, # xyz (position only)
             'prev_action_idx': 1, # the index of the previous action which was taken
-            'pi_mppi_means':  7 * self.max_horizon, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
+            'pi_mppi_means':  7 * self.pi_mppi_means_horizon_in_st, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
             'pi_mppi_covs': 7 ,# MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
             'ee_err_milestones': 1 
         }
         
-        # define the state representation configuration
-        rlpt_cfg = GLobalVars.rlpt_cfg
-        assert rlpt_cfg is not None
-        self.seed = rlpt_cfg['seed']
-        state_represantation_config = rlpt_cfg['agent']['model']['state_representation'] 
+        
         if self.pose_err_milestones_reward_cfg['use']:
             pos_errs_of_milestones = [milestone[0] for milestone in self.pose_err_milestones_reward_cfg['milestones']]
             rot_errs_of_milestones = [milestone[1] for milestone in self.pose_err_milestones_reward_cfg['milestones']]
@@ -383,7 +391,10 @@ class rlptAgentBase:
         if 'prev_action_idx' in self.st_componentes_ordered:
             self.current_st['prev_action_idx'] = np.array([prev_at_idx]) 
         if 'pi_mppi_means' in self.st_componentes_ordered:
-            self.current_st['pi_mppi_means'] = self._pad_pi_with_zeros(pi_mppi_means) # pi_mppi_means.flatten
+            if self.max_horizon == self.pi_mppi_means_horizon_in_st:
+                self.current_st['pi_mppi_means'] = self._pad_pi_with_zeros(pi_mppi_means) # pi_mppi_means.flatten
+            else:
+                self.current_st['pi_mppi_means'] = pi_mppi_means[:self.pi_mppi_means_horizon_in_st]
         if 'pi_mppi_covs' in self.st_componentes_ordered:
             self.current_st['pi_mppi_covs'] = pi_mppi_covs # pi_mppi_means.flatten
         if 'robot_dofs_positions' in self.st_componentes_ordered:

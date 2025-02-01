@@ -7,17 +7,29 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.feature_selection import mutual_info_regression
 from tomlkit import item
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)18:56:12/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:25(Sat)23:05:28/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:17:42/training_etl.csv' # storm original
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/trained_models/2025:01:27(Mon)19:29:57/training_etl.csv' # storm original
 # path = 'Rlpt/favorite_models/2025:01:28(Tue)00:04:53/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:29(Wed)17:16:13/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:30(Thu)00:11:49_v1092/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:30(Thu)17:10:19_v1235/training_etl.csv'
+path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:31(Fri)13:14:00_v1486/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
 
+
+
+    
+def parse_st_pi_mppi_means(df):
+    df['st_pi_mppi_means'] = df['st_pi_mppi_means'].apply(lambda x: x[0]) 
+    return df
+# df_parsed = parse_st_pi_mppi_means(df)
+
+    
 def _parse_qvals(qvals_str):
     qvals_list = qvals_str[1:-1].split(', ')
     qvals_list = [float(x) for x in qvals_list]
@@ -122,28 +134,12 @@ def reward_sum_with_labels(df):
     for i, ng_tuple in enumerate(episodes):
         name, group = ng_tuple 
         y.append(np.sum(group['rt']))   
-    plt_with_label_markers(x,y,labels)
+    plt.plot(y)
+    plt.title('episode total reward')
+    # plt_with_label_markers(x,y,labels)
 
 
 
-# def live_plot():
-#     fig = plt.figure()
-#     from numpy import cos
-#     plt.ion()
-#     for i in range(100000):
-#         fig.clear()
-#         plt.plot(range(i),np.cos(range(i)))
-#         plt.pause(0.0001) # Gi
-
-# live_plot()     
-        
-        
-        
-
-    # qt_var = qvals_col.apply(lambda x: np.var(x))
-    # qt = qvals_col[df['at_id']]
-    # qt_star = qvals_col.apply(lambda x: np.max(x))    
-    # plt.errorbar(df.index, qt_mean, qt_var, fmt="o", color="r")
 
 def rt_ep_sum_bar(df):
     episodes = df.groupby('ep_id')
@@ -162,7 +158,7 @@ def rt_ep_sum_bar(df):
             r_accumulate.append(r_accumulate[-1] + rsums[i])
     plt.title('reward sum over episodes')
     plt.bar(range(len(rsums)), rsums)
-    plt.plot(r_accumulate)
+    # plt.plot(r_accumulate)
     
 
 def episode_losses_bar(df):
@@ -259,21 +255,140 @@ def qsa_all(df,ep_id):
     for i in range(n_actions):
         q_action = qvals.apply(lambda x:x[i])
         qsa_by_a.append(q_action)
-    
+    ai_plots = []
+    ai_colors = [] 
     for i in range(n_actions):
-        plt.plot(qsa_by_a[i],label = f'action {i}')
+        p_ai = plt.plot(qsa_by_a[i], label = f'q action {i}',linewidth=1)
+        ai_plots.append(p_ai)
+        ai_colors.append(p_ai[0].get_color())
+    plt.plot(ep['rt'],label='reward')
+    plt.plot(ep['at_id'], label='taken action')
+    df_qs = pd.DataFrame(columns=list(range(n_actions)))
+    for i in range(n_actions):
+        df_qs[i] = qsa_by_a[i]
+    df_greedy = df_qs.idxmax(axis=1)
+    plt.plot(df_greedy, label='greedy action')
+    
+    greedy_action_list = list(df_greedy)
+    greedy_action_list = [int(a_id) for a_id in greedy_action_list]
+    
+    for i in ep.index:
+        plt.axvspan(i, i + 1, facecolor=ai_colors[greedy_action_list[i - ep.index[0]]], alpha=0.5)
+    plt.title(f'color background = greedy action, episode = {ep_id}')
     plt.legend()
     
-# 
+def reward_sum(df):
+    plt.figure()
+    rewards = df['rt']
+    rsums = [0]
+    for i in range(1,len(rewards.index)):
+        rsums.append(rsums[i-1] + df['rt'][i])
+    plt.plot(rsums,label='reward sum')
+    plt.plot(df['rt'],label='rt')
+    plt.title('rewards over training')
+    plt.legend()  
+
+
+def cor_action_traj_return(df):
+    episodes = df.groupby('ep_id')
+    trajectories = []
+    returns = []
+    a = np.array()
+    for i, ng_tuple in enumerate(episodes):
+        name, group = ng_tuple     
+        traj = group['at_id'] 
+        g =  group['rt'].sum()
+        trajectories.append(np.array(traj))
+        returns.append(g)
+        a = np.stack((a,traj), axis=0)
         
+    # X = np.array(trajectories)  # Shape: (num_episodes, n)
+    Y = np.array(returns)
+    
+    mi = mutual_info_regression(a,Y)
+    print('mi = ', mi)
+
+def ep_dur(df):
+    plt.figure()
+    episodes = df.groupby('ep_id')
+    t_steps = []
+    durs = []
+    for i, ng_tuple in enumerate(episodes):
+        name, group = ng_tuple     
+        n_steps = group['t_ep'][group.index[-1]]# len(group)
+        dur = sum(group['stepMDduration'])
+        t_steps.append(n_steps)
+        durs.append(dur)
+        
+    plt.plot(t_steps,label='t_steps')
+    plt.plot(durs,label='duration')
+    plt.legend()
+    
+def split_pose(x):
+    x = x[1:-1]
+    x = x.split('  ')
+    
+def pos(df):
+    plt.figure()
+    episodes = df.groupby('ep_id')
+    fig = plt.figure()
+    for i, ng_tuple in enumerate(episodes):
+        ax = plt.axes(projection ='3d')
+        name, group = ng_tuple
+        
+        # group['s(t+1)MDee_pose_gym_cs'] = group['s(t+1)MDee_pose_gym_cs'].str[1:-1].split(',').join() 
+        # group['s(t+1)MDee_pose_gym_cs_parsed'] = group['s(t+1)MDee_pose_gym_cs'].str[1:-1].str.split('  ')
+        # group['s(t+1)MDee_pose_gym_cs_parsed'] = group['s(t+1)MDee_pose_gym_cs_parsed'].apply(split_pose)
+        # .apply(lambda x: [float(s) for s in x])
+        group['pos_x'] = group['s(t+1)MDee_pose_gym_cs'].apply(lambda x: [0])     
+        group['pos_y'] = group['s(t+1)MDee_pose_gym_cs'].apply(lambda x: x[1])
+        group['pos_z'] = group['s(t+1)MDee_pose_gym_cs'].apply(lambda x: x[2])
+        ax.plot(group['pos_x'].values, group['pos_y'].values, group['pos_z'], alpha=0.5,label=f'episode {name}: {str(label)}') # simple blue line
+        
+# cor_action_traj_return(df)
+    
+
+
 # qsa_all(df, 0)
-# qsa_all(df, 30)
-# qsa_all(df, 30)
-# qsa_all(df, 90)
-# qsa_all(df, 120)
-# qsa_all(df, 150)
-# qsa_all(df, 180)
-# qsa_all(df, 210)
+# qsa_all(df, 100)
+# qsa_all(df, 200)
+# qsa_all(df, 300)
+# qsa_all(df, 400)
+# qsa_all(df, 500)
+# qsa_all(df, 600)
+# qsa_all(df, 700)
+# qsa_all(df, 701)
+# qsa_all(df, 800)
+# qsa_all(df, 801)
+# qsa_all(df, 822)
+
+# qsa_all(df, 918)
+# qsa_all(df, 919)
+# qsa_all(df, 920)
+# qsa_all(df, 921)
+# qsa_all(df, 1090)
+# qsa_all(df, 1091)
+
+# qsa_all(df,1230)
+# qsa_all(df,1231)
+# qsa_all(df,1232)
+# qsa_all(df,1233)
+# qsa_all(df,1234)
+# qsa_all(df,1235)
+# pos(df[df['ep_id'] == 334])
+# qsa_all(df,566)
+# qsa_all(df,567)
+qsa_all(df,1401) # terminal
+qsa_all(df,1482)
+qsa_all(df,1483)
+qsa_all(df,1484)
+qsa_all(df,1485)
+qsa_all(df,1486)
+
+
+
+
+# ep_dur(df)
 
 
 
@@ -288,7 +403,7 @@ def qsa_all(df,ep_id):
 # q0_star_plot(df)
 rt_ep_sum_bar(df)
 # rt_plot_grouped(df)
-q0_star_mean_scatter(df)
+# q0_star_mean_scatter(df)
 episode_losses_bar(df)
 # episode_action_changing_freq_bar(df)
 # episode_mean_step_time(df)
@@ -300,22 +415,12 @@ episode_losses_bar(df)
 # ee_errors(df)
 # reward_sum_with_labels(df)
 # print(df.value_counts())
-def reward_sum(df):
-    plt.figure()
-    rewards = df['rt']
-    rsums = [0]
-    for i in range(1,len(rewards.index)):
-        rsums.append(rsums[i-1] + df['rt'][i])
-    plt.plot(rsums,label='reward sum')
-    plt.plot(df['rt'],label='rt')
-    plt.title('rewards over training')
-    plt.legend()
+reward_sum_with_labels(df)
 reward_sum(df)
 ###########
 plt.show()
 ##########
 
-# time.sleep(100)
 
 # x = np.arange(len(y))
 # plt.plot(x,y)

@@ -246,6 +246,7 @@ class DQNAgent(rlptAgentBase):
             meta_data['optimization']['loss'] = loss
             if training_steps_done % self.target_update == 0:
                 self._target_hard_update()
+                print('debug target hard updated, ', training_steps_done)
                 
         return meta_data
     

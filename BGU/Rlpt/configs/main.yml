@@ -1,9 +1,12 @@
+external_cfgs:
+  env_yml_relative : 'rlpt/experiments/experiment1/training_template_2.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
+
 seed: 42
 agent:
   alg: 'rainbow'  # 'ddqn' # 'dqn', 'rainbow'
   model: # The Neural network 
     load_checkpoint: true
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:29(Wed)17:16:13/model.pth'
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:01:31(Fri)13:14:00/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -13,8 +16,9 @@ agent:
       coll_objs: false
       robot_base_pos: false
       prev_action_idx: true
-      pi_mppi_means: true
+      pi_mppi_means: false # set 'max' to take max horizon of all actions (max MPPI H) and false or 0 to un-include this component at all 
       pi_mppi_covs: false # currently disabled since it doesent change
+      # t: 
     
   A: 
     cost_fn_space:
@@ -85,19 +89,19 @@ agent:
     # atom_size (int): the unit number of support
     # n_step (int): step number to calculate n-step td error
     ######
-    memory_size: 100000 # 1M samples take about 30 seconds to load and save to memory (to solve this bug )
-    batch_size: 128 # TO SET
-    target_update: 100 # int. called 'C' in original DQN paper
+    memory_size: 200000 # 1M samples take about 30 seconds to load and save to memory (to solve this bug )
+    batch_size: 256 # TO SET
+    target_update: 1000 # int. called 'C' in original DQN paper
     # seed: 42 # int, # TO SET
     gamma:  0.999 # discount factor (float) 
     # PER parameters
-    alpha: 1 # 0.2 
+    alpha: 0.5 # 0.2 
     beta: 0.01 # 0.6 # The starting beta value in training (float). Beta determines how much importance sampling is used. Increased with training progress. See https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb  
     prior_eps: 1e-6 # The epsilon of PER (float) (aims to ensure that we are never setting a probability of 0 to select transitions with a td-error of 0).  
     # Categorical DQN parameters
-    v_min: 0.0 #  
-    v_max: 200.0   
-    atom_size: 51  
+    v_min: -50 # 0.0 #  
+    v_max: 15 # 200.0   
+    atom_size: 101 # 51 # 51  
     # N-step Learning
     n_step: 3 
 
@@ -117,19 +121,18 @@ agent:
     time_reward: linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
     pose_reward:
       use: true # false means no direct reward on goal state, learning just from time to goal and collisions
-      w: 1000
+      w: 5
       pose_err_milestones:
         use: true
-        milestones: [[0.1,0.1,500],[0.05,0.05,500]] # [] position reward weight threshold, rotation reward threshold, weight  
-
-    safety_w: 1000
+        milestones: [[0.15,0.15,0.5],[0.145,0.145,0.5],[0.14,0.14,0.5],[0.135,0.135,0.5],[0.13,0.13,0.5],[0.125,0.125,1],[0.12,0.12,1],[0.11,0.11,1], [0.1,0.1,1], [0.09,0.09,1], [0.08,0.08,1],[0.07,0.07,1],[0.06,0.06,1],[0.05,0.05,2],[0.04,0.04,2],[0.03,0.03,2],[0.02,0.02,2]] # [] position reward weight threshold, rotation reward threshold, weight  
+    safety_w: 30
     step_dur_w: 1
     terminal_collision: true
     terminal_goal: true
   
   goal_test:
-    goal_pos_thresh_dist: 0.01 # (world, not in reward function) activation thresold of position part in goal test (distance in meters)   
-    goal_rot_thresh_dist: 0.01 # (world, not in reward function) activation threshold of orientation part in goal state reward 
+    goal_pos_thresh_dist: 0.03 # (world, not in reward function) activation thresold of position part in goal test (distance in meters)   
+    goal_rot_thresh_dist: 0.03 # (world, not in reward function) activation threshold of orientation part in goal state reward 
     requirements: [pos, rot] # (or [pos] or [rot].) requires to pass threshold on every requirement to pass goal test
   
   training:
@@ -141,7 +144,7 @@ agent:
     sample_obj_locs_every_episode: false # renders new collision object poses
     sample_goal_every_episode: false # changing goal pose
     reset_to_initial_state_every_episode: true # Note: when true must use external script (franka_reacher_rlpt_runner.py)
-    default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
+    default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # [0.4, 0.4, 0.6, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
     
     
@@ -158,7 +161,7 @@ agent:
     sample_objs_every_episode: false
     sample_obj_locs_every_episode: false
     sample_goal_every_episode: false
-    reset_to_initial_state_every_episode: true # when true must use external script (franka_reacher_rlpt_runner.py)
+    reset_to_initial_state_every_episode: t # when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision).
     etl_file_name: 'test_etl.csv'
 
@@ -168,10 +171,10 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: false # dont show gui at all, speedup training by 10%
+  headless: true # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: true # render trajectory lines of mpc rollouts
-
+  interactive_plot: false
 episode_plots:
   show: true 
 
