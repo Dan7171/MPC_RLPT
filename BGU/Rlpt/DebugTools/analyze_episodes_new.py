@@ -22,7 +22,6 @@ print(df.head)
 print(df.nunique())
 
 
-
     
 def parse_st_pi_mppi_means(df):
     df['st_pi_mppi_means'] = df['st_pi_mppi_means'].apply(lambda x: x[0]) 

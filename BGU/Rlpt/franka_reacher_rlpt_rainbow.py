@@ -691,7 +691,7 @@ class MpcRobotInteractive:
         
         prev_at = {}
         prev_at_id = -1
-        st = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL,sniffer, prev_at_id)                        
+        st = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL,sniffer, prev_at_id, 0)                        
         episode_start_time = time.time()
         for ts in range(episode_max_ts):
             logging_info['t_total'].append(rlpt_agent.get_steps_done()) # total time step, all episodes
@@ -701,11 +701,13 @@ class MpcRobotInteractive:
             # rlpt - reset the hyper parameters and mpc planner: perform action a(t, new_parameters) in environment   
             step_duration = self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_metadata = {'duration': step_duration}
-            s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id)
+            s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id, ts + 1)
             s_next_ee_pos = self.get_body_pose(self.ee_body_handle, "gym")
             s_next_goal_pos = self.get_body_pose(self.obj_body_handle, "gym")            
             terminated, goal_state, contact_detected, ee_pos_error, ee_rot_error = rlpt_agent.check_for_termination(sniffer, s_next_ee_pos,s_next_goal_pos,rlpt_cfg['agent']['goal_test'])
-            rt, rt_metadata = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration,goal_state)    
+            
+            print(f'debug pos err = {ee_pos_error}, rot err = {ee_rot_error}')
+            rt, rt_metadata = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration, goal_state, ts, episode_max_ts)    
             snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected, 'goal_state': goal_state, 'ee_pose_gym_cs':pose_as_ndarray(s_next_ee_pos)} 
             rlpt_agent.store_transition(s_next, rt, terminated) # NOTE: HERE I changed a bit compared to oiriginal code. They passed "done" (terminated or tuncated), I passed only "terminated". See https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work   
             
@@ -1069,7 +1071,7 @@ def episode_loop(n_episodes, episode_max_ts, cfg,training=True):
                 'action_space':rlpt_action_space, 
                 'training_mode':training,
                 'etl_logging': include_etl,
-                'milestone_reward_cfg': rlpt_cfg['agent']['reward']['pose_reward']['pose_err_milestones']
+                'reward_cfg': rlpt_cfg['agent']['reward']
             } 
             
             rlpt_agent = DQNAgent(**rainbow_agent_params) # rainbow agent

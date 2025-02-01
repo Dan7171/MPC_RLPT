@@ -8,7 +8,7 @@ import os
 import time
 from turtle import pos, position
 from typing import Any, Dict, List, Set, Tuple, Union
-from click import BadArgumentUsage
+from click import BadArgumentUsage, BadParameter
 from networkx import union
 from storm_kit.mpc import task
 from sympy import epath
@@ -35,9 +35,18 @@ def _merge_dict(original, update):
     new = copy.deepcopy(original)
     new.update(update)
     return new
-    
+
+def increasing_linear_array(k):
+    # Create linearly increasing values from 0 to 1
+    assert k >= 1 and k == int(k)
+    values = np.linspace(1/k, 1, k)    
+    if k == 1:
+        return np.array([1])
+    # Normalize to sum to 1
+    return values / np.sum(values)
+
 class rlptAgentBase:       
-    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, etl_logging:bool, milestone_reward_cfg:dict, training_mode=True):
+    def __init__(self,base_pos_gym: np.ndarray, participating_storm:dict, not_participating_storm:dict,col_obj_handles:dict, action_space:list, etl_logging:bool,reward_cfg:dict, training_mode=True):
         """
         Summary:
             initializng a reinforcement learning parameter tuning agent.
@@ -57,7 +66,8 @@ class rlptAgentBase:
         self.test_episodes_done = 0 # new
         self.test_steps_done = 0 # new
         self.is_milestone_cnt_changed = False # New
-        self.pose_err_milestones_reward_cfg = milestone_reward_cfg # new
+        self.reward_cfg = reward_cfg # new
+        self.pose_err_milestones_reward_cfg = self.reward_cfg['pose_reward']['pose_err_milestones'] # new
         self.etl_logging = etl_logging
         self.action_space:list = action_space
         self.col_obj_handles:dict = col_obj_handles
@@ -96,7 +106,8 @@ class rlptAgentBase:
             'prev_action_idx': 1, # the index of the previous action which was taken
             'pi_mppi_means':  7 * self.pi_mppi_means_horizon_in_st, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
             'pi_mppi_covs': 7 ,# MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
-            'ee_err_milestones': 1 
+            'ee_err_milestones': 1,
+            't': 1 # current time step 
         }
         
         
@@ -107,14 +118,18 @@ class rlptAgentBase:
             assert is_sorted_decreasing(pos_errs_of_milestones)
             assert is_sorted_decreasing(rot_errs_of_milestones)
             state_represantation_config['ee_err_milestones'] = True
-            
+        
+
         # add state components names. That's what determines the ordere of components int the long state which represented as 1d vecotr   
         self.st_componentes_ordered = []
         for var in state_represantation_config.keys(): 
             if state_represantation_config[var]:
                 self.st_componentes_ordered.append(var)
                 
-                    
+        if self.reward_cfg['pose_reward']['ep_tail_err_reward']['use']:
+            assert 't' in self.st_componentes_ordered, 'self.ep_tail_err_reward_weights is initialized only if t is in state representation. To ep_tail_err_reward, user must represent t in state (to prevent confusing ambiguity in reward function)'            
+            self.ep_tail_err_reward_weights = increasing_linear_array(self.reward_cfg['pose_reward']['ep_tail_err_reward']['tail_len']) # increasing summed to 1 array of weights (non negative)
+
         # define the current state s(t) (initially s0)
         self.current_st = {component: np.array([]) for component in self.st_componentes_ordered} # component (name) to the component values
         if 'robot_base_pos' in self.st_componentes_ordered:
@@ -125,6 +140,7 @@ class rlptAgentBase:
             self.current_st['prev_action_idx'] = np.array([-1])
         if 'ee_err_milestones' in self.st_componentes_ordered:
             self.current_st['ee_err_milestones'] = np.array([0])
+        
         
         self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
         self.component_to_location_list:list = self.get_component_with_range_list()         
@@ -386,7 +402,7 @@ class rlptAgentBase:
         return out
     
     
-    def _set_state_in_system(self, prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones):
+    def _set_state_in_system(self, prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones, t):
         # Update the current state with the new components (only for components which can be changed)
         if 'prev_action_idx' in self.st_componentes_ordered:
             self.current_st['prev_action_idx'] = np.array([prev_at_idx]) 
@@ -405,8 +421,10 @@ class rlptAgentBase:
             self.current_st['goal_pose'] = goal_pose_gym
         if 'ee_err_milestones' in self.st_componentes_ordered: # milestones counter
             self.current_st['ee_err_milestones'] = completed_milestones 
+        if 't' in self.st_componentes_ordered:
+            self.current_st['t'] = t
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, prev_at_idx=-1) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, t:int, prev_at_idx=-1) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
@@ -414,7 +432,7 @@ class rlptAgentBase:
         """
         
         
-        self._set_state_in_system(prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones_new)
+        self._set_state_in_system(prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones_new,t)
         # Vectorize the state components in the order of the state representation configuration
         ordered_st_components = [self.current_st[key].flatten() for key in self.st_componentes_ordered]
         current_st_vectorized = np.concatenate(ordered_st_components)    
@@ -478,7 +496,7 @@ class rlptAgentBase:
         """ returns start index (inclusive) to end index (inclusive) int he oredered flatten state vector"""
         return self.component_to_location_dict[component_name]
     
-    def compute_reward(self, ee_pos_error, ee_rot_error, contact_detected, step_duration, goal_state)-> Tuple[np.float32,dict]:
+    def compute_reward(self, pos_err, rot_err, contact_detected, step_duration, goal_state, ts_cur, ts_max)-> Tuple[np.float32,dict]:
         """ A weighted sum of reward terms
         Returns:
             a. np.float64: total reward of the transition from s(t) to s(t+1).
@@ -512,6 +530,17 @@ class rlptAgentBase:
             newly_achieved_milestone_index = int(self.current_st['ee_err_milestones']-1)
             milestone_reward = self.pose_err_milestones_reward_cfg['milestones'][newly_achieved_milestone_index][2]
             pose_reward += milestone_reward
+        
+        if reward_config['pose_reward']['ep_tail_err_reward']['use']:
+            first_ts_in_tail = ts_max - len(self.ep_tail_err_reward_weights) 
+            if ts_cur >= first_ts_in_tail:
+                loc_in_arr = ts_cur - first_ts_in_tail # offset to array beginning
+                w = self.ep_tail_err_reward_weights[loc_in_arr] * reward_config['pose_reward']['ep_tail_err_reward']['w']
+                ep_tail_err_reward = - w * (pos_err + rot_err)
+                pose_reward += ep_tail_err_reward 
+                print(f'debug ts = {ts_cur}, max_ts = {ts_max}, w = {w}, ep_tail_r = {ep_tail_err_reward}',)
+
+            
             
             
             
@@ -726,13 +755,13 @@ class rlptAgentBase:
 
             
             
-        completed_milestones_prev_st_cnt = self.current_st['ee_err_milestones'] # achieved milestones count from prev state
+        completed_milestones_prev_st_cnt:np.ndarray = self.current_st['ee_err_milestones'] # achieved milestones count from prev state
         next_milestone_to_achieve_idx = int(completed_milestones_prev_st_cnt) 
         n_milestones = len(self.pose_err_milestones_reward_cfg['milestones']) # all milestones
         completed_all_milestones = completed_milestones_prev_st_cnt == n_milestones
         
         achieved_new_milestone = not completed_all_milestones and is_milestone_completed(pos_err, rot_err, next_milestone_to_achieve_idx)  
-        updated_achieved_num = completed_milestones_prev_st_cnt
+        updated_achieved_num:np.ndarray = completed_milestones_prev_st_cnt
         self.is_milestone_cnt_changed = False
         if achieved_new_milestone:
             updated_achieved_num += 1
@@ -741,7 +770,7 @@ class rlptAgentBase:
         
         
 
-    def calc_state(self, mpc, robot_handle, gymapi_state_all, sniffer, prev_action_idx) -> np.ndarray:
+    def calc_state(self, mpc, robot_handle, gymapi_state_all, sniffer, prev_action_idx, t) -> np.ndarray:
         # rlpt - compute the state you just moved to (next state, s(t+1)) 
         
         
@@ -760,8 +789,9 @@ class rlptAgentBase:
         ee_rot_error = rot_error(state_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
         completed_milestones_new = self._calc_updated_milestones_status(ee_pos_error,ee_rot_error)
         
+        t = np.array([t])
         # compose state vector and update current state representation
-        state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np, completed_milestones_new,prev_action_idx) # converting the state to a form that agent would feel comfortable with
+        state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np, completed_milestones_new,t, prev_action_idx) # converting the state to a form that agent would feel comfortable with
         
         return state_np
     
