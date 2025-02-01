@@ -538,7 +538,7 @@ class rlptAgentBase:
                 w = self.ep_tail_err_reward_weights[loc_in_arr] * reward_config['pose_reward']['ep_tail_err_reward']['w']
                 ep_tail_err_reward = - w * (pos_err + rot_err)
                 pose_reward += ep_tail_err_reward 
-                print(f'debug ts = {ts_cur}, max_ts = {ts_max}, w = {w}, ep_tail_r = {ep_tail_err_reward}',)
+                # print(f'debug ts = {ts_cur}, max_ts = {ts_max}, w = {w}, ep_tail_r = {ep_tail_err_reward}',)
 
             
             
