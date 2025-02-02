@@ -183,7 +183,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: true # dont show gui at all, speedup training by 10%
+  headless: false # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: true # render trajectory lines of mpc rollouts
   interactive_plot: false
