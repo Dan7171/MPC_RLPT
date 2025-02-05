@@ -17,7 +17,8 @@ from tomlkit import item
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:30(Thu)00:11:49_v1092/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:30(Thu)17:10:19_v1235/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:31(Fri)13:14:00_v1486/training_etl.csv'
-path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:01(Sat)19:45:46_V2126/training_etl.csv'
+# path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:01(Sat)19:45:46_V2126/training_etl.csv'
+path  = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:02(Sun)20:31:08_v4500/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
@@ -351,43 +352,8 @@ def pos(df):
 
 # qsa_all(df, 0)
 # qsa_all(df, 100)
-# qsa_all(df, 200)
-# qsa_all(df, 300)
-# qsa_all(df, 400)
-# qsa_all(df, 500)
-# qsa_all(df, 600)
-# qsa_all(df, 700)
-# qsa_all(df, 701)
-# qsa_all(df, 800)
-# qsa_all(df, 801)
-# qsa_all(df, 822)
+qsa_all(df,4499)
 
-# qsa_all(df, 918)
-# qsa_all(df, 919)
-# qsa_all(df, 920)
-# qsa_all(df, 921)
-# qsa_all(df, 1090)
-# qsa_all(df, 1091)
-
-# qsa_all(df,1230)
-# qsa_all(df,1231)
-# qsa_all(df,1232)
-# qsa_all(df,1233)
-# qsa_all(df,1234)
-# qsa_all(df,1235)
-# pos(df[df['ep_id'] == 334])
-# qsa_all(df,566)
-# qsa_all(df,567)
-# qsa_all(df,1401) # terminal
-# qsa_all(df,1482)
-# qsa_all(df,1483)
-# qsa_all(df,1484)
-# qsa_all(df,1485)
-# qsa_all(df,1486)
-qsa_all(df,2123)
-qsa_all(df,2124)
-qsa_all(df,2125)
-qsa_all(df,2126)
 
 
 

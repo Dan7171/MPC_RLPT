@@ -1,0 +1,48 @@
+
+world_model:
+  coll_objs:
+    cube:
+      cube1: # the table under the base
+        dims: [2.0, 2.0, 0.2] # x, y, z
+        pose: [0.0, 0.0, -0.1, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+
+    sphere:
+      sphere1:  
+        radius: 0.02 # meters
+        position: [-0.3, 0.1, 0.4] 
+      sphere2: # 
+        radius: 0.02 # meters
+        position: [-0.40, 0.45, 0.5]
+
+      sphere3: # 
+        radius: 0.03 # meters
+        position: [-0.35, 0.25, 0.5]
+        
+      # sphere3: # 
+      #   radius: 0.05 # meters
+      #   position: [0.5, 0.5, 0.3]
+      # sphere4: # 
+      #   radius: 0.05 # meters
+      #   position: [0.3, 0.35, 0.2]
+      # sphere5: # 
+      #   radius: 0.05 # meters
+      #   position: [0.2, 0.55, 0.3]
+      # sphere6: # 
+      #   radius: 0.05 # meters
+      #   position: [0.3, -0.3, -0.25]
+      # sphere7: # 
+      #   radius: 0.05 # meters
+      #   position: [0.3, 0.3, 0.35]
+      # sphere8: # 
+      #   radius: 0.05 # meters
+      #   position: [0.3, -0.3, 0.25]
+
+ 
+    # cube:
+    #   cube1:
+    #     dims: [0.1, 0.2, 0.2]
+    #     pose: [-2, 0.2, 0.3, 0.4, 0.5, 0.3, 1.0]
+    #   cube2:
+    #     dims: [0.1, 0.1, 1.2]
+    #     pose: [2.3, 2.2, 2.3, 0.4, 0.5, 2.3, 1.0]
+ 

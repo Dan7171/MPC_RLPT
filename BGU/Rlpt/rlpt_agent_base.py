@@ -787,7 +787,10 @@ class rlptAgentBase:
         goal_ee_pose_gym = mpc.get_body_pose(mpc.obj_body_handle, "gym")
         ee_pos_error = pos_error(state_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
         ee_rot_error = rot_error(state_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
-        completed_milestones_new = self._calc_updated_milestones_status(ee_pos_error,ee_rot_error)
+        
+        completed_milestones_new = None
+        if self.pose_err_milestones_reward_cfg['use']:
+            completed_milestones_new = self._calc_updated_milestones_status(ee_pos_error,ee_rot_error)
         
         t = np.array([t])
         # compose state vector and update current state representation

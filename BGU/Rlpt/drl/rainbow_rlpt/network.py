@@ -36,14 +36,22 @@ class Network(nn.Module):
             nn.ReLU(),
         )
         self.feature_layer2 = nn.Sequential(
-            nn.Linear(512, 512), 
+            nn.Linear(512, 1024), 
             nn.ReLU(),
         )
         self.feature_layer3 = nn.Sequential(
-            nn.Linear(512, 512), 
+            nn.Linear(1024, 1024), 
             nn.ReLU(),
         )
         self.feature_layer4 = nn.Sequential(
+            nn.Linear(1024, 1024), 
+            nn.ReLU(),
+        )
+        self.feature_layer5 = nn.Sequential(
+            nn.Linear(1024, 512), 
+            nn.ReLU(),
+        )
+        self.feature_layer6 = nn.Sequential(
             nn.Linear(512, 128), 
             nn.ReLU(),
         )
@@ -68,8 +76,9 @@ class Network(nn.Module):
         x = self.feature_layer(x)
         x = self.feature_layer2(x)
         x = self.feature_layer3(x)
-        feature = self.feature_layer4(x)
-        
+        x = self.feature_layer4(x)
+        x = self.feature_layer5(x)
+        feature = self.feature_layer6(x)
         adv_hid = F.relu(self.advantage_hidden_layer(feature))
         val_hid = F.relu(self.value_hidden_layer(feature))
         

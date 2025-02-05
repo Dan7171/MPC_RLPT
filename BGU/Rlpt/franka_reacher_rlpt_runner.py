@@ -3,7 +3,6 @@ from pyexpat import model
 import subprocess
 import os
 import time
-
 import torch
 from BGU.Rlpt.configs.default_main import load_config_with_defaults
 from BGU.Rlpt.utils.utils import color_print, make_model_path

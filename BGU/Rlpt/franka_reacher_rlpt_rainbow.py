@@ -1098,9 +1098,9 @@ if __name__ == '__main__':
     parser.add_argument('--cuda', action='store_true', default=True, help='use cuda') # use cude
     parser.add_argument('--headless', action='store_true', default=False, help='headless gym') # False means use viewer (gui)
     parser.add_argument('--control_space', type=str, default='acc', help='Robot to spawn')
-    parser.add_argument('--env_yml_relative', type=str, default='', help='asset specifications of environment. Relative path under storm/content/configs/gym')
-    parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
-    parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
+    # parser.add_argument('--env_yml_relative', type=str, default='', help='asset specifications of environment. Relative path under storm/content/configs/gym')
+    # parser.add_argument('--physics_engine_yml_relative', type=str, default='', help='physics specifications of environment. Relative path under storm/content/configs/gym')
+    # parser.add_argument('--task_yml_relative', type=str, default='', help='task specifications. Relative path under storm/content/configs/mpc')
     parser.add_argument('--rlpt_cfg_path', type=str,default='BGU/Rlpt/configs/main.yml', help= 'config file of rl parameter tuner')
     # external run params:
     parser.add_argument('--external_run', type=bool, default=False, help= 'run from external script')
@@ -1109,23 +1109,14 @@ if __name__ == '__main__':
     
     # simulation setup
     
-    if args.physics_engine_yml_relative == '':
-        args.physics_engine_yml_relative = 'rlpt/experiments/experiment1/physx.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
-    if args.task_yml_relative == '':
-        args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml' # under /home/dan/MPC_RLPT/storm/content/configs/mpc     
-    # if args.env_yml_relative == '':
-    #     args.env_yml_relative = 'rlpt/experiments/experiment1/training_template_2.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
-    # env_file = args.env_yml_relative
-    task_file = args.task_yml_relative
-    
-    physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
-    sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
                         
     # rlpt setup
     if not GLobalVars.is_defined('rlpt_cfg'):
         GLobalVars.rlpt_cfg = load_config_with_defaults(args.rlpt_cfg_path)
         rlpt_cfg = GLobalVars.rlpt_cfg
-    
+    task_file = rlpt_cfg['external_cfgs']['task_yml_relative']
+    physics_engine_config = load_yaml(join_path(get_gym_configs_path(),rlpt_cfg['external_cfgs']['physics_engine_yml_relative']))
+    sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = rlpt_cfg['gui']['headless'] # run with no gym gui
     include_etl = rlpt_cfg['agent']['model']['include_etl']
     env_file = rlpt_cfg['external_cfgs']['env_yml_relative']
