@@ -543,14 +543,18 @@ class rlptAgentBase:
             
             
             
-            
+        
         safety_reward = safety_w * - int(contact_detected)                
         if reward_config['time_reward'] == 'linear':
             step_duration_reward = step_dur_w * - step_duration
         else: # binary, penalty of 1 for every step
             step_duration_reward = -1
-
-        total_reward = pose_reward + safety_reward + step_duration_reward
+        
+        debug = reward_config['debug']
+        if debug:
+            total_reward = - (pos_err + rot_err)
+        else:
+            total_reward = pose_reward + safety_reward + step_duration_reward
         reward_metadata = {'pose_r_weighted': pose_reward, 'safety_r_weighted': safety_reward, 'dur_r_weighted': step_duration_reward}
         return np.float32(total_reward), reward_metadata
 

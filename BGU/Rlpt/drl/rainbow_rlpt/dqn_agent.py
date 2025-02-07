@@ -123,7 +123,7 @@ class DQNAgent(rlptAgentBase):
 
         # networks: dqn, dqn_target
         self.dqn = Network(
-            obs_dim, action_dim, self.atom_size, self.support
+            obs_dim, action_dim, self.atom_size, self.support,debug_mode=True
         ).to(self.device,dtype=self.device_dtype)
         self.dqn_target = Network(
             obs_dim, action_dim, self.atom_size, self.support
