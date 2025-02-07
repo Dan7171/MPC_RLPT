@@ -7,7 +7,7 @@ agent:
   alg: 'rainbow'  # 'ddqn' # 'dqn', 'rainbow'
   model: # The Neural network 
     load_checkpoint: false
-    checkpoint_path: 'BGU/Rlpt/trained_models/2025:02:02(Sun)20:31:08/model.pth'
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:02:06(Thu)09:33:02/model.pth'
     dst_dir: 'BGU/Rlpt/trained_models'
     include_etl: true
     state_representation: # input layer 
@@ -101,7 +101,7 @@ agent:
     beta: 0.5 # 0.6 # The starting beta value in training (float). Beta determines how much importance sampling is used. Increased with training progress. See https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb  
     prior_eps: 1e-6 # The epsilon of PER (float) (aims to ensure that we are never setting a probability of 0 to select transitions with a td-error of 0).  
     # Categorical DQN parameters
-    v_min: -10.0 # 0.0 #  
+    v_min: -200.0 # 0.0 #  
     v_max: 0.0 # 200.0   
     atom_size: 101 # 51 # 51  
     # N-step Learning
@@ -120,7 +120,7 @@ agent:
       
   reward:
     col_thresh_dist: 0.05 # activation threshold of collision detection, This distance found as a sweet spot for collision detection. It Should bot be changed unless having a good reason.
-    time_reward: linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
+    time_reward: fixed # linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
     step_dur_w: 1
     pose_reward:
       use: false # false means no direct reward on goal state, learning just from time to goal and collisions
@@ -184,7 +184,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: false # dont show gui at all, speedup training by 10%
+  headless: true # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: true # render trajectory lines of mpc rollouts
   interactive_plot: false

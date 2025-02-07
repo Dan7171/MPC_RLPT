@@ -18,7 +18,8 @@ from tomlkit import item
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:30(Thu)17:10:19_v1235/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:01:31(Fri)13:14:00_v1486/training_etl.csv'
 # path = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:01(Sat)19:45:46_V2126/training_etl.csv'
-path  = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:02(Sun)20:31:08_v4500/training_etl.csv'
+# path  = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:02(Sun)20:31:08_v4500/training_etl.csv'
+path  = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:05(Wed)17:54:41_v2500/training_etl.csv'
 df = pd.read_csv(path)
 print(df.head)
 print(df.nunique())
@@ -352,7 +353,11 @@ def pos(df):
 
 # qsa_all(df, 0)
 # qsa_all(df, 100)
-qsa_all(df,4499)
+qsa_all(df,500)
+qsa_all(df,1000)
+qsa_all(df,1500)
+qsa_all(df,2000)
+qsa_all(df,2499)
 
 
 
