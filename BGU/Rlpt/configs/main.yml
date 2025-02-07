@@ -19,7 +19,7 @@ agent:
       prev_action_idx: true
       pi_mppi_means: 3 # false # set 'max' to take max horizon of all actions (max MPPI H) and false or 0 to un-include this component at all 
       pi_mppi_covs: false # currently disabled since it doesent change
-      t: false
+      t: true
       
     
   A: 
