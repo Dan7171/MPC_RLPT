@@ -698,6 +698,7 @@ class MpcRobotInteractive:
             
             # rlpt - select a(t) 
             at_id, at, at_metadata = rlpt_agent.select_action(as_1d_tensor(st,dtype=torch.float32))    
+            print(f"debug {ts}, q vals: {at_metadata['q(w,st,all)']}")
             # rlpt - reset the hyper parameters and mpc planner: perform action a(t, new_parameters) in environment   
             step_duration = self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_metadata = {'duration': step_duration}
@@ -708,6 +709,7 @@ class MpcRobotInteractive:
             
             # print(f'debug pos err = {ee_pos_error}, rot err = {ee_rot_error}')
             rt, rt_metadata = rlpt_agent.compute_reward(ee_pos_error, ee_rot_error, contact_detected, step_duration, goal_state, ts, episode_max_ts)    
+            print(f"debug rt = {rt}")
             snext_metadata = {'pos_err':ee_pos_error, 'rot_err':ee_rot_error, 'contact':contact_detected, 'goal_state': goal_state, 'ee_pose_gym_cs':pose_as_ndarray(s_next_ee_pos)} 
             rlpt_agent.store_transition(s_next, rt, terminated) # NOTE: HERE I changed a bit compared to oiriginal code. They passed "done" (terminated or tuncated), I passed only "terminated". See https://farama.org/Gymnasium-Terminated-Truncated-Step-API#:~:text=To%20prevent%20an,for%20replicating%20work   
             

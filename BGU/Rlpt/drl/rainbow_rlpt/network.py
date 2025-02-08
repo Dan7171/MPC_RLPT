@@ -78,8 +78,9 @@ class Network(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward method implementation."""
         dist = self.dist(x) # a tensor of (1 X A X atom-size) for each action in A,  dist[a][i] is the chance to get the ith q value (possible q values are linearly spaced between v min and v max in the "support" verctor) 
+        q = torch.sum(dist * self.support, dim=2) # a vector with the q value of each action, which is the expectation of the distribution shown in dist (q(s,a) = sum_i(dist[i] * support[i]).
         
-        if self.debug_mode:
+        if self.debug_mode: # update live plot of distribution of q values
             self.steps += 1
             if self.steps % self.plot_ticks == 0:
                 self.fig.clear()
@@ -87,12 +88,10 @@ class Network(nn.Module):
                 plt.ylabel('pr(q(s,a)) = v')
                 for action_id in range(dist.shape[1]):        
                     q_a_hist = dist[0][action_id]
-                    plt.bar(torch_tensor_to_ndarray(self.support),q_a_hist.cpu().detach().numpy(), label=f'action {action_id}')
+                    plt.bar(torch_tensor_to_ndarray(self.support),q_a_hist.cpu().detach().numpy(), label=f'action {action_id}, q(s,a) = mean of dist= {q[0][action_id]}')
                 plt.legend()
-                plt.pause(0.01)
-
-
-        q = torch.sum(dist * self.support, dim=2) # a vector with the q value of each action, which is the expectation of the distribution shown in dist (q(s,a) = sum_i(dist[i] * support[i]).
+                plt.pause(0.0000001)
+                
         return q
     
     def dist(self, x: torch.Tensor) -> torch.Tensor:
