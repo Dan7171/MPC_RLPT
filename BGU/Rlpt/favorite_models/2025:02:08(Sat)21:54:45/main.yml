@@ -122,7 +122,7 @@ agent:
     col_thresh_dist: 0.05 # activation threshold of collision detection, This distance found as a sweet spot for collision detection. It Should bot be changed unless having a good reason.
     time_reward: fixed # linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
     step_dur_w: 1
-    debug: true
+    debug: false
     pose_reward:
       use: false # false means no direct reward on goal state, learning just from time to goal and collisions
       w: 5
