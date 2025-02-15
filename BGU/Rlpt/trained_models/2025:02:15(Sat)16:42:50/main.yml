@@ -103,7 +103,7 @@ agent:
     prior_eps: 1e-6 # The epsilon of PER (float) (aims to ensure that we are never setting a probability of 0 to select transitions with a td-error of 0).  
     # Categorical DQN parameters
     v_min: -200.0 # 0.0 #  
-    v_max: 50.0 # 200.0   
+    v_max: 0.0 # 200.0   
     atom_size: 101 # 51 # 51  
     # N-step Learning
     n_step: 1
