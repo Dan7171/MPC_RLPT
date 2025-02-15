@@ -803,6 +803,7 @@ class rlptAgentBase:
         
         t = np.array([t])
         ee_pose_gym = pose_as_ndarray(state_ee_pose_gym)
+        # print("debug ee_pose_gym ", ee_pose_gym)
         if np.any(np.isnan(ee_pose_gym)):
             assert t == 0
             ee_pose_gym = - np.ones(7) # on initial state
