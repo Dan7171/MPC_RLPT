@@ -107,7 +107,8 @@ class rlptAgentBase:
             'pi_mppi_means':  7 * self.pi_mppi_means_horizon_in_st, # MPPI policy (H gaussians) means: 7 distribution means (one for each dof) for max- H actions
             'pi_mppi_covs': 7 ,# MPPI policy (H gaussians) covariances: 7 covariances of those means (unlike the means, the covs remain the same for the whole horizon)
             'ee_err_milestones': 1,
-            't': 1 # current time step 
+            't': 1, # current time step
+            'ee_pose_gym': 7 
         }
         
         
@@ -402,7 +403,7 @@ class rlptAgentBase:
         return out
     
     
-    def _set_state_in_system(self, prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones, t):
+    def _set_state_in_system(self, prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones, t,ee_pose_gym):
         # Update the current state with the new components (only for components which can be changed)
         if 'prev_action_idx' in self.st_componentes_ordered:
             self.current_st['prev_action_idx'] = np.array([prev_at_idx]) 
@@ -423,8 +424,10 @@ class rlptAgentBase:
             self.current_st['ee_err_milestones'] = completed_milestones 
         if 't' in self.st_componentes_ordered:
             self.current_st['t'] = t
+        if 'ee_pose' in self.st_componentes_ordered:
+            self.current_st['ee_pose_gym'] = ee_pose_gym
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, t:int, prev_at_idx=-1) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, t:int,ee_pose_gym: np.ndarray, prev_at_idx=-1) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
@@ -432,7 +435,7 @@ class rlptAgentBase:
         """
         
         
-        self._set_state_in_system(prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones_new,t)
+        self._set_state_in_system(prev_at_idx,pi_mppi_means,pi_mppi_covs,robot_dof_positions_gym,robot_dof_velocities_gym,goal_pose_gym,completed_milestones_new,t, ee_pose_gym)
         # Vectorize the state components in the order of the state representation configuration
         ordered_st_components = [self.current_st[key].flatten() for key in self.st_componentes_ordered]
         current_st_vectorized = np.concatenate(ordered_st_components)    
@@ -791,14 +794,14 @@ class rlptAgentBase:
         goal_ee_pose_gym = mpc.get_body_pose(mpc.obj_body_handle, "gym")
         ee_pos_error = pos_error(state_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
         ee_rot_error = rot_error(state_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
-        
+        ee_pose_gym = pose_as_ndarray(state_ee_pose_gym)
         completed_milestones_new = None
         if self.pose_err_milestones_reward_cfg['use']:
             completed_milestones_new = self._calc_updated_milestones_status(ee_pos_error,ee_rot_error)
         
         t = np.array([t])
         # compose state vector and update current state representation
-        state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np, completed_milestones_new,t, prev_action_idx) # converting the state to a form that agent would feel comfortable with
+        state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np, completed_milestones_new, t,ee_pose_gym, prev_action_idx) # converting the state to a form that agent would feel comfortable with
         
         return state_np
     
