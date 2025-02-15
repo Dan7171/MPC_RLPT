@@ -158,7 +158,7 @@ agent:
     sample_objs_every_episode: false # renders new collision object identities
     sample_obj_locs_every_episode: false # renders new collision object poses
     sample_goal_every_episode: false # changing goal pose
-    reset_to_initial_state_every_episode: true # Note: when true must use external script (franka_reacher_rlpt_runner.py)
+    reset_to_initial_state_every_episode: false # Note: when true must use external script (franka_reacher_rlpt_runner.py)
     default_goal_pose: [-0.027, 0.2, 0.65, 0, 1, 0, 0.2] # [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # [0.4, 0.4, 0.6, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
     etl_file_name: 'training_etl.csv'
     
@@ -186,7 +186,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: true # dont show gui at all, speedup training by 10%
+  headless: false # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: true # render trajectory lines of mpc rollouts
   interactive_plot: false

@@ -688,21 +688,30 @@ class MpcRobotInteractive:
         ####################################
         ####### Starting Episode steps #####
         ####################################
-        
+        # debug_cnt = 0
+        # while gym_pose_not_initialized := math.isnan(self.get_body_pose(self.ee_body_handle, "gym").p.x):
+        #     # self.gym_instance.step()            
+        #     # self.gym.simulate(self.sim)
+        #     # self.gym.fetch_results(self.sim, True)
+        #     # self.gym.sync_frame_time(self.sim)
+        #     print(f'pose not yet initialized') 
+        #     print(debug_cnt)
+        #     debug_cnt += 1
+
         prev_at = {}
         prev_at_id = -1
-        st = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL,sniffer, prev_at_id, 0)                        
+        st = rlpt_agent.calc_state(self, self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL), sniffer, prev_at_id, 0)                        
         episode_start_time = time.time()
         for ts in range(episode_max_ts):
             logging_info['t_total'].append(rlpt_agent.get_steps_done()) # total time step, all episodes
-            
+
             # rlpt - select a(t) 
             at_id, at, at_metadata = rlpt_agent.select_action(as_1d_tensor(st,dtype=torch.float32))    
-            print(f"debug {ts}, q vals: {at_metadata['q(w,st,all)']}")
+            print(f"debug t = {ts}, q vals: {at_metadata['q(w,st,all)']}")
             # rlpt - reset the hyper parameters and mpc planner: perform action a(t, new_parameters) in environment   
             step_duration = self.step(at, prev_at) # moving to next time step t+1, optinonally performing parameter tuning
             step_metadata = {'duration': step_duration}
-            s_next = rlpt_agent.calc_state(self, robot_handle,gymapi.STATE_ALL, sniffer, at_id, ts + 1)
+            s_next = rlpt_agent.calc_state(self, self.gym.get_actor_dof_states(self.env_ptr, robot_handle, gymapi.STATE_ALL), sniffer, at_id, ts + 1)
             s_next_ee_pos = self.get_body_pose(self.ee_body_handle, "gym")
             s_next_goal_pos = self.get_body_pose(self.obj_body_handle, "gym")            
             terminated, goal_state, contact_detected, ee_pos_error, ee_rot_error = rlpt_agent.check_for_termination(sniffer, s_next_ee_pos,s_next_goal_pos,rlpt_cfg['agent']['goal_test'])

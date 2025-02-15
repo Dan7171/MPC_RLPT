@@ -3,6 +3,7 @@ from collections import deque
 import copy
 import csv
 from importlib import metadata
+import math
 from os import access
 import os
 import time
@@ -141,6 +142,8 @@ class rlptAgentBase:
             self.current_st['prev_action_idx'] = np.array([-1])
         if 'ee_err_milestones' in self.st_componentes_ordered:
             self.current_st['ee_err_milestones'] = np.array([0])
+        if 'ee_pose_gym' in self.st_componentes_ordered:
+            self.current_st['ee_pose_gym'] = np.zeros(7)
         
         
         self.st_componentes_ordered_dims = [state_var_to_dim[component] for component in self.st_componentes_ordered]         
@@ -424,10 +427,10 @@ class rlptAgentBase:
             self.current_st['ee_err_milestones'] = completed_milestones 
         if 't' in self.st_componentes_ordered:
             self.current_st['t'] = t
-        if 'ee_pose' in self.st_componentes_ordered:
+        if 'ee_pose_gym' in self.st_componentes_ordered:
             self.current_st['ee_pose_gym'] = ee_pose_gym
     
-    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, t:int,ee_pose_gym: np.ndarray, prev_at_idx=-1) -> np.ndarray:
+    def compose_state_vector(self, robot_dof_positions_gym: np.ndarray, robot_dof_velocities_gym:np.ndarray, goal_pose_gym:np.ndarray, pi_mppi_means: np.ndarray, pi_mppi_covs:np.ndarray, completed_milestones_new:np.ndarray, t:int, ee_pose_gym: np.ndarray, prev_at_idx=-1) -> np.ndarray:
         """ given components of state, return encoded (flatten) state
 
         Args:
@@ -777,11 +780,11 @@ class rlptAgentBase:
         
         
 
-    def calc_state(self, mpc, robot_handle, gymapi_state_all, sniffer, prev_action_idx, t) -> np.ndarray:
+    def calc_state(self, mpc, robot_dof_states_gym, sniffer, prev_action_idx, t) -> np.ndarray:
         # rlpt - compute the state you just moved to (next state, s(t+1)) 
         
         
-        robot_dof_states_gym = mpc.gym.get_actor_dof_states(mpc.env_ptr, robot_handle, gymapi_state_all)# gymapi.STATE_ALL) # TODO may need to replace by 
+        # robot_dof_states_gym = mpc.gym.get_actor_dof_states(mpc.env_ptr, robot_handle, gymapi_state_all)# gymapi.STATE_ALL) # TODO may need to replace by 
         robot_dof_positions_gym: np.ndarray = robot_dof_states_gym['pos'] 
         robot_dof_vels_gym: np.ndarray =  robot_dof_states_gym['vel']
         goal_ee_pose_gym = mpc.get_body_pose(mpc.obj_body_handle, "gym") # in gym coordinate system
@@ -794,12 +797,15 @@ class rlptAgentBase:
         goal_ee_pose_gym = mpc.get_body_pose(mpc.obj_body_handle, "gym")
         ee_pos_error = pos_error(state_ee_pose_gym.p, goal_ee_pose_gym.p) # end effector position error (s(t+1))
         ee_rot_error = rot_error(state_ee_pose_gym.r, goal_ee_pose_gym.r)  # end effector rotation error (s(t+1))   
-        ee_pose_gym = pose_as_ndarray(state_ee_pose_gym)
         completed_milestones_new = None
         if self.pose_err_milestones_reward_cfg['use']:
             completed_milestones_new = self._calc_updated_milestones_status(ee_pos_error,ee_rot_error)
         
         t = np.array([t])
+        ee_pose_gym = pose_as_ndarray(state_ee_pose_gym)
+        if np.any(np.isnan(ee_pose_gym)):
+            assert t == 0
+            ee_pose_gym = - np.ones(7) # on initial state
         # compose state vector and update current state representation
         state_np = self.compose_state_vector(robot_dof_positions_gym, robot_dof_vels_gym, goal_ee_pose_gym_np, pi_mppi_means_np, pi_mppi_covs_np, completed_milestones_new, t,ee_pose_gym, prev_action_idx) # converting the state to a form that agent would feel comfortable with
         
