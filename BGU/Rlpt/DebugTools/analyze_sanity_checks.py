@@ -57,7 +57,7 @@ def calc_true_values(df):
     
     return true_values
 
-def check_routine(check_path, check_id, check_reward_type):
+def routine(check_path, check_id, check_reward_type):
     print(f"routine for check {check_id} starts")
     df = pd.read_csv(check_path)
     print(df.head)
@@ -79,8 +79,8 @@ path_check1 = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:07(Fri)23:49:
 path_check2 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)09:24:43/training_etl.csv'
 path_check3 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)13:52:52/training_etl.csv'
 path_check4 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)21:54:45/training_etl.csv'
-checks_reward_funcs = ['-pose error', '-pose error', '-1', '-1']
+check_characteristics = ['r(t) = -pose error, t in s(t)', 'r(t) = -pose error, t not in s(t)', 'r(t) = -1, t in s(t)', 'r(t) = -1, t not in s(t)']
 checks_paths = [path_check1, path_check2, path_check3, path_check4]
 for i,p in enumerate(checks_paths):
-    check_routine(p, i+1, checks_reward_funcs[i])
+    routine(p, i+1, check_characteristics[i])
 plt.show()
