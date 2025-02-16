@@ -63,7 +63,8 @@ def routine(check_path, check_id, check_reward_type):
     print(df.head)
     print(df.nunique())
     
-    if check_id == 1 or check_id == 2 or check_id == 3 or check_id == 4:
+    
+    if check_id in [1,2,3,4,5,6]:
         true_v = calc_true_values(df) # since the 2 possible actions actions are the same, all  episodes are deterministic and the rewards remain the same along every episode
         n_episodes = len(df.groupby('ep_id'))
         q_table_last_episode = qsa_all(df, n_episodes-1)
@@ -79,8 +80,15 @@ path_check1 = '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:07(Fri)23:49:
 path_check2 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)09:24:43/training_etl.csv'
 path_check3 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)13:52:52/training_etl.csv'
 path_check4 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:08(Sat)21:54:45/training_etl.csv'
-check_characteristics = ['r(t) = -pose error, t in s(t)', 'r(t) = -pose error, t not in s(t)', 'r(t) = -1, t in s(t)', 'r(t) = -1, t not in s(t)']
-checks_paths = [path_check1, path_check2, path_check3, path_check4]
+path_check5 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:15(Sat)16:42:50/training_etl.csv'
+path_check6 =  '/home/dan/MPC_RLPT/BGU/Rlpt/favorite_models/2025:02:15(Sat)23:35:58/training_etl.csv'
+check_characteristics = ['r(t) = -pose error, t in s(t)',
+                         'r(t) = -pose error, t not in s(t)', 
+                         'r(t) = -1, t in s(t)',
+                         'r(t) = -1, t not in s(t)',
+                         'r(t) = -1, ee_pose in s(t) (replaced t), V_max = 0',
+                         'r(t) = -1, ee_pose in s(t) (replaced t), V_max = 50']
+checks_paths = [path_check1, path_check2, path_check3, path_check4, path_check5, path_check6]
 for i,p in enumerate(checks_paths):
     routine(p, i+1, check_characteristics[i])
 plt.show()

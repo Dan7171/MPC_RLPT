@@ -1,0 +1,197 @@
+external_cfgs:
+  env_yml_relative : 'rlpt/training_template_2.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
+  task_yml_relative: 'rlpt/franka_reacher1.yml'  # under /home/dan/MPC_RLPT/storm/content/configs/mpc 
+  physics_engine_yml_relative: 'rlpt/physx.yml' # under /home/dan/MPC_RLPT/storm/content/configs/gym
+seed: 42
+agent:
+  alg: 'rainbow'  # 'ddqn' # 'dqn', 'rainbow'
+  model: # The Neural network 
+    load_checkpoint: false
+    checkpoint_path: 'BGU/Rlpt/trained_models/2025:02:06(Thu)09:33:02/model.pth'
+    dst_dir: 'BGU/Rlpt/trained_models'
+    include_etl: true
+    state_representation: # input layer 
+      robot_dofs_positions: true
+      robot_dofs_velocities: true
+      goal_pose: false  # note: must be true if using HER  
+      coll_objs: false
+      robot_base_pos: false
+      prev_action_idx: true
+      pi_mppi_means: 3 # false # set 'max' to take max horizon of all actions (max MPPI H) and false or 0 to un-include this component at all 
+      pi_mppi_covs: false # currently disabled since it doesent change
+      t: false
+      ee_pose_gym: true
+
+    
+  A: 
+    cost_fn_space:
+      goal_pose: [[15,100], [15.0000001, 100]] # [[300,10],[15,100],[10,300]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
+      zero_vel: [0.0]
+      zero_acc: [0.0]
+      joint_l2: [0.0]
+      robot_self_collision: [5000] # [100, 1000] # weight of penalty for reaching too close to own parts (penalty weight)
+      primitive_collision:  [5000] # [100, 1000] # weight of penalty for reaching too close to obstacles in env (penalty weight)
+      voxel_collision: [0.0]
+      null_space: [1.0]
+      manipulability: [30]
+      ee_vel: [0.0]
+      stop_cost: [[100.0, 1.5]] # [[100.0, 1.5]] # [[120.0, 1.5], [20.0, 4]] # weight of penalty for crossing max vel. (0: cost term weight, 1: acceleration limit)
+      stop_cost_acc: [[0.0, 0.1]]
+      smooth: [1.0]
+      state_bound: [1000.0]
+
+    mppi_space:
+      horizon: [30] # [30] # horizon length. warning: linearly increasing runtime.
+      particles: [500] # [500] # [500, 1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
+      n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
+    
+    
+    # original storm:
+    # cost_fn_space:
+    #   goal_pose: [[15,100]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
+    #   zero_vel: [0.0]
+    #   zero_acc: [0.0]
+    #   joint_l2: [0.0]
+    #   robot_self_collision: [5000] # [100, 1000] # weight of penalty for reaching too close to own parts (penalty weight)
+    #   primitive_collision:  [5000] # [100, 1000] # weight of penalty for reaching too close to obstacles in env (penalty weight)
+    #   voxel_collision: [0.0]
+    #   null_space: [1.0]
+    #   manipulability: [30]
+    #   ee_vel: [0.0]
+    #   stop_cost: [[100.0, 1.5]] # [[100.0, 1.5]] # [[120.0, 1.5], [20.0, 4]] # weight of penalty for crossing max vel. (0: cost term weight, 1: acceleration limit)
+    #   stop_cost_acc: [[0.0, 0.1]]
+    #   smooth: [1.0]
+    #   state_bound: [1000.0]
+
+    # mppi_space:
+    #   horizon: [30] # [30] # horizon length. warning: linearly increasing runtime.
+    #   particles: [500] # [500, 1000] # [500] # num of mpc samples (each at length horizon). warning: linearly increasing runtime 
+    #   n_iters: [1] # num of repeats on mpc sampling and policy updating (optimiziation). warning: linearly increasing runtime
+    
+    
+  action_space:
+    use_original_storm_params: false
+    tuning_enabled: true # normal mode is true, false is for debug (when false, no parameter tuning. just using the initial episode parameter assignment)
+    # C: 1 # C = the "commitment", the number of time steps in a row which staying with the action after selecting it. In other words, making the action selection more spaced. Default commitment is 1 (select an action every timnestep). We turn the MDP to an MDP with new timestep units where each new time step is actually an  total reward aggregated over "commitment" steps   
+  
+  
+
+
+  rainbow_agent_settings:
+    ######
+    # memory_size (int): length of memory
+    # batch_size (int): batch size for sampling
+    # target_update (int): period for target model's hard update
+    # lr (float): learning rate TODO: I DONT THINK ITS USED NOW. DEFAULT SEEMS TO BE 0.001. SEE optimizer
+    # gamma (float): discount factor 
+    # alpha (float): determines how much prioritization is used (P(i) = the chance to select the ith transition in buffer to the batch := [(tderr(i)+eps)**alpha / sum_i(tderr(i)+eps)**alpha)]   See https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb
+    # beta (float): determines how much importance sampling is used  See https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb
+    # prior_eps (float): guarantees every transition can be sampled
+    # v_min (float): min value of support
+    # v_max (float): max value of support
+    # atom_size (int): the unit number of support
+    # n_step (int): step number to calculate n-step td error
+    ######
+    memory_size: 200000 # 1M samples take about 30 seconds to load and save to memory (to solve this bug )
+    batch_size: 256 # TO SET
+    target_update: 100 # int. called 'C' in original DQN paper
+    # seed: 42 # int, # TO SET
+    gamma:  0.999 # discount factor (float) 
+    # PER parameters
+    alpha: 0.5 # 0.2 
+    beta: 0.5 # 0.6 # The starting beta value in training (float). Beta determines how much importance sampling is used. Increased with training progress. See https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/03.per.ipynb  
+    prior_eps: 1e-6 # The epsilon of PER (float) (aims to ensure that we are never setting a probability of 0 to select transitions with a td-error of 0).  
+    # Categorical DQN parameters
+    v_min: -200.0 # 0.0 #  
+    v_max: 0.0 # 200.0   
+    atom_size: 101 # 51 # 51  
+    # N-step Learning
+    n_step: 1
+
+  train_suit: # dqn/ddqn agent settings (not rainbow)
+    gamma: 0.999
+    batch_size: 512 # 256  
+    eps_decay: false
+    default_eps: 0.1
+    grad_clipping: false
+    N: 1_000_000 # replay buffer size 
+
+ 
+      
+      
+  reward:
+    col_thresh_dist: 0.05 # activation threshold of collision detection, This distance found as a sweet spot for collision detection. It Should bot be changed unless having a good reason.
+    time_reward: fixed # linear # fixed # ("linear" (w * -time passed) or "fixed" (-1 on every time step))
+    step_dur_w: 1
+    debug: false
+    pose_reward:
+      use: false # false means no direct reward on goal state, learning just from time to goal and collisions
+      w: 5
+      pose_err_milestones:
+        use: false 
+        milestones: [[0.15, 0.15, 1],[0.14, 0.14, 1], [0.13, 0.13, 1],[0.12, 0.12, 1],[0.11, 0.11, 1],[0.10, 0.10, 1],[0.09, 0.09, 1],[0.08, 0.08, 1],[0.07, 0.07, 1],[0.06, 0.06, 1]] # [[0.15,0.15,0.5],[0.145,0.145,0.5],[0.14,0.14,0.5],[0.135,0.135,0.5],[0.13,0.13,0.5],[0.125,0.125,1],[0.12,0.12,1],[0.11,0.11,1], [0.1,0.1,1], [0.09,0.09,1], [0.08,0.08,1],[0.07,0.07,1],[0.06,0.06,1],[0.05,0.05,2],[0.04,0.04,2],[0.03,0.03,2],[0.02,0.02,2]] # [] position reward weight threshold, rotation reward threshold, weight  
+        
+      # ep_tail_err_reward: relevant only for episodes which reach (or almost reach) the max time step.
+      # The idea: adding an extra negative reward for last tail_len transitions in episode (starting from
+      #  training[max_ts] - tail_len to training[max_ts]).
+      # aimed to extra charge the agent for finishing far from the goal pose, comparingly to finishing closer.
+      # The result is a geometric averge (last time step weights more) of the error, over tail_len last steps. 
+      ep_tail_err_reward:    
+        use: false # reducing {wi * (pos err + rot err)} to r(t). where 0.1 <= wi <= 1, sum(all wis) = 1. wi are sorted in an increasing order (smaller first). 
+        tail_len: 30 # how back to the past comparing to the max time step we look at the avergae (i moves from 0 (belongs to ts = max_ts - tail_len) to  {tail_len -1} (belongs to ts = max_ts - 1)) 
+        w: 10 # by how much we weight the term {wi * (pos err + rot err)} ****note that both pos and rot errors are normally between 0 and 1 and in very rare cases cross 1.
+
+    safety_w: 30 # reduce safety_w * int(is_collision) from a transition ended by contact (either with self or obstacles.)  
+    terminal_collision: true # make the state after collision terminal (q=0) and end episode
+    terminal_goal: true # make the state after reaching goal terminal (q=0) and end episode
+  
+  goal_test:
+    goal_pos_thresh_dist: 0.05 # (world, not in reward function) activation thresold of position part in goal test (distance in meters)   
+    goal_rot_thresh_dist: 0.05 # (world, not in reward function) activation threshold of orientation part in goal state reward 
+    requirements: [pos, rot] # (or [pos] or [rot].) requires to pass threshold on every requirement to pass goal test
+
+  training:
+    run: true
+    save_checkpoints: true
+    n_episodes: 2500
+    max_ts: 200
+    sample_objs_every_episode: false # renders new collision object identities
+    sample_obj_locs_every_episode: false # renders new collision object poses
+    sample_goal_every_episode: false # changing goal pose
+    reset_to_initial_state_every_episode: true # Note: when true must use external script (franka_reacher_rlpt_runner.py)
+    default_goal_pose: [-0.027, 0.2, 0.65, 0, 1, 0, 0.2] # [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # [0.4, 0.4, 0.6, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision). 
+    etl_file_name: 'training_etl.csv'
+    
+    
+    HER: # Hindsight Experience Replay (not: mustr use goal_pose:true (in state_representation)) 
+      include: false # to use the feature 
+      strategy: future # (argument name as in paper)
+      k: 8 # (argument name as in paper)
+      N: 256 # number of optimization steps on each episode. -1 is a special code means "as episode max timestep" (argument name as in paper)
+
+  testing:
+    run: false
+    n_episodes: 10
+    max_ts: 1000
+    sample_objs_every_episode: false
+    sample_obj_locs_every_episode: false
+    sample_goal_every_episode: false
+    reset_to_initial_state_every_episode: t # when true must use external script (franka_reacher_rlpt_runner.py)
+    default_goal_pose: [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2] # in storm coordinates.  other options: [-0.37, -0.37, 0.3, 0, 2.5, 0, 1], #  behind robot: reachible from start pose at large H (i succeeded with 320), [-0.27, 0.3, 0.3, 0, 0.4, 0, 0.2], # right to robot: rechible from start pose [0.3, -0.47, 0.31, 0, 0, 0, 1], # left to robot: rotated upside down - reachible from start pose with no self/premitive collisions. Failing for no reason due to too high self collision weight (but no real self collision).
+    etl_file_name: 'test_etl.csv'
+
+
+cost_sniffer:
+  gui: false
+  save_costs: false
+
+gui:
+  headless: true # dont show gui at all, speedup training by 10%
+  render_ee_icons: true # render green and red mugs
+  render_trajectory_lines: true # render trajectory lines of mpc rollouts
+  interactive_plot: false
+episode_plots:
+  show: true 
+
+profile_memory:
+  include: false # true means use this tool to profile https://pytorch.org/blog/understanding-gpu-memory-1/ 
