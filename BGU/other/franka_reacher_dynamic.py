@@ -24,6 +24,7 @@
 
 """
 import copy
+from examples_rlpt.dan.franka_reacher_rlpt import pose_as_ndarray
 from isaacgym import gymapi
 from isaacgym import gymutil
 
@@ -233,8 +234,11 @@ def mpc_robot_interactive(args, gym_instance):
 
     g_pos = np.ravel(mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
     g_q = np.ravel(mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
-
- 
+    ######################################################
+    prev_world_params = load_yaml(world_yml) 
+    moving_obj_names = ['sphere1', 'cube1']
+    moving_obj_handles = find_handles_by_obj_names(env_ptr, gym, moving_obj_names)    
+    ###############################################################################
     while(i > -100):
         try:
             gym_instance.step()
@@ -261,33 +265,20 @@ def mpc_robot_interactive(args, gym_instance):
             ###################################################################
             # Moving actors based on https://docs.robotsfan.com/isaacgym/faqs.html#how-do-i-move-the-pose-joints-velocity-etc-of-an-actor:~:text=handled%20by%20handles.-,How%20do%20I%20move%20the%20pose%2C%20joints%2C%20velocity%2C%20etc.%20of%20an,%EF%83%81,-There%20are%20a
             # Update object position dynamically (example: oscillating motion)
-            for handle in range(gym.get_actor_count(env_ptr)):
-                # if gym.get_actor_name(env_ptr, handle) == 'sphere1':
-                    
-                #     actor_rigid_bodies:dict = gym.get_actor_rigid_body_dict(env_ptr, handle)
-                #     main_rigid_body_handle = actor_rigid_bodies['sphere']        
-                #     global_main_rigid_body_handle = gym.get_actor_rigid_body_handle(env_ptr, handle, main_rigid_body_handle)
-                #     new_x = -0.5 + 0.1 * np.sin(t_step * 2.0)  # Example sinusoidal motion
-                #     new_y = 1.5
-                #     new_z = 0
-                #     new_object_pose = gymapi.Transform(p=gymapi.Vec3(), r=gymapi.Quat())
-                #     new_object_pose.p = gymapi.Vec3(new_x, new_y, new_z)
-                #     new_object_pose.r = gymapi.Quat(0, 0, 0, 1)  # Keep orientation fixed
-                #     gym.set_rigid_transform(env_ptr, global_main_rigid_body_handle, new_object_pose)
-                    
-                # if gym.get_actor_name(env_ptr, handle) == 'cube1':
-                #     actor_rigid_bodies:dict = gym.get_actor_rigid_body_dict(env_ptr, handle)
-                #     main_rigid_body_handle = actor_rigid_bodies['box']        
-                #     global_main_rigid_body_handle = gym.get_actor_rigid_body_handle(env_ptr, handle, main_rigid_body_handle)
-                #     new_x = 0  # Example sinusoidal motion
-                #     new_y = 1.5
-                #     new_z = 0.4 * np.sin(t_step * 2.0)  # Example sinusoidal motion
-                #     new_object_pose = gymapi.Transform(p=gymapi.Vec3(), r=gymapi.Quat())
-                #     new_object_pose.p = gymapi.Vec3(new_x, new_y, new_z)
-                #     new_object_pose.r = gymapi.Quat(0, 0, 0, 1)  # Keep orientation fixed
-                #     gym.set_rigid_transform(env_ptr, global_main_rigid_body_handle, new_object_pose)
+            for handle, name in zip(moving_obj_handles,moving_obj_names):
+                type = 'sphere' if name.startswith('sphere') else 'cube'
+                if name == 'sphere1':
+                    new_x = -0.5 + 0.1 * np.sin(t_step * 2.0)  # Example sinusoidal motion
+                    new_y = 1.5
+                    new_z = 0
+                elif name == 'cube1':
+                    new_x = 0  # Example sinusoidal motion
+                    new_y = 1.5
+                    new_z = 0.4 * np.sin(t_step * 2.0)  # Example sinusoidal motion
                 
-                print(mpc_control.controller.rollout_fn.world_params, mpc_control.control_process.world_params)
+                
+                update_obj_position(handle, name, type, new_x, new_y, new_z, mpc_control, gym, env_ptr, w_T_r, prev_world_params)
+                
             ###################################################################
             ###################################################################
             ###################################################################
@@ -356,7 +347,69 @@ def mpc_robot_interactive(args, gym_instance):
             break
     mpc_control.close()
     return 1 
+
+##############################################
+def find_actor_handle_by_name(env_ptr,gym, obj_name:str) -> int:    
+    for handle in range(gym.get_actor_count(env_ptr)):
+        if gym.get_actor_name(env_ptr, handle) == obj_name:
+            return handle
     
+    return -1
+
+def find_handles_by_obj_names(env_ptr,gym, obj_names:list):
+    handles = []
+    for obj in obj_names:
+        handles.append(find_actor_handle_by_name(env_ptr, gym, obj))
+    return handles
+
+    
+def get_global_main_rigid_body_handle(env_ptr, gym, actor_handle:int):
+    """Get the global (in gym env) rigid body handle, of the main (primary, "head") rigid body of the actor (object/robot/etc) represented by actor_handle """
+    MAIN_RIGID_BODY_HANDLE_LOCAL = 0 # The index of the main rigid body, w.r to the actor (not the global one)
+    global_main_rigid_body_handle = gym.get_actor_rigid_body_handle(env_ptr, actor_handle, MAIN_RIGID_BODY_HANDLE_LOCAL)
+    return global_main_rigid_body_handle
+    
+
+def update_world_params_inplace(obj_name, obj_type, object_new_gym_pose:gymapi.Transform, w_T_r:torch.Tensor, prev_world_params:dict):
+    """
+    w_T_r: torch.Tensor 4x4 matrix. Transform matrix (T) from  robot frame (r) to world frame (w)
+    """
+    assert obj_type in ['cube', 'sphere'], f"obj_type must be either 'cube' or 'sphere', not {obj_type}"
+    
+    prev_col_objs = prev_world_params['world_model']['coll_objs']
+    
+    # convert obj pose from gym to storm
+    r_T_w = w_T_r.inverse() 
+    object_new_storm_pose: gymapi.Transform = r_T_w * object_new_gym_pose # in robot frame    
+    object_new_storm_pose_np: np.ndarray = pose_as_ndarray(object_new_storm_pose)
+    target = prev_col_objs[obj_type][obj_name]
+    print(target) 
+    if obj_type == 'cube':
+        target['pose'] = list(object_new_storm_pose_np)
+    else:
+        target['position'] = list(object_new_storm_pose_np[:3])
+    
+    
+def update_storm_with_updated_world_params(mpc_control,updated_world_params:dict):
+    mpc_control.controller.rollout_fn.update_world_params(updated_world_params)
+    mpc_control.control_process.update_world_params(updated_world_params)   
+    return True
+
+def update_obj_position(obj_handle,obj_name, obj_type, new_x, new_y, new_z, mpc_control, gym, env_ptr, w_T_r, prev_world_params):
+    """Moving an object in space and updated everyithng which is needed in gym and storm"""    
+    # Initialize new pose
+    new_object_pose = gymapi.Transform(p=gymapi.Vec3(), r=gymapi.Quat())
+    new_object_pose.p = gymapi.Vec3(new_x, new_y, new_z)
+    new_object_pose.r = gymapi.Quat(0, 0, 0, 1)  # Keep orientation fixed
+    
+    # Update gym with new the pose (pose is represented by its main rigid body of the object) 
+    gym.set_rigid_transform(env_ptr, get_global_main_rigid_body_handle(env_ptr, gym, obj_handle), new_object_pose)
+    
+    # Update storm with the new pose
+    update_world_params_inplace(obj_name, obj_type, new_object_pose, w_T_r, prev_world_params)    
+    update_storm_with_updated_world_params(mpc_control, prev_world_params)
+                    
+##############################################3
 if __name__ == '__main__':
     
     # instantiate empty gym:
@@ -373,41 +426,8 @@ if __name__ == '__main__':
     
     
     mpc_robot_interactive(args, gym_instance)
+
     
-def update_object_pose_in_storm(object_name, object_new_gym_pose:gymapi.Transform, w_T_r:torch.Tensor, controller, control_process):
-    """
-    w_T_r: torch.Tensor 4x4 matrix. Transform matrix (T) from  robot frame (r) to world frame (w)
-    """
-    r_T_w = w_T_r.inverse() 
-    object_new_storm_pose = r_T_w * object_new_gym_pose # in robot frame
-    controller.rollout_fn.world_params[object_name]['pose'] = object_new_storm_pose
-    control_process.world_params[object_name]['pose'] = object_new_storm_pose
-    return True
-    
-    
-def update_world_params(kwargs, controller, control_process):  
-        """
-        Telling both STORM's controller and rollout function what are the obstacles in the environment.
-        
-        Args:
-            kwargs (_type_): Only the participating obstacles (cubes, spheres etc...) in simulation
-        Returns:
-            _type_: 
-        """
-        
-        def extract_poses(self, dictionary):
-            # poses = []
-            poses = {}
-            for obj_type, obj_data in dictionary.items():
-                if isinstance(obj_data, dict):
-                    for obj_name, obj_info in obj_data.items():
-                        if 'pose' in obj_info:
-                            # poses.append(obj_info['pose'])
-                            poses[obj_name] = obj_info['pose'] 
-                        if 'position' in obj_info:
-                            poses[obj_name] = obj_info['position'] + [0.0, 0.0, 0.0, 1]
-                            # poses.append(obj_info['position'] + [0.0, 0.0, 0.0, 1])
-                            
-        controller.rollout_fn.update_world_params(kwargs)
-        control_process.update_world_params(kwargs)
-        return True
+
+ 
+

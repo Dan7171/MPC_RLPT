@@ -31,12 +31,13 @@ class BaseTask():
     def __init__(self, tensor_args={'device':"cpu", 'dtype':torch.float32}):
         self.tensor_args = tensor_args
         self.prev_qdd_des = None
+        
     def init_aux(self):
         self.state_filter = JointStateFilter(filter_coeff=self.exp_params['state_filter_coeff'], dt=self.exp_params['control_dt'])
         
         self.command_filter = JointStateFilter(filter_coeff=self.exp_params['cmd_filter_coeff'], dt=self.exp_params['control_dt'])
         self.control_process = ControlProcess(self.controller)
-        self.n_dofs = self.controller.rollout_fn.dynamics_model.n_dofs
+        self.n_dofs = self.controller.rollout_fn.dynamics_model.n_dofs # controller from type MPPI for example
         self.zero_acc = np.zeros(self.n_dofs)
         
     def get_rollout_fn(self, **kwargs):

@@ -361,3 +361,12 @@ class ArmBase(RolloutBase):
         """
         self.world_params = world_params
         self.primitive_collision_cost.update_world_params(self.world_params, self.exp_params['robot_params'])
+    
+    def update_object_pose(self, obj_name, obj_pose):
+        """
+        Update the pose of the object in the world
+        """
+        
+        self.world_params[obj_name] = obj_pose
+        self.primitive_collision_cost.update_world_params(self.world_params, self.exp_params['robot_params'])
+        

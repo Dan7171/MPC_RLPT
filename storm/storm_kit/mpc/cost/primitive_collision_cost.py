@@ -49,6 +49,7 @@ class PrimitiveCollisionCost(nn.Module):
                                                              grid_resolution=robot_params['world_collision_params']['grid_resolution'])
         
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
+        
         self.t_mat = None
         self.distance_threshold = distance_threshold
     def forward(self, link_pos_seq, link_rot_seq):
@@ -116,6 +117,7 @@ class PrimitiveCollisionCost(nn.Module):
         Update weight dynamically
         """
         self.weight = torch.as_tensor(weight, **self.tensor_args)
+        
     def update_world_params(self, world_params, robot_params):
         """
         Update objects positions
@@ -126,3 +128,5 @@ class PrimitiveCollisionCost(nn.Module):
                                                              bounds=robot_params['world_collision_params']['bounds'],
                                                              grid_resolution=robot_params['world_collision_params']['grid_resolution'])
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
+        
+    

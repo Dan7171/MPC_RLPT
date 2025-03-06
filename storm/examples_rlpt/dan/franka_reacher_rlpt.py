@@ -905,8 +905,8 @@ def main_experiment():
     if args.task_yml_relative == '':
         args.task_yml_relative = 'rlpt/experiments/experiment1/franka_reacher.yml'    
     if args.env_yml_relative == '':
-        # args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
-        # args.env_yml_relative = 'rlpt/experiments/experiment1/open_view.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/spheres_only_general.yml'
+        args.env_yml_relative = 'rlpt/experiments/experiment1/open_view.yml'
     physics_engine_config = load_yaml(join_path(get_gym_configs_path(),args.physics_engine_yml_relative))
     sim_params = physics_engine_config.copy() # GYM DOCS/Simulation Setup — Isaac Gym documentation.pdf
     sim_params['headless'] = args.headless # run with no gym gui
