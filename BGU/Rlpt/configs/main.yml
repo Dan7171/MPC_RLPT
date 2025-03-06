@@ -152,7 +152,7 @@ agent:
     run: true
     save_checkpoints: true
     n_episodes: 2500
-    max_ts: 200
+    max_ts: 20000
     sample_objs_every_episode: false # renders new collision object identities
     sample_obj_locs_every_episode: false # renders new collision object poses
     sample_goal_every_episode: false # changing goal pose
@@ -184,7 +184,7 @@ cost_sniffer:
   save_costs: false
 
 gui:
-  headless: true # dont show gui at all, speedup training by 10%
+  headless: false # dont show gui at all, speedup training by 10%
   render_ee_icons: true # render green and red mugs
   render_trajectory_lines: true # render trajectory lines of mpc rollouts
   interactive_plot: false
