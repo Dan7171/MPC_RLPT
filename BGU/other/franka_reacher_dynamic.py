@@ -234,7 +234,14 @@ def mpc_robot_interactive(args, gym_instance):
     g_pos = np.ravel(mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
     g_q = np.ravel(mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
+    ###############
+    # initial_state = np.copy(gym.get_actor_rigid_body_states(env_ptr, robot_ptr, gymapi.STATE_ALL))
+    initial_state = np.copy(gym.get_actor_dof_states(env_ptr, robot_ptr, gymapi.STATE_ALL))
+    print(initial_state)
+    ###############
     while(i > -100):
+        if i % 10 == 0:
+            gym.set_actor_dof_states(env_ptr, robot_ptr, initial_state, gymapi.STATE_ALL)
         try:
             gym_instance.step()
             if(vis_ee_target):
@@ -254,8 +261,14 @@ def mpc_robot_interactive(args, gym_instance):
                                               goal_ee_quat=g_q)
             t_step += sim_dt
             ###################################################################
+            # Moving actors based on https://docs.robotsfan.com/isaacgym/faqs.html#how-do-i-move-the-pose-joints-velocity-etc-of-an-actor:~:text=handled%20by%20handles.-,How%20do%20I%20move%20the%20pose%2C%20joints%2C%20velocity%2C%20etc.%20of%20an,%EF%83%81,-There%20are%20a
             # Update object position dynamically (example: oscillating motion)
-            cube_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 1)
+            for handle in range(gym.get_actor_count(env_ptr)):
+                if gym.get_actor_name(env_ptr, handle) == 'sphere1':
+                    sphere1_rigid_bodies:dict = gym.get_actor_rigid_body_dict(env_ptr, handle)
+                    main_rigid_body = sphere1_rigid_bodies['sphere']
+                    
+            cube_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 0)
             new_x = 0.5 + 0.1 * np.sin(t_step * 2.0)  # Example sinusoidal motion
             new_y = 0.3
             new_z = 0.4
@@ -264,7 +277,7 @@ def mpc_robot_interactive(args, gym_instance):
             new_object_pose.p = gymapi.Vec3(new_x, new_y, new_z)
             new_object_pose.r = gymapi.Quat(0, 0, 0, 1)  # Keep orientation fixed
 
-            gym.set_rigid_transform(env_ptr, obj_base_handle, new_object_pose)
+            gym.set_rigid_transform(env_ptr, cube_handle, new_object_pose)
             ###################################################################
             current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
             
