@@ -25,7 +25,7 @@ agent:
     
   A: 
     cost_fn_space:
-      goal_pose: [[15,100], [15.0000001, 100]] # [[300,10],[15,100],[10,300]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
+      goal_pose: [[15,100], [100, 15]] # [[300,10],[15,100],[10,300]] # [[1.0, 300.0],[300.0, 1.0]] # [[15,100]] # [[1.0, 300.0], [300.0, 1.0]] # weight of penalty for end-effector orientation/position error (0: orientation, 1: position)
       zero_vel: [0.0]
       zero_acc: [0.0]
       joint_l2: [0.0]
@@ -106,7 +106,7 @@ agent:
     v_max: 50.0 # 200.0   
     atom_size: 101 # 51 # 51  
     # N-step Learning
-    n_step: 3
+    n_step: 1 # currently there is an issue with n_step > 1
 
   train_suit: # dqn/ddqn agent settings (not rainbow)
     gamma: 0.999
@@ -115,8 +115,6 @@ agent:
     default_eps: 0.1
     grad_clipping: false
     N: 1_000_000 # replay buffer size 
-
- 
       
       
   reward:
