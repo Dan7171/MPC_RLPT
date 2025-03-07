@@ -383,7 +383,7 @@ def update_world_params_inplace(obj_name, obj_type, object_new_gym_pose:gymapi.T
     object_new_storm_pose: gymapi.Transform = r_T_w * object_new_gym_pose # in robot frame    
     object_new_storm_pose_np: np.ndarray = pose_as_ndarray(object_new_storm_pose)
     target = prev_col_objs[obj_type][obj_name]
-    print(target) 
+    # print(target) 
     if obj_type == 'cube':
         target['pose'] = list(object_new_storm_pose_np)
     else:

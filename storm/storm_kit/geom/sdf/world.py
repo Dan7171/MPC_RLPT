@@ -21,6 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
+import copy
 import cv2
 import numpy as np
 import trimesh
@@ -57,11 +58,12 @@ class WorldGridCollision(WorldCollision):
         self.scene_sdf = None
         self.scene_sdf_matrix = None
 
+
     def update_world_sdf(self):
         sdf_grid = self._compute_sdfgrid()
         self.scene_sdf_matrix = sdf_grid
         self.scene_sdf = sdf_grid.flatten()
-
+        
     def get_signed_distance(self, pts):
         """This needs to be implemented
 
@@ -197,6 +199,9 @@ class WorldPrimitiveCollision(WorldGridCollision):
         if(bounds is not None):
             self.update_world_sdf()
 
+    def reset_world_params(self, new_world_collision_params):
+        self.load_collision_model(new_world_collision_params)
+        
     def load_collision_model(self, world_collision_params):
         
         world_objs = world_collision_params['coll_objs']
@@ -314,6 +319,7 @@ class WorldPointCloudCollision(WorldGridCollision):
         self.proj_pt_idx = None
         self.trimesh_scene_voxel = None
         self.ind_pt = None
+    
 
     def update_camera_transform(self, w_c_trans, w_R_c):
         self.camera_transform = CoordinateTransform(trans=w_c_trans,
@@ -372,6 +378,7 @@ class WorldPointCloudCollision(WorldGridCollision):
 
         self.scene_sdf_matrix = sdf_grid
         self.scene_sdf = sdf_grid.flatten()
+        
         
     def _update_trimesh_projection(self):
         scene_voxel = self.trimesh_scene_voxel

@@ -355,12 +355,18 @@ class ArmBase(RolloutBase):
         self.stop_cost.update_max_vel(self.traj_dt)
         self.stop_cost_acc.update_max_vel(self.traj_dt)
         
+    # def update_world_params(self, world_params):
+    #     """
+    #     update positions of objects
+    #     """
+    #     self.world_params = world_params
+    #     self.primitive_collision_cost.update_world_params(self.world_params, self.exp_params['robot_params'])
     def update_world_params(self, world_params):
         """
         update positions of objects
         """
         self.world_params = world_params
-        self.primitive_collision_cost.update_world_params(self.world_params, self.exp_params['robot_params'])
+        self.primitive_collision_cost.update_world_params(self.world_params)
     
     def update_object_pose(self, obj_name, obj_pose):
         """

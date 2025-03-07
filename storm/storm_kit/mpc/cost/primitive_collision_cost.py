@@ -118,15 +118,19 @@ class PrimitiveCollisionCost(nn.Module):
         """
         self.weight = torch.as_tensor(weight, **self.tensor_args)
         
-    def update_world_params(self, world_params, robot_params):
-        """
-        Update objects positions
-        """
-        self.robot_world_coll = RobotWorldCollisionPrimitive(robot_params['robot_collision_params'],
-                                                             world_params['world_model'],
-                                                             tensor_args=self.tensor_args,
-                                                             bounds=robot_params['world_collision_params']['bounds'],
-                                                             grid_resolution=robot_params['world_collision_params']['grid_resolution'])
-        self.n_world_objs = self.robot_world_coll.world_coll.n_objs
+    # def update_world_params(self, world_params, robot_params):
+    #     """
+    #     Update objects positions
+    #     """
+    #     self.robot_world_coll = RobotWorldCollisionPrimitive(robot_params['robot_collision_params'],
+    #                                                          world_params['world_model'],
+    #                                                          tensor_args=self.tensor_args,
+    #                                                          bounds=robot_params['world_collision_params']['bounds'],
+    #                                                          grid_resolution=robot_params['world_collision_params']['grid_resolution'])
         
+    #     self.n_world_objs = self.robot_world_coll.world_coll.n_objs
+    
+    
+    def update_world_params(self, world_params):
+        self.robot_world_coll.update_coll_objs(world_params['world_model']) 
     
