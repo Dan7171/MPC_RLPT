@@ -49,6 +49,8 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
         super().__init__(robot_collision, world_collision)
         self.dist = None
     
+    
+        
     def get_signed_distance(self):
 
         link_capsules = self.robot_coll.get_robot_link_objs()
@@ -77,7 +79,10 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         super().__init__(robot_collision, world_collision)
         self.dist = None
-
+    
+    def update_coll_objs(self, new_world_collision_params):
+        self.world_coll.reset_world_params(new_world_collision_params)
+        
     def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
         self.batch_size = batch_size
         self.robot_coll.build_batch_features(clone_objs=clone_points, batch_size=batch_size)
@@ -207,7 +212,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         return dist
 
-
+    
 
 
 class RobotWorldCollisionVoxel():
@@ -380,6 +385,8 @@ class RobotWorldCollisionVoxel():
         
 
         return res
+
+    
 
 
 

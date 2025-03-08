@@ -196,6 +196,15 @@ class WorldPrimitiveCollision(WorldGridCollision):
 
         if(bounds is not None):
             self.update_world_sdf()
+            
+        from global_debug import d
+        if d['scene_sdf'] is not None:
+            print(f'debug equls: {torch.allclose(d["scene_sdf"], self.scene_sdf)}')
+            diff = d["scene_sdf"] - self.scene_sdf
+            print(f'different items: {len(diff[diff!=0])}/{len(diff)}')
+            
+        d['scene_sdf'] = self.scene_sdf
+        
 
     def load_collision_model(self, world_collision_params):
         
