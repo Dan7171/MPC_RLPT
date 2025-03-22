@@ -91,8 +91,8 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         """get signed distance from stored grid [very fast]
 
         Args:
-            link_trans (tensor): [b,3]
-            link_rot (tensor): [b,3,3]
+            link_trans (tensor): [b,3] # b is batch size (NXH)
+            link_rot (tensor): [b,3,3] # # b is batch size (NXH)
 
         Returns:
             tensor: signed distance [b,1]

@@ -99,8 +99,9 @@ class ControlProcess(object):
         control_dt: dt to integrate command to acceleration space from a higher order space(jerk, snap). 
         """
         if(self.command is not None):
-            curr_state = self.predict_next_state(t_step, curr_state)
+            curr_state = self.predict_next_state(t_step, curr_state) #   stays similar to curr_state
 
+        # t_step := self.mpc_dt * number of time steps passed (normaly self.mpc_dt is 0.02, so if 4 steps passed it'll be 0.08 ) 
         current_state = np.append(curr_state, t_step + self.mpc_dt)
         shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
         

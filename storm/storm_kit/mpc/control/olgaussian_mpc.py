@@ -238,8 +238,8 @@ class OLGaussianMPC(Controller):
             return
         # self.new_mean_action = self.mean_action.clone()
         # self.new_mean_action[:-1] = #self.mean_action[1:]
-        self.mean_action = self.mean_action.roll(-shift_steps,0)
-        self.best_traj = self.best_traj.roll(-shift_steps,0)
+        self.mean_action = self.mean_action.roll(-shift_steps,0) # self.mean_action := HX7
+        self.best_traj = self.best_traj.roll(-shift_steps,0) # self.best_traj := HX7
         
         if self.base_action == 'random':
             self.mean_action[-1] = self.generate_noise(shape=torch.Size((1, 1)), 

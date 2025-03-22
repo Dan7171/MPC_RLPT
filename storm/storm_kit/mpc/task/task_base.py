@@ -95,15 +95,16 @@ class BaseTask():
             curr_state['velocity'] *= 0.0
         filt_state = self.state_filter.filter_joint_state(curr_state)
         state_tensor = self._state_to_tensor(filt_state)
-
+        # print("DEBUG WAIT ", WAIT)
         if(WAIT):
             next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
         else:
+
             next_command, val, info, best_action = self.control_process.get_command(t_step, state_tensor.numpy(), control_dt=control_dt)
 
         qdd_des = next_command
         self.prev_qdd_des = qdd_des
-        cmd_des = self.state_filter.integrate_acc(qdd_des)
+        cmd_des = self.state_filter.integrate_acc(qdd_des) 
 
         return cmd_des
 

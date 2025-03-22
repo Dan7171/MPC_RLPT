@@ -269,7 +269,7 @@ def mpc_robot_interactive(args, gym_instance):
             qd_des = copy.deepcopy(command['velocity']) #* 0.5
             qdd_des = copy.deepcopy(command['acceleration'])
             
-            ee_error = mpc_control.get_current_error(filtered_state_mpc)
+            ee_error = mpc_control.get_current_error(filtered_state_mpc, no_coll=True)
              
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
             # print(pose_state)

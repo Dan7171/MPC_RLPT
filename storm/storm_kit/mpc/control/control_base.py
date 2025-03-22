@@ -246,7 +246,7 @@ class Controller(ABC):
             with torch.no_grad(): # This context manager disables gradient computation, meaning no memory is allocated for gradients and no backpropagation will occur. This is useful for inference (prediction) or evaluation when you don't need to update the model weights.
                 for _ in range(n_iters): # in paper that is "K" (optimization steps)
                     # generate random simulated trajectories
-                    trajectory = self.generate_rollouts(state) #Dan: 1. nxk7 actions seqs, nxkx1 costs,nxkx3 end effector positions (x,y,z), rollout time. Dan this starts the rollout of mpc
+                    trajectory = self.generate_rollouts(state) # trajectory:= dict {of 1. nxk7 actions seqs, nxkx1 costs,nxkx3 end effector positions (x,y,z), rollout time. Dan this starts the rollout of mpc
                     ### debug #####
                     # if self.num_steps < 5:
                     #     print(f'debug trajectory:')                 
@@ -257,7 +257,7 @@ class Controller(ABC):
                     info['rollout_time'] += trajectory['rollout_time']
 
                     # check if converged
-                    if self.check_convergence():
+                    if self.check_convergence(): # False bu default
                         break
         self.trajectories = trajectory
         #calculate best action
