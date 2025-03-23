@@ -239,6 +239,7 @@ def mpc_robot_interactive(args, gym_instance):
     moving_obj_names = ['sphere1', 'cube1']
     moving_obj_handles = find_handles_by_obj_names(env_ptr, gym, moving_obj_names)    
     ###############################################################################
+    clocktime_start = time.time()
     while(i > -100):
         try:
             gym_instance.step()
@@ -336,11 +337,11 @@ def mpc_robot_interactive(args, gym_instance):
             # if i < 100:  # debug
             #     print(f'current_state: {current_state}')
             
-            i += 1
+            i += 1 # time step ctr
+            clocktime_cur = time.time()    
+            ctrl_freq = i / (clocktime_cur -clocktime_start)
+            print(f'Measured Control Frequency: {ctrl_freq:.3f} Hz')
 
-            
-
-            
         except KeyboardInterrupt:
             print('Closing')
             done = True
@@ -383,7 +384,7 @@ def update_world_params_inplace(obj_name, obj_type, object_new_gym_pose:gymapi.T
     object_new_storm_pose: gymapi.Transform = r_T_w * object_new_gym_pose # in robot frame    
     object_new_storm_pose_np: np.ndarray = pose_as_ndarray(object_new_storm_pose)
     target = prev_col_objs[obj_type][obj_name]
-    print(target) 
+    # print(target) 
     if obj_type == 'cube':
         target['pose'] = list(object_new_storm_pose_np)
     else:
@@ -407,7 +408,7 @@ def update_obj_position(obj_handle,obj_name, obj_type, new_x, new_y, new_z, mpc_
     
     # Update storm with the new pose
     update_world_params_inplace(obj_name, obj_type, new_object_pose, w_T_r, prev_world_params)    
-    update_storm_with_updated_world_params(mpc_control, prev_world_params)
+    update_storm_with_updated_world_params(mpc_control, prev_world_params) # NOTE: comment out to get your regular normal control frequency
                     
 ##############################################3
 if __name__ == '__main__':
